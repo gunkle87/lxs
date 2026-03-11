@@ -1,0 +1,4 @@
+INPUT(A)
+INPUT(B)
+OUTPUT(Y)
+Y = AND(A, B)

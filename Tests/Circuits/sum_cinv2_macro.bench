@@ -1,0 +1,9 @@
+INPUT(a)
+INPUT(b)
+INPUT(cin_n)
+OUTPUT(sum)
+
+and_ab = AND(a, b)
+nor_ab = NOR(a, b)
+xor_ab = NOR(nor_ab, and_ab)
+sum = XNOR(cin_n, xor_ab)

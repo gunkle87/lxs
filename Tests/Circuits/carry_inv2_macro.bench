@@ -1,0 +1,9 @@
+INPUT(a)
+INPUT(b)
+INPUT(cin_n)
+OUTPUT(cout_n)
+
+and_ab = AND(a, b)
+nor_ab = NOR(a, b)
+t0 = NOR(cin_n, nor_ab)
+cout_n = NOR(and_ab, t0)

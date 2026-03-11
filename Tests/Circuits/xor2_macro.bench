@@ -1,0 +1,8 @@
+INPUT(A)
+INPUT(B)
+OUTPUT(Y)
+NA = NOT(A)
+NB = NOT(B)
+T0 = AND(A, NB)
+T1 = AND(NA, B)
+Y = OR(T0, T1)

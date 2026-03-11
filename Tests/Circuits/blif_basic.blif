@@ -1,0 +1,10 @@
+.model top
+.inputs a b
+.outputs y_or y_sel y_const1
+.names a b y_or
+00 0
+.names a b y_sel
+10 1
+.names y_const1
+1
+.end

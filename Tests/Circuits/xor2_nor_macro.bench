@@ -1,0 +1,6 @@
+INPUT(A)
+INPUT(B)
+OUTPUT(Y)
+N0 = NOR(A, B)
+N1 = AND(A, B)
+Y = NOR(N0, N1)

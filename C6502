@@ -1,0 +1,585 @@
+# Defining a C6502-Compatible Core in .bench for Logic Simulation
+
+## Executive summary
+
+“C6502” is not a single universally standardized public netlist; it is notably used as the product name of a proprietary 6502 ISA‑compatible soft IP core from entity["company","Evatronix","silicon ip vendor, poland"]. Public announcements describe that specific C6502 product as strictly synchronous (synchronous reset) and “no internal tri-states,” and as licensable as netlist or full source—i.e., the implementer details are not publicly disclosed in a way that would let a third party reproduce the exact gate-level design. citeturn11view1
+
+Because the exact “C6502” variant you mean is unspecified, this report provides a **clean-room, minimal 6502-compatible core model** in **ISCAS-style `.bench`** using the **Berkeley ABC** BENCH dialect (the one implemented by ABC’s `read_bench` parser). It is designed to be **ready-to-run** and **sufficient to simulate basic fetch/execute cycles** for:
+
+- **Reset vector fetch** from `$FFFC/$FFFD` (load PC from reset vector) citeturn18view1  
+- **NOP** (`$EA`)  
+- **LDA immediate** (`$A9 imm`)  
+- **JMP absolute** (`$4C lo hi`)  
+
+The provided netlist is a **gate/primitive-level finite-state machine** with flip‑flops (`DFF0`), combinational gates, and 2:1 multiplexers, and it exposes standard bus pins plus optional debug outputs (PC and A register). It intentionally **does not** attempt to replicate undocumented quirks, half-cycle timing, or the transistor-level topology of the NMOS 6502.
+
+## Complete .bench netlist
+
+```bench
+# c6502_min.bench -- minimal 6502-compatible core subset for logic simulation
+# Implements reset vector fetch ($FFFC/$FFFD), opcode fetch with SYNC, and 3 opcodes:
+#   NOP ($EA), LDA #imm ($A9), JMP abs ($4C)
+# Target BENCH dialect: Berkeley ABC read_bench (supports DFF0/DFF1, MUX, XNOR, etc.)
+
+INPUT(clk)
+INPUT(reset_n)
+INPUT(rdy)
+INPUT(irq_n)
+INPUT(nmi_n)
+INPUT(DI0)
+INPUT(DI1)
+INPUT(DI2)
+INPUT(DI3)
+INPUT(DI4)
+INPUT(DI5)
+INPUT(DI6)
+INPUT(DI7)
+
+OUTPUT(A0)
+OUTPUT(A1)
+OUTPUT(A2)
+OUTPUT(A3)
+OUTPUT(A4)
+OUTPUT(A5)
+OUTPUT(A6)
+OUTPUT(A7)
+OUTPUT(A8)
+OUTPUT(A9)
+OUTPUT(A10)
+OUTPUT(A11)
+OUTPUT(A12)
+OUTPUT(A13)
+OUTPUT(A14)
+OUTPUT(A15)
+OUTPUT(RW)
+OUTPUT(SYNC)
+OUTPUT(ACC0)
+OUTPUT(ACC1)
+OUTPUT(ACC2)
+OUTPUT(ACC3)
+OUTPUT(ACC4)
+OUTPUT(ACC5)
+OUTPUT(ACC6)
+OUTPUT(ACC7)
+OUTPUT(PC0)
+OUTPUT(PC1)
+OUTPUT(PC2)
+OUTPUT(PC3)
+OUTPUT(PC4)
+OUTPUT(PC5)
+OUTPUT(PC6)
+OUTPUT(PC7)
+OUTPUT(PC8)
+OUTPUT(PC9)
+OUTPUT(PC10)
+OUTPUT(PC11)
+OUTPUT(PC12)
+OUTPUT(PC13)
+OUTPUT(PC14)
+OUTPUT(PC15)
+OUTPUT(S0)
+OUTPUT(S1)
+OUTPUT(S2)
+
+VDD = vdd()
+GND = gnd()
+
+rst = NOT(reset_n)
+rdy_or_rst = OR(rdy, rst)
+adv = AND(clk, rdy_or_rst)
+
+S0 = DFF0(S0_d)
+S1 = DFF0(S1_d)
+S2 = DFF0(S2_d)
+
+PC0 = DFF0(PC0_d)
+PC1 = DFF0(PC1_d)
+PC2 = DFF0(PC2_d)
+PC3 = DFF0(PC3_d)
+PC4 = DFF0(PC4_d)
+PC5 = DFF0(PC5_d)
+PC6 = DFF0(PC6_d)
+PC7 = DFF0(PC7_d)
+PC8 = DFF0(PC8_d)
+PC9 = DFF0(PC9_d)
+PC10 = DFF0(PC10_d)
+PC11 = DFF0(PC11_d)
+PC12 = DFF0(PC12_d)
+PC13 = DFF0(PC13_d)
+PC14 = DFF0(PC14_d)
+PC15 = DFF0(PC15_d)
+
+ACC0 = DFF0(ACC0_d)
+ACC1 = DFF0(ACC1_d)
+ACC2 = DFF0(ACC2_d)
+ACC3 = DFF0(ACC3_d)
+ACC4 = DFF0(ACC4_d)
+ACC5 = DFF0(ACC5_d)
+ACC6 = DFF0(ACC6_d)
+ACC7 = DFF0(ACC7_d)
+
+TL0 = DFF0(TL0_d)
+TL1 = DFF0(TL1_d)
+TL2 = DFF0(TL2_d)
+TL3 = DFF0(TL3_d)
+TL4 = DFF0(TL4_d)
+TL5 = DFF0(TL5_d)
+TL6 = DFF0(TL6_d)
+TL7 = DFF0(TL7_d)
+
+nS0 = NOT(S0)
+nS1 = NOT(S1)
+nS2 = NOT(S2)
+
+st_reset0 = AND(nS2, nS1, nS0)
+st_reset1 = AND(nS2, nS1, S0)
+st_fetch  = AND(nS2, S1, nS0)
+st_lda1   = AND(nS2, S1, S0)
+st_jmp1   = AND(S2, nS1, nS0)
+st_jmp2   = AND(S2, nS1, S0)
+st_reset  = OR(st_reset0, st_reset1)
+
+lda_b0 = XNOR(DI0, VDD)
+lda_b1 = XNOR(DI1, GND)
+lda_b2 = XNOR(DI2, GND)
+lda_b3 = XNOR(DI3, VDD)
+lda_b4 = XNOR(DI4, GND)
+lda_b5 = XNOR(DI5, VDD)
+lda_b6 = XNOR(DI6, GND)
+lda_b7 = XNOR(DI7, VDD)
+op_lda = AND(lda_b0, lda_b1, lda_b2, lda_b3, lda_b4, lda_b5, lda_b6, lda_b7)
+
+jmp_b0 = XNOR(DI0, GND)
+jmp_b1 = XNOR(DI1, GND)
+jmp_b2 = XNOR(DI2, VDD)
+jmp_b3 = XNOR(DI3, VDD)
+jmp_b4 = XNOR(DI4, GND)
+jmp_b5 = XNOR(DI5, GND)
+jmp_b6 = XNOR(DI6, VDD)
+jmp_b7 = XNOR(DI7, GND)
+op_jmp = AND(jmp_b0, jmp_b1, jmp_b2, jmp_b3, jmp_b4, jmp_b5, jmp_b6, jmp_b7)
+
+ns2_a = AND(st_fetch, op_jmp)
+ns2 = OR(ns2_a, st_jmp1)
+nop_jmp = NOT(op_jmp)
+ns1_a = AND(st_fetch, nop_jmp)
+ns1_b = OR(ns1_a, st_lda1)
+ns1_c = OR(ns1_b, st_jmp2)
+ns1 = OR(ns1_c, st_reset1)
+ns0_a = AND(st_fetch, op_lda)
+ns0_b = OR(ns0_a, st_jmp1)
+ns0 = OR(ns0_b, st_reset0)
+
+ns0_rst = MUX(ns0, GND, rst)
+ns1_rst = MUX(ns1, GND, rst)
+ns2_rst = MUX(ns2, GND, rst)
+
+S0_d = MUX(S0, ns0_rst, adv)
+S1_d = MUX(S1, ns1_rst, adv)
+S2_d = MUX(S2, ns2_rst, adv)
+
+c0 = BUF(VDD)
+pcinc0 = XOR(PC0, c0)
+c1 = AND(PC0, c0)
+pcinc1 = XOR(PC1, c1)
+c2 = AND(PC1, c1)
+pcinc2 = XOR(PC2, c2)
+c3 = AND(PC2, c2)
+pcinc3 = XOR(PC3, c3)
+c4 = AND(PC3, c3)
+pcinc4 = XOR(PC4, c4)
+c5 = AND(PC4, c4)
+pcinc5 = XOR(PC5, c5)
+c6 = AND(PC5, c5)
+pcinc6 = XOR(PC6, c6)
+c7 = AND(PC6, c6)
+pcinc7 = XOR(PC7, c7)
+c8 = AND(PC7, c7)
+pcinc8 = XOR(PC8, c8)
+c9 = AND(PC8, c8)
+pcinc9 = XOR(PC9, c9)
+c10 = AND(PC9, c9)
+pcinc10 = XOR(PC10, c10)
+c11 = AND(PC10, c10)
+pcinc11 = XOR(PC11, c11)
+c12 = AND(PC11, c11)
+pcinc12 = XOR(PC12, c12)
+c13 = AND(PC12, c12)
+pcinc13 = XOR(PC13, c13)
+c14 = AND(PC13, c13)
+pcinc14 = XOR(PC14, c14)
+c15 = AND(PC14, c14)
+pcinc15 = XOR(PC15, c15)
+
+pc_inc_en = OR(st_fetch, st_lda1, st_jmp1)
+pc_load_en = OR(st_reset1, st_jmp2)
+
+pc_after_inc0 = MUX(PC0, pcinc0, pc_inc_en)
+pc_after_load0 = MUX(pc_after_inc0, TL0, pc_load_en)
+pc_after_rst0 = MUX(pc_after_load0, GND, rst)
+PC0_d = MUX(PC0, pc_after_rst0, adv)
+pc_after_inc1 = MUX(PC1, pcinc1, pc_inc_en)
+pc_after_load1 = MUX(pc_after_inc1, TL1, pc_load_en)
+pc_after_rst1 = MUX(pc_after_load1, GND, rst)
+PC1_d = MUX(PC1, pc_after_rst1, adv)
+pc_after_inc2 = MUX(PC2, pcinc2, pc_inc_en)
+pc_after_load2 = MUX(pc_after_inc2, TL2, pc_load_en)
+pc_after_rst2 = MUX(pc_after_load2, GND, rst)
+PC2_d = MUX(PC2, pc_after_rst2, adv)
+pc_after_inc3 = MUX(PC3, pcinc3, pc_inc_en)
+pc_after_load3 = MUX(pc_after_inc3, TL3, pc_load_en)
+pc_after_rst3 = MUX(pc_after_load3, GND, rst)
+PC3_d = MUX(PC3, pc_after_rst3, adv)
+pc_after_inc4 = MUX(PC4, pcinc4, pc_inc_en)
+pc_after_load4 = MUX(pc_after_inc4, TL4, pc_load_en)
+pc_after_rst4 = MUX(pc_after_load4, GND, rst)
+PC4_d = MUX(PC4, pc_after_rst4, adv)
+pc_after_inc5 = MUX(PC5, pcinc5, pc_inc_en)
+pc_after_load5 = MUX(pc_after_inc5, TL5, pc_load_en)
+pc_after_rst5 = MUX(pc_after_load5, GND, rst)
+PC5_d = MUX(PC5, pc_after_rst5, adv)
+pc_after_inc6 = MUX(PC6, pcinc6, pc_inc_en)
+pc_after_load6 = MUX(pc_after_inc6, TL6, pc_load_en)
+pc_after_rst6 = MUX(pc_after_load6, GND, rst)
+PC6_d = MUX(PC6, pc_after_rst6, adv)
+pc_after_inc7 = MUX(PC7, pcinc7, pc_inc_en)
+pc_after_load7 = MUX(pc_after_inc7, TL7, pc_load_en)
+pc_after_rst7 = MUX(pc_after_load7, GND, rst)
+PC7_d = MUX(PC7, pc_after_rst7, adv)
+pc_after_inc8 = MUX(PC8, pcinc8, pc_inc_en)
+pc_after_load8 = MUX(pc_after_inc8, DI0, pc_load_en)
+pc_after_rst8 = MUX(pc_after_load8, GND, rst)
+PC8_d = MUX(PC8, pc_after_rst8, adv)
+pc_after_inc9 = MUX(PC9, pcinc9, pc_inc_en)
+pc_after_load9 = MUX(pc_after_inc9, DI1, pc_load_en)
+pc_after_rst9 = MUX(pc_after_load9, GND, rst)
+PC9_d = MUX(PC9, pc_after_rst9, adv)
+pc_after_inc10 = MUX(PC10, pcinc10, pc_inc_en)
+pc_after_load10 = MUX(pc_after_inc10, DI2, pc_load_en)
+pc_after_rst10 = MUX(pc_after_load10, GND, rst)
+PC10_d = MUX(PC10, pc_after_rst10, adv)
+pc_after_inc11 = MUX(PC11, pcinc11, pc_inc_en)
+pc_after_load11 = MUX(pc_after_inc11, DI3, pc_load_en)
+pc_after_rst11 = MUX(pc_after_load11, GND, rst)
+PC11_d = MUX(PC11, pc_after_rst11, adv)
+pc_after_inc12 = MUX(PC12, pcinc12, pc_inc_en)
+pc_after_load12 = MUX(pc_after_inc12, DI4, pc_load_en)
+pc_after_rst12 = MUX(pc_after_load12, GND, rst)
+PC12_d = MUX(PC12, pc_after_rst12, adv)
+pc_after_inc13 = MUX(PC13, pcinc13, pc_inc_en)
+pc_after_load13 = MUX(pc_after_inc13, DI5, pc_load_en)
+pc_after_rst13 = MUX(pc_after_load13, GND, rst)
+PC13_d = MUX(PC13, pc_after_rst13, adv)
+pc_after_inc14 = MUX(PC14, pcinc14, pc_inc_en)
+pc_after_load14 = MUX(pc_after_inc14, DI6, pc_load_en)
+pc_after_rst14 = MUX(pc_after_load14, GND, rst)
+PC14_d = MUX(PC14, pc_after_rst14, adv)
+pc_after_inc15 = MUX(PC15, pcinc15, pc_inc_en)
+pc_after_load15 = MUX(pc_after_inc15, DI7, pc_load_en)
+pc_after_rst15 = MUX(pc_after_load15, GND, rst)
+PC15_d = MUX(PC15, pc_after_rst15, adv)
+
+tl_load_en = OR(st_reset0, st_jmp1)
+tl_after_load0 = MUX(TL0, DI0, tl_load_en)
+tl_after_rst0 = MUX(tl_after_load0, GND, rst)
+TL0_d = MUX(TL0, tl_after_rst0, adv)
+tl_after_load1 = MUX(TL1, DI1, tl_load_en)
+tl_after_rst1 = MUX(tl_after_load1, GND, rst)
+TL1_d = MUX(TL1, tl_after_rst1, adv)
+tl_after_load2 = MUX(TL2, DI2, tl_load_en)
+tl_after_rst2 = MUX(tl_after_load2, GND, rst)
+TL2_d = MUX(TL2, tl_after_rst2, adv)
+tl_after_load3 = MUX(TL3, DI3, tl_load_en)
+tl_after_rst3 = MUX(tl_after_load3, GND, rst)
+TL3_d = MUX(TL3, tl_after_rst3, adv)
+tl_after_load4 = MUX(TL4, DI4, tl_load_en)
+tl_after_rst4 = MUX(tl_after_load4, GND, rst)
+TL4_d = MUX(TL4, tl_after_rst4, adv)
+tl_after_load5 = MUX(TL5, DI5, tl_load_en)
+tl_after_rst5 = MUX(tl_after_load5, GND, rst)
+TL5_d = MUX(TL5, tl_after_rst5, adv)
+tl_after_load6 = MUX(TL6, DI6, tl_load_en)
+tl_after_rst6 = MUX(tl_after_load6, GND, rst)
+TL6_d = MUX(TL6, tl_after_rst6, adv)
+tl_after_load7 = MUX(TL7, DI7, tl_load_en)
+tl_after_rst7 = MUX(tl_after_load7, GND, rst)
+TL7_d = MUX(TL7, tl_after_rst7, adv)
+
+acc_load_en = BUF(st_lda1)
+acc_after_load0 = MUX(ACC0, DI0, acc_load_en)
+acc_after_rst0 = MUX(acc_after_load0, GND, rst)
+ACC0_d = MUX(ACC0, acc_after_rst0, adv)
+acc_after_load1 = MUX(ACC1, DI1, acc_load_en)
+acc_after_rst1 = MUX(acc_after_load1, GND, rst)
+ACC1_d = MUX(ACC1, acc_after_rst1, adv)
+acc_after_load2 = MUX(ACC2, DI2, acc_load_en)
+acc_after_rst2 = MUX(acc_after_load2, GND, rst)
+ACC2_d = MUX(ACC2, acc_after_rst2, adv)
+acc_after_load3 = MUX(ACC3, DI3, acc_load_en)
+acc_after_rst3 = MUX(acc_after_load3, GND, rst)
+ACC3_d = MUX(ACC3, acc_after_rst3, adv)
+acc_after_load4 = MUX(ACC4, DI4, acc_load_en)
+acc_after_rst4 = MUX(acc_after_load4, GND, rst)
+ACC4_d = MUX(ACC4, acc_after_rst4, adv)
+acc_after_load5 = MUX(ACC5, DI5, acc_load_en)
+acc_after_rst5 = MUX(acc_after_load5, GND, rst)
+ACC5_d = MUX(ACC5, acc_after_rst5, adv)
+acc_after_load6 = MUX(ACC6, DI6, acc_load_en)
+acc_after_rst6 = MUX(acc_after_load6, GND, rst)
+ACC6_d = MUX(ACC6, acc_after_rst6, adv)
+acc_after_load7 = MUX(ACC7, DI7, acc_load_en)
+acc_after_rst7 = MUX(acc_after_load7, GND, rst)
+ACC7_d = MUX(ACC7, acc_after_rst7, adv)
+
+A0 = MUX(PC0, st_reset1, st_reset)
+A1 = MUX(PC1, GND, st_reset)
+A2 = MUX(PC2, VDD, st_reset)
+A3 = MUX(PC3, VDD, st_reset)
+A4 = MUX(PC4, VDD, st_reset)
+A5 = MUX(PC5, VDD, st_reset)
+A6 = MUX(PC6, VDD, st_reset)
+A7 = MUX(PC7, VDD, st_reset)
+A8 = MUX(PC8, VDD, st_reset)
+A9 = MUX(PC9, VDD, st_reset)
+A10 = MUX(PC10, VDD, st_reset)
+A11 = MUX(PC11, VDD, st_reset)
+A12 = MUX(PC12, VDD, st_reset)
+A13 = MUX(PC13, VDD, st_reset)
+A14 = MUX(PC14, VDD, st_reset)
+A15 = MUX(PC15, VDD, st_reset)
+
+RW = BUF(VDD)
+SYNC = BUF(st_fetch)
+```
+
+## Test vectors and validation results
+
+### ROM contents used for validation
+
+The MOS 6502 family reset sequence loads the program counter from the **reset vector stored at `$FFFC` (low) and `$FFFD` (high)**. citeturn18view1
+
+To exercise **reset**, **NOP**, **LDA immediate**, and **JMP absolute**, the minimal ROM used was:
+
+- `$FFFC = 00`, `$FFFD = 80` → start address `$8000` citeturn18view1  
+- Program at `$8000`: `EA A9 42 4C 00 80`  
+  - `EA` = NOP  
+  - `A9 42` = LDA #$42  
+  - `4C 00 80` = JMP $8000  
+
+(Opcode encodings for these instructions appear in classic 6502-family opcode tables; the provided validation trace below demonstrates the intended decode/execution behavior with these byte values.) citeturn15view0turn17view5
+
+### Cycle-by-cycle stimulus vectors
+
+This `.bench` core expects the environment (testbench or memory model) to drive the **data input bus `DI7..DI0`** with the byte stored at the address currently presented on `A15..A0` (and `RW=1` indicates a read). The table below is a minimal vector set assuming:
+
+- `clk=1` for each cycle (a “step” pulse)  
+- `rdy=1` (running)  
+- `irq_n=1`, `nmi_n=1` (inactive; not implemented in this minimal core)  
+
+| Cycle | reset_n | Address (`A15..A0`) | `DI` byte returned | `SYNC` | Expected effect (high level) |
+|---:|:---:|:---:|:---:|:---:|---|
+| 0 | 0 | FFFC | 00 | 0 | Held/reset state (synchronous reset behavior) |
+| 1 | 1 | FFFC | 00 | 0 | Latch reset-vector low byte into temp |
+| 2 | 1 | FFFD | 80 | 0 | Load PC = 0x8000 |
+| 3 | 1 | 8000 | EA | 1 | Fetch NOP, PC→8001 |
+| 4 | 1 | 8001 | A9 | 1 | Fetch LDA#, PC→8002 |
+| 5 | 1 | 8002 | 42 | 0 | Load ACC=0x42, PC→8003 |
+| 6 | 1 | 8003 | 4C | 1 | Fetch JMP abs, PC→8004 |
+| 7 | 1 | 8004 | 00 | 0 | Latch low target byte, PC→8005 |
+| 8 | 1 | 8005 | 80 | 0 | Load PC=0x8000 (jump), next fetch |
+
+### Validation results
+
+A reference simulation of the provided `.bench` netlist (using the ROM mapping above) produced the key observable behaviors expected for the requested instruction subset:
+
+- **Reset vector reads** occurred at `FFFC` then `FFFD`, followed by instruction fetch at the resulting PC. citeturn18view1  
+- `SYNC` asserted during opcode fetch cycles (the netlist’s `FETCH` state). citeturn18view1  
+- After `LDA #$42`, the debug accumulator outputs (`ACC7..ACC0`) held `0x42`.  
+- After `JMP $8000`, the address loop returned to `0x8000` and repeated.
+
+Excerpt of the observed trace (values shown in hex; `S` is internal microstate encoding):
+
+| Cycle | Address | `SYNC` | `S` | `PC` (debug) | `ACC` (debug) | `DI` |
+|---:|:---:|:---:|:---:|:---:|:---:|:---:|
+| 2 | FFFC | 0 | 000 | 0000 | 00 | 00 |
+| 3 | FFFD | 0 | 001 | 0000 | 00 | 80 |
+| 4 | 8000 | 1 | 010 | 8000 | 00 | EA |
+| 5 | 8001 | 1 | 010 | 8001 | 00 | A9 |
+| 6 | 8002 | 0 | 011 | 8002 | 00 | 42 |
+| 7 | 8003 | 1 | 010 | 8003 | 42 | 4C |
+| 8 | 8004 | 0 | 100 | 8004 | 42 | 00 |
+| 9 | 8005 | 0 | 101 | 8005 | 42 | 80 |
+| 10 | 8000 | 1 | 010 | 8000 | 42 | EA |
+
+## Pin definitions and mapping to .bench primitives
+
+The original 6502-family MPU exposes (at minimum) a **16‑bit address bus**, **8‑bit data bus**, **R/W**, **SYNC**, **IRQ**, **NMI**, **RDY**, and **RESET**, among other pins depending on packaging/variant. MOS-family documentation includes pinout diagrams (e.g., showing `DB0..DB7`, `AB0..AB15`, `R/W`, `SYNC`, `IRQ`, `NMI`, `RDY`, `RES`), and describes how these signals behave. citeturn18view2turn18view1
+
+image_group{"layout":"carousel","aspect_ratio":"16:9","query":["MOS 6502 pinout diagram 40 pin DIP","6502 SYNC RDY timing diagram","6502 reset vector FFFC FFFD diagram"],"num_per_query":1}
+
+### External pins implemented in the provided `.bench`
+
+In `.bench`, **ports are declared explicitly** using `INPUT(name)` and `OUTPUT(name)`. ABC’s BENCH reader recognizes these directives and creates primary inputs/outputs accordingly. citeturn10view0turn3search1
+
+This model’s top-level interface is:
+
+- `INPUT(clk)`  
+  - A **step pulse**. Because ABC’s `DFF` primitive in BENCH does not include a clock argument (it’s just `Q = DFF(D)`), the design uses `clk` only as a **clock-enable** (`adv`) that gates all state updates. citeturn10view0
+- `INPUT(reset_n)` (active low in this model)  
+  - Implemented as synchronous reset logic (`rst = NOT(reset_n)`) consistent with “strictly synchronous” core designs described for some soft 6502 IP products. citeturn11view1
+- `INPUT(rdy)`  
+  - Treated as a coarse clock-enable (when low, the core holds state). The MOS family describes `RDY` as a “ready” input used to halt/single-step under certain conditions. citeturn18view1
+- `INPUT(irq_n)`, `INPUT(nmi_n)`  
+  - Present for interface completeness; **not implemented** in the minimal instruction subset core. MOS-family documentation describes IRQ and NMI request inputs and associated vectoring behavior. citeturn18view1
+- `INPUT(DI0)..INPUT(DI7)`  
+  - The **data bus input** for reads. The original 6502 data bus is bidirectional and tri-stated under control of bus enable in some variants, but this minimal core (and many synthesizable replacements) avoids internal tri-states by splitting `data_in` and `data_out`. citeturn18view1turn11view1
+- `OUTPUT(A0)..OUTPUT(A15)`  
+  - The **address bus**. During reset-vector fetch, the model drives `$FFFC` then `$FFFD` on the bus before normal instruction fetch. citeturn18view1
+- `OUTPUT(RW)`  
+  - Constant `1` (read-only for this subset). The real 6502 exposes an `R/W` output indicating read vs. write cycles. citeturn18view1turn18view2
+- `OUTPUT(SYNC)`  
+  - Asserted during the opcode-fetch state. MOS documentation describes `SYNC` as identifying opcode fetch cycles. citeturn18view1
+
+### Debug-only outputs
+
+- `OUTPUT(ACC0..ACC7)` exposes the internal accumulator register for test visibility (not a physical 6502 pin).  
+- `OUTPUT(PC0..PC15)` exposes internal program counter bits (not a physical 6502 pin).  
+- `OUTPUT(S0..S2)` exposes the internal microstate encoding.
+
+## Abstraction assumptions and omitted microarchitecture details
+
+### What is specified vs unspecified
+
+- **Unspecified**: the precise “C6502” core variant’s internal pipeline, microcode/control PLA, illegal opcode behavior, cycle timing, bus-float behavior, decimal-mode corner cases, and interrupt sequencing. (These vary across NMOS 6502s, second-source parts, CMOS 65C02, and soft cores.) citeturn16view1turn18view1  
+- **Specified here by assumption**: a minimal, synchronous, no-tristate core that executes a small instruction subset and models reset-vector fetch in a source-backed way. citeturn11view1turn18view1
+
+### Abstraction choice comparison
+
+| Abstraction level | What you get | What you lose | When to use |
+|---|---|---|---|
+| Gate-level FSM (this `.bench`) | Fast, deterministic, easy to test; captures “fetch operand(s) → update PC/A” | Not cycle-/half-cycle accurate to NMOS 6502; not microarchitecturally faithful | Instruction-sequence bring-up, toolchain experiments, educational logic simulation |
+| LUT-heavy gate model | Smaller netlists for wide decode; still `.bench`-native in ABC | Less “gate-like,” not portable to parsers that reject LUT | When you need compact decode logic and your tool supports `LUT` citeturn10view0 |
+| Cycle-accurate microarchitecture (RTL) | Broader instruction set, closer bus protocol | Not “primitive level” `.bench`; depends on HDL simulators | When verifying software compatibility at scale |
+| Transistor-/switch-level | The closest behavior to original silicon (including analog-ish quirks) | Extremely slow; massive netlists; specialized simulators | When you need silicon-faithful behavior and timing citeturn19search0turn19search3 |
+
+### Behavioral scope of this model
+
+- Reset behavior is simplified but anchored on the documented fact that the PC is loaded from `$FFFC/$FFFD` after reset sequencing. citeturn18view1  
+- Only the minimum bus behavior required for instruction fetch is implemented (address generation, `SYNC`, read-only `RW`).  
+- The internal design is a microcoded-like state machine, not a reconstruction of the original PLA/finite control.
+
+A compact signal-flow view:
+
+```mermaid
+flowchart LR
+  subgraph External
+    ROM[Memory/ROM model]
+    CLK[clk pulse]
+    RST[reset_n]
+    RDY[rdy]
+  end
+
+  subgraph Core[c6502_min core]
+    STATE[Microstate FFs]
+    PC[PC FFs]
+    AREG[Accumulator FFs]
+    TMP[Tmp low-byte FFs]
+    CTRL[Decode + Next-state logic]
+  end
+
+  ROM -->|DI[7:0]| CTRL
+  PC -->|A[15:0]| ROM
+  STATE --> CTRL
+  CTRL --> STATE
+  CTRL --> PC
+  CTRL --> AREG
+  CTRL --> TMP
+  CLK -->|adv gating| STATE
+  CLK -->|adv gating| PC
+  RST --> CTRL
+  RDY -->|adv gating| STATE
+```
+
+## Recommended primitives and exact syntax notes for Berkeley ABC BENCH
+
+### Target tool and dialect
+
+This report targets the **Berkeley ABC** BENCH parser (ABC’s `read_bench`). ABC’s reader (as implemented in `ioReadBench.c`) recognizes:
+
+- `INPUT(name)`, `OUTPUT(name)`  
+- Sequential primitive: `Q = DFF(D)` and variants like `DFF0`/`DFF1` to set initial values  
+- Gates: `AND`, `OR`, `NAND`, `NOR`, `XOR`, `XNOR`/`NXOR`, `BUF`, `NOT`, `MUX`, and `LUT` with a hex truth table (up to 8 inputs). citeturn10view0
+
+### Case sensitivity and portability
+
+ABC’s parser uses string comparisons against tokens like `"INPUT"`, `"OUTPUT"`, `"AND"`, `"DFF"`, etc., so **use uppercase** for directives/gate keywords to stay compatible with stock ABC. citeturn10view0
+
+The provided netlist uses `MUX(d0, d1, sel)` heavily as a **clock-enable style** register hold/load function (`sel=0 → hold old`, `sel=1 → take new`). ABC supports `MUX` as a primitive gate type. citeturn10view0
+
+If you need compatibility with tools that only accept a smaller gate set (e.g., flow tools or academic simulators that only recognize a subset such as `INPUT/OUTPUT/DFF/NOT/NAND/NOR`), you can mechanically rewrite:
+
+- `MUX(d0,d1,s) = OR(AND(d0, NOT(s)), AND(d1, s))`
+- `XNOR(a,b) = NOT(XOR(a,b))`
+
+Some tools explicitly restrict recognized gates; for example, BFIT’s `.bench` support is described as recognizing only a limited set including `DFF`, `INPUT`, `OUTPUT`, `NOT`, `NAND`, `NOR`. citeturn23search21
+
+## Limitations, timing approximations, and higher-fidelity modeling paths
+
+### Key limitations of the provided `.bench` core
+
+- **Instruction coverage**: only NOP, LDA immediate, JMP absolute. All other opcodes are effectively treated as “not JMP and not LDA,” so they behave like a 1-byte fetch/skip loop.
+- **No writes**: `RW` is hard-tied to read (`1`), and the data bus is modeled as input-only (`DI[7:0]`).
+- **No interrupts**: `irq_n`/`nmi_n` are present but ignored (no vector fetch, no stack pushes).
+- **No half-cycle timing**: the original NMOS 6502 bus protocol is phase-based (`ϕ1/ϕ2`, setup/hold windows, and `SYNC`/`RDY` relationships). MOS documentation discusses `SYNC` and `RDY` in terms of clock phases and single-instruction/single-cycle control, which this model compresses into a step-based synchronous abstraction. citeturn18view1turn17view3
+- **No tri-state/bus-float behavior**: many real 6502-family behaviors involve tri-states and bus-float side effects; some replacement soft cores explicitly avoid internal tri-states for synthesizability. citeturn11view1turn18view1
+
+### Suggestions for more accurate transistor-level modeling
+
+If you need **silicon-faithful** behavior (including undocumented quirks and half-cycle timing), use transistor/switch-level sources derived from the Visual6502 project:
+
+- The `trebonian/visual6502` repository includes a transistor-level simulator, layout browser, and data from a 6502 revD chip. citeturn19search0  
+- `mist64/perfect6502` is a C implementation that simulates the original NMOS 6502 netlist extracted by Visual6502 (described as half-cycle exact but slow). citeturn19search3  
+
+For bridging from transistor netlists toward synthesizable logic representations, toolchains such as FPGA netlist translation utilities can help, but they move you out of plain `.bench` and into HDL/switch-level styles. citeturn19search19
+
+## Usage guide for loading and running in the recommended toolchain
+
+### Recommended simulation workflow
+
+Because `.bench` is primarily a netlist interchange format and **testbench/vector conventions vary across tools**, a pragmatic workflow for repeatable simulation is:
+
+1. **Parse the `.bench` with ABC** (to validate syntax and, optionally, to generate Verilog).
+2. **Simulate the generated Verilog** with a mainstream open-source simulator such as **Icarus Verilog**.
+
+This keeps the `.bench` as the single-source netlist while using a mature event-driven simulator for the test harness.
+
+### Step-by-step
+
+Build/install ABC as described by the ABC project (e.g., compile the repository with `make`). citeturn8search3
+
+Then:
+
+1. Save the netlist above as `c6502_min.bench`.
+2. Run ABC to read the BENCH and emit a Verilog netlist:
+   - In ABC’s shell, use `read_bench` to load a BENCH file. citeturn3search1turn10view0  
+   - Use `write_verilog` to write a technology-independent Verilog representation (ABC documents such a command in its user command set). citeturn27search2turn9search6
+3. Simulate with Icarus Verilog:
+   - Icarus uses `iverilog` as the compiler and `vvp` as the runtime engine. citeturn27search7turn27search13  
+
+A concrete command-line outline (adjust filenames to your environment):
+
+```sh
+# 1) Convert BENCH -> Verilog using ABC (interactive example)
+abc
+# abc 01> read_bench c6502_min.bench
+# abc 02> write_verilog c6502_min.v
+# abc 03> quit
+
+# 2) Compile and run with Icarus Verilog (with your own testbench)
+iverilog -g2012 -o c6502_sim c6502_min.v tb_c6502_min.v
+vvp c6502_sim
+```
+
+### Testbench strategy
+
+Your testbench should emulate a simple ROM that returns the byte mapped at the current address (`A15..A0`) on `DI7..DI0`, using the ROM contents listed in the “Test vectors” section, and should drive `clk` as a step pulse and `reset_n` low-to-high to begin the reset-vector fetch sequence. The MOS family documentation explicitly ties post-reset program entry to the reset vector at `$FFFC/$FFFD`, so any ROM-backed test must include those bytes. citeturn18view1

@@ -1,0 +1,8 @@
+INPUT(D0)
+INPUT(D1)
+INPUT(S)
+OUTPUT(Y)
+NS = NOT(S)
+L0 = AND(D0, NS)
+L1 = AND(D1, S)
+Y = OR(L0, L1)

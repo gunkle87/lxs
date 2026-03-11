@@ -1,0 +1,5 @@
+INPUT(D)
+OUTPUT(Q)
+OUTPUT(NQ)
+Q = DFF(D)
+NQ = NOT(Q)
