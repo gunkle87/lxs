@@ -184,3 +184,64 @@ Restored-code confirmation after reverting the full-adder pass:
   - Median weighted `TOTAL GEPS = 418,309,166.632657`
   - Delta versus the current kept arithmetic-macro state (`414,276,220.603257`): `+3,774,421.178754`
   Result: keep. It recovers most of the carry-step regression while staying inside the single-output macro model.
+
+## Failed Compiler-Emitted Multi-Output Full Adder
+
+- `Reverted` Compiler-emitted `FULL_ADDER_CINV` multi-output macro on top of the separate multi-output infrastructure.
+  Shape: compile `sum = XNOR(cin_n, NOR(nor_ab, and_ab))` together with `cout_n = NOR(and_ab, NOR(cin_n, nor_ab))` into one two-output macro record in the dedicated multi-output executor.
+  Standardized all-suite result using three full sweeps at `--samples 5 --sample-select median --iterations 1 --cycles 10000`:
+  - Mean weighted `TOTAL GEPS = 387,465,936.753523`
+  - Median weighted `TOTAL GEPS = 390,626,576.127678`
+  - Delta versus the current kept arithmetic-macro state (`414,276,220.603257`): `-26,810,283.849734`
+  Result: not keepable. The compiler-emitted multi-output recognizer was reverted, while the separate multi-output infrastructure and the manual engine-level validation test were kept for future work.
+
+## Latest Adder Chain / Ripple Slice
+
+- `Kept` Compiler-emitted `RIPPLE_SLICE2_CINV` multi-output macro on top of the separate multi-output infrastructure.
+  Shape: recognize two consecutive inverted-carry full-adder cells chained by `carry_n`, replace the full 12-gate pair with one dedicated two-bit slice record, and execute both sum bits plus the final `cout_n` in the multi-output executor while leaving the single-output primitive hot path unchanged.
+  Validation:
+  - Added [ripple_slice2_macro.bench](/c:/DEV/LXS/Tests/Circuits/ripple_slice2_macro.bench)
+  - Added dedicated compiled recognition/correctness coverage in [lxs_test.c](/c:/DEV/LXS/lxs_test.c)
+  - Fixed a compiler bug where `comb_driver` was not rebuilt after net remap, which had prevented post-remap structural recognition from firing
+  Standardized all-suite result using three full sweeps at `--samples 5 --sample-select median --iterations 1 --cycles 10000`:
+  - Run 1 weighted `TOTAL GEPS = 395,651,015.119928`
+  - Run 2 weighted `TOTAL GEPS = 395,871,535.921338`
+  - Run 3 weighted `TOTAL GEPS = 397,689,361.795634`
+  - Mean weighted `TOTAL GEPS = 396,403,970.945633`
+  - Delta versus the multi-output-infrastructure baseline (`393,212,823.418927`): `+3,191,147.526706`
+  Result: keep. This does not recover the full arithmetic-macro band yet, but it moves the new multi-output path forward and proves the first chain-level recognizer is real, test-backed, and measurably beneficial over the infrastructure-only state.
+
+## Failed 4-Bit Ripple Slice
+
+- `Reverted` Compiler-emitted `RIPPLE_SLICE4_CINV` extension on top of the kept 2-bit chain matcher.
+  Shape: prefer one 4-bit inverted-carry ripple slice over two 2-bit slices when four consecutive full-adder cells are structurally present, with a dedicated larger multi-output executor record intended to reduce dispatch overhead.
+  Standardized all-suite result using three full sweeps at `--samples 5 --sample-select median --iterations 1 --cycles 10000`:
+  - Run 1 weighted `TOTAL GEPS = 388,473,433.822157`
+  - Run 2 weighted `TOTAL GEPS = 385,904,785.059407`
+  - Run 3 weighted `TOTAL GEPS = 385,627,348.728398`
+  - Mean weighted `TOTAL GEPS = 386,668,522.536654`
+  - Delta versus the kept 2-bit slice state (`396,403,970.945633`): `-9,735,448.408979`
+  Result: not keepable. The larger slice increased batching, but the added per-macro work outweighed the saved dispatches, so the branch was reverted to the 2-bit `RIPPLE_SLICE2_CINV` state.
+
+## Failed 2-Bit Slice Scheduler
+
+- `Reverted` Carry-chain scheduler for the kept `RIPPLE_SLICE2_CINV` path.
+  Shape: detect longer inverted-carry chains, keep the existing 2-bit slice executor intact, but retime adjacent emitted 2-bit slices onto the chain tail level when intermediate sums are output-only so the engine sees fewer level barriers without adding a larger macro kernel.
+  Standardized all-suite result using three full sweeps at `--samples 5 --sample-select median --iterations 1 --cycles 10000`:
+  - Run 1 weighted `TOTAL GEPS = 384,972,285.558015`
+  - Run 2 weighted `TOTAL GEPS = 379,293,492.434102`
+  - Run 3 weighted `TOTAL GEPS = 385,141,338.764537`
+  - Mean weighted `TOTAL GEPS = 383,135,705.585551`
+  - Delta versus the kept 2-bit slice state (`396,403,970.945633`): `-13,268,265.360082`
+  Result: not keepable. Collapsing slice levels hurt more than the saved dispatch/barrier work helped, so the branch was reverted to the plain unscheduled 2-bit slice matcher.
+
+## Failed Positive-Carry Front-End Macros
+
+- `Reverted` Positive-carry single-output front-end macros aimed at BLIF-emitted adder neighborhoods.
+  Shape: add `SUM_POS2` and `CARRY_POS2` recognizers for the common positive-carry sum/carry constructions built from `NOT/AND/OR` and `NOR/NOT/AND/OR`, with dedicated runtime kernels intended to reduce emitted node count around adder bits before the multi-output chain layer.
+  Diagnostic outcome before benchmarking:
+  - `EPFL\\adder` compile shape remained unchanged at `macro=2, multi=0, comb=1267`
+  - so the new recognizers were not actually matching the target arithmetic benchmark in volume
+  Sanity sweep result:
+  - Weighted `TOTAL GEPS = 386,966,935.421084`
+  Result: not keepable. The pass did not increase real coverage on the target adder benchmark and did not justify carrying extra recognizer complexity forward.

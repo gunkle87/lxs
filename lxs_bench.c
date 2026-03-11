@@ -215,7 +215,7 @@ static int lxs_has_suffix(const char *path, const char *suffix)
 
 static int lxs_is_supported_benchmark_file(const char *path)
 	{
-	return lxs_has_suffix(path, ".bench") || lxs_has_suffix(path, ".blif");
+	return lxs_has_suffix(path, ".bench");
 	}
 
 static int lxs_collect_benchmarks(const char *path, lxs_path_list *paths)

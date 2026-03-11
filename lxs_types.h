@@ -32,6 +32,13 @@ typedef enum lxs_macro_type
 	LXS_MACRO_TYPE_COUNT
 	} lxs_macro_type;
 
+typedef enum lxs_multi_macro_type
+	{
+	LXS_MULTI_MACRO_FULL_ADDER_CINV = 0,
+	LXS_MULTI_MACRO_RIPPLE_SLICE2_CINV,
+	LXS_MULTI_MACRO_TYPE_COUNT
+	} lxs_multi_macro_type;
+
 typedef struct lxs_gate_ir lxs_gate_ir;
 struct lxs_gate_ir
 	{
@@ -78,6 +85,8 @@ struct lxs_level_plan
 	uint32_t chunk_count;
 	uint32_t macro_start;
 	uint32_t macro_count;
+	uint32_t multi_macro_start;
+	uint32_t multi_macro_count;
 	};
 
 typedef struct lxs_macro_plan lxs_macro_plan;
@@ -87,6 +96,18 @@ struct lxs_macro_plan
 	uint32_t level;
 	uint32_t inputs[3];
 	uint32_t output;
+	uint32_t gate_equiv_count;
+	};
+
+typedef struct lxs_multi_macro_plan lxs_multi_macro_plan;
+struct lxs_multi_macro_plan
+	{
+	uint32_t type;
+	uint32_t level;
+	uint32_t inputs[5];
+	uint32_t outputs[3];
+	uint32_t input_count;
+	uint32_t output_count;
 	uint32_t gate_equiv_count;
 	};
 
@@ -121,10 +142,12 @@ struct lxs_plan
 	uint32_t span_count;
 	uint32_t max_span_count;
 	uint32_t macro_count;
+	uint32_t multi_macro_count;
 
 	lxs_gate_ir *comb_gates;
 	lxs_chunk_plan *chunks;
 	lxs_macro_plan *macros;
+	lxs_multi_macro_plan *multi_macros;
 	lxs_level_plan *levels;
 
 	lxs_io_plan inputs;

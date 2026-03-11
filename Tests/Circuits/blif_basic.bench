@@ -1,0 +1,12 @@
+INPUT(a)
+INPUT(b)
+
+OUTPUT(y_or)
+OUTPUT(y_sel)
+OUTPUT(y_const1)
+
+y_or = OR(a, b)
+not_b = NOT(b)
+y_sel = AND(a, not_b)
+__lxs_const1 = NOR(__lxs_const0, __lxs_const0)
+y_const1 = BUF(__lxs_const1)

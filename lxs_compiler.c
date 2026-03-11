@@ -109,23 +109,6 @@ static char* lxs_trim(char *text)
 	return text;
 	}
 
-static int lxs_has_suffix_ci(const char *path, const char *suffix)
-	{
-	size_t path_len = strlen(path);
-	size_t suffix_len = strlen(suffix);
-
-	if (path_len < suffix_len)
-		{
-		return 0;
-		}
-
-#ifdef _WIN32
-	return _stricmp(path + path_len - suffix_len, suffix) == 0;
-#else
-	return strcasecmp(path + path_len - suffix_len, suffix) == 0;
-#endif
-	}
-
 static int lxs_reserve_names(char ***items, uint32_t *cap, uint32_t needed)
 	{
 	size_t old_size;
@@ -242,117 +225,6 @@ static int lxs_push_gate(lxs_netlist *nl, const lxs_gate_ir *gate)
 	return 1;
 	}
 
-static int lxs_push_line(char ***items, uint32_t *count, uint32_t *cap, const char *value)
-	{
-	if (!lxs_reserve_names(items, cap, *count + 1U))
-		{
-		return 0;
-		}
-
-	(*items)[*count] = lxs_strdup_local(value);
-	if (!(*items)[*count])
-		{
-		return 0;
-		}
-
-	(*count)++;
-	return 1;
-	}
-
-static void lxs_free_lines(char **lines, uint32_t count)
-	{
-	for (uint32_t i = 0; i < count; ++i)
-		{
-		free(lines[i]);
-		}
-
-	lxs_free_aligned(lines);
-	}
-
-static int lxs_load_logical_lines(FILE *stream, char ***out_lines, uint32_t *out_count)
-	{
-	char raw[4096];
-	char **lines = NULL;
-	uint32_t line_count = 0U;
-	uint32_t line_cap = 0U;
-	char *buffer = NULL;
-	size_t buffer_len = 0U;
-	size_t buffer_cap = 0U;
-
-	while (fgets(raw, sizeof(raw), stream))
-		{
-		char *trimmed = lxs_trim(raw);
-		size_t segment_len = strlen(trimmed);
-		int continued = segment_len > 0U && trimmed[segment_len - 1U] == '\\';
-
-		if (continued)
-			{
-			trimmed[--segment_len] = '\0';
-			}
-
-		if (buffer_len + segment_len + 2U > buffer_cap)
-			{
-			size_t new_cap = buffer_cap == 0U ? 256U : buffer_cap;
-			char *new_buffer;
-
-			while (new_cap < buffer_len + segment_len + 2U)
-				{
-				new_cap *= 2U;
-				}
-
-			new_buffer = realloc(buffer, new_cap);
-			if (!new_buffer)
-				{
-				free(buffer);
-				lxs_free_lines(lines, line_count);
-				return 0;
-				}
-
-			buffer = new_buffer;
-			buffer_cap = new_cap;
-			}
-
-		memcpy(buffer + buffer_len, trimmed, segment_len);
-		buffer_len += segment_len;
-		buffer[buffer_len] = '\0';
-
-		if (continued)
-			{
-			buffer[buffer_len++] = ' ';
-			buffer[buffer_len] = '\0';
-			continue;
-			}
-
-		if (!lxs_push_line(&lines, &line_count, &line_cap, lxs_trim(buffer)))
-			{
-			free(buffer);
-			lxs_free_lines(lines, line_count);
-			return 0;
-			}
-
-		buffer_len = 0U;
-		if (buffer)
-			{
-			buffer[0] = '\0';
-			}
-		}
-
-	if (buffer_len > 0U)
-		{
-		if (!lxs_push_line(&lines, &line_count, &line_cap, lxs_trim(buffer)))
-			{
-			free(buffer);
-			lxs_free_lines(lines, line_count);
-			return 0;
-			}
-		}
-
-	free(buffer);
-	*out_lines = lines;
-	*out_count = line_count;
-	return 1;
-	}
-
 static lxs_gate_type lxs_string_to_gate_type(const char *name)
 	{
 	if (strcmp(name, "AND") == 0)
@@ -406,339 +278,6 @@ static lxs_gate_type lxs_string_to_gate_type(const char *name)
 		}
 
 	return LXS_GATE_BUF;
-	}
-
-static int lxs_emit_unary_gate(
-	lxs_netlist *nl,
-	uint32_t type,
-	uint32_t input,
-	uint32_t output)
-	{
-	lxs_gate_ir gate;
-
-	memset(&gate, 0, sizeof(gate));
-	gate.type = type;
-	gate.input_count = 1U;
-	gate.inputs[0] = input;
-	gate.output = output;
-	return lxs_push_gate(nl, &gate);
-	}
-
-static int lxs_emit_binary_gate(
-	lxs_netlist *nl,
-	uint32_t type,
-	uint32_t input0,
-	uint32_t input1,
-	uint32_t output)
-	{
-	lxs_gate_ir gate;
-
-	memset(&gate, 0, sizeof(gate));
-	gate.type = type;
-	gate.input_count = 2U;
-	gate.inputs[0] = input0;
-	gate.inputs[1] = input1;
-	gate.output = output;
-	return lxs_push_gate(nl, &gate);
-	}
-
-static int lxs_reserve_u32_init_max(uint32_t **items, uint32_t *cap, uint32_t needed)
-	{
-	uint32_t old_cap = *cap;
-
-	if (!lxs_reserve_u32(items, cap, needed))
-		{
-		return 0;
-		}
-
-	for (uint32_t i = old_cap; i < *cap; ++i)
-		{
-		(*items)[i] = UINT32_MAX;
-		}
-
-	return 1;
-	}
-
-static uint32_t lxs_blif_const0(lxs_netlist *nl)
-	{
-	return lxs_intern_net(nl, "__lxs_const0");
-	}
-
-static uint32_t lxs_blif_const1(lxs_netlist *nl, uint32_t *const1_id)
-	{
-	uint32_t const0_id;
-
-	if (*const1_id != UINT32_MAX)
-		{
-		return *const1_id;
-		}
-
-	const0_id = lxs_blif_const0(nl);
-	if (const0_id == UINT32_MAX)
-		{
-		return UINT32_MAX;
-		}
-
-	*const1_id = lxs_intern_net(nl, "__lxs_const1");
-	if (*const1_id == UINT32_MAX)
-		{
-		return UINT32_MAX;
-		}
-
-	if (!lxs_emit_binary_gate(nl, LXS_GATE_NOR, const0_id, const0_id, *const1_id))
-		{
-		return UINT32_MAX;
-		}
-
-	return *const1_id;
-	}
-
-static uint32_t lxs_blif_inverted_net(
-	lxs_netlist *nl,
-	uint32_t net_id,
-	uint32_t **invert_cache,
-	uint32_t *invert_cap)
-	{
-	char name[64];
-
-	if (!lxs_reserve_u32_init_max(invert_cache, invert_cap, net_id + 1U))
-		{
-		return UINT32_MAX;
-		}
-
-	if ((*invert_cache)[net_id] != UINT32_MAX)
-		{
-		return (*invert_cache)[net_id];
-		}
-
-	snprintf(name, sizeof(name), "__lxs_not_%u", net_id);
-	(*invert_cache)[net_id] = lxs_intern_net(nl, name);
-	if ((*invert_cache)[net_id] == UINT32_MAX)
-		{
-		return UINT32_MAX;
-		}
-
-	if (!lxs_emit_unary_gate(nl, LXS_GATE_NOT, net_id, (*invert_cache)[net_id]))
-		{
-		return UINT32_MAX;
-		}
-
-	return (*invert_cache)[net_id];
-	}
-
-static int lxs_blif_match_cube(const char *pattern, uint32_t combo, uint32_t input_count)
-	{
-	for (uint32_t i = 0; i < input_count; ++i)
-		{
-		char bit = pattern[i];
-		uint32_t combo_bit = (combo >> (input_count - 1U - i)) & 1U;
-
-		if (bit == '-')
-			{
-			continue;
-			}
-
-		if ((bit == '0' && combo_bit != 0U) || (bit == '1' && combo_bit == 0U))
-			{
-			return 0;
-			}
-		}
-
-	return 1;
-	}
-
-static int lxs_blif_truth_table(
-	uint32_t input_count,
-	char **covers,
-	uint32_t cover_count,
-	uint8_t *truth_bits)
-	{
-	uint32_t width = 1U << input_count;
-	int default_value = 0;
-
-	if (cover_count > 0U)
-		{
-		char *first = lxs_trim(covers[0]);
-		size_t len = strlen(first);
-		char out_bit = len > 0U ? first[len - 1U] : '0';
-
-		if (out_bit != '0' && out_bit != '1')
-			{
-			out_bit = '1';
-			}
-
-		default_value = (out_bit == '1') ? 0 : 1;
-		}
-
-	for (uint32_t combo = 0; combo < width; ++combo)
-		{
-		truth_bits[combo] = (uint8_t)default_value;
-		}
-
-	for (uint32_t i = 0; i < cover_count; ++i)
-		{
-		char *cover = lxs_trim(covers[i]);
-		char pattern[8];
-		char out_text[8];
-		int matched;
-		int row_value = 1;
-
-		pattern[0] = '\0';
-		out_text[0] = '\0';
-		matched = sscanf(cover, "%7s %7s", pattern, out_text);
-		if (input_count == 0U)
-			{
-			if (matched == 1)
-				{
-				row_value = (pattern[0] == '0') ? 0 : 1;
-				truth_bits[0] = (uint8_t)row_value;
-				}
-			continue;
-			}
-
-		if (matched <= 0 || strlen(pattern) != input_count)
-			{
-			return 0;
-			}
-
-		if (matched >= 2 && (out_text[0] == '0' || out_text[0] == '1'))
-			{
-			row_value = (out_text[0] == '1') ? 1 : 0;
-			}
-
-		for (uint32_t combo = 0; combo < width; ++combo)
-			{
-			if (lxs_blif_match_cube(pattern, combo, input_count))
-				{
-				truth_bits[combo] = (uint8_t)row_value;
-				}
-			}
-		}
-
-	return 1;
-	}
-
-static int lxs_blif_emit_truth(
-	lxs_netlist *nl,
-	uint32_t output,
-	uint32_t *inputs,
-	uint32_t input_count,
-	const uint8_t *truth_bits,
-	uint32_t **invert_cache,
-	uint32_t *invert_cap,
-	uint32_t *const1_id)
-	{
-	uint32_t truth = 0U;
-
-	for (uint32_t i = 0; i < (1U << input_count); ++i)
-		{
-		if (truth_bits[i])
-			{
-			truth |= (1U << i);
-			}
-		}
-
-	if (input_count == 0U)
-		{
-		if (truth == 0U)
-			{
-			return 1;
-			}
-
-		if (truth == 1U)
-			{
-			uint32_t const1 = lxs_blif_const1(nl, const1_id);
-			if (const1 == UINT32_MAX)
-				{
-				return 0;
-				}
-			return lxs_emit_unary_gate(nl, LXS_GATE_BUF, const1, output);
-			}
-
-		return 0;
-		}
-
-	if (input_count == 1U)
-		{
-		if (truth == 0x1U)
-			{
-			return lxs_emit_unary_gate(nl, LXS_GATE_NOT, inputs[0], output);
-			}
-
-		if (truth == 0x2U)
-			{
-			return lxs_emit_unary_gate(nl, LXS_GATE_BUF, inputs[0], output);
-			}
-
-		if (truth == 0x0U)
-			{
-			return 1;
-			}
-
-		if (truth == 0x3U)
-			{
-			uint32_t const1 = lxs_blif_const1(nl, const1_id);
-			if (const1 == UINT32_MAX)
-				{
-				return 0;
-				}
-			return lxs_emit_unary_gate(nl, LXS_GATE_BUF, const1, output);
-			}
-
-		return 0;
-		}
-
-	if (input_count != 2U)
-		{
-		return 0;
-		}
-
-	switch (truth)
-		{
-		case 0x0U:
-			return 1;
-		case 0x1U:
-			return lxs_emit_binary_gate(nl, LXS_GATE_NOR, inputs[0], inputs[1], output);
-		case 0x2U:
-			{
-			uint32_t inv0 = lxs_blif_inverted_net(nl, inputs[0], invert_cache, invert_cap);
-			return inv0 != UINT32_MAX && lxs_emit_binary_gate(nl, LXS_GATE_AND, inv0, inputs[1], output);
-			}
-		case 0x3U:
-			return lxs_emit_unary_gate(nl, LXS_GATE_NOT, inputs[0], output);
-		case 0x4U:
-			{
-			uint32_t inv1 = lxs_blif_inverted_net(nl, inputs[1], invert_cache, invert_cap);
-			return inv1 != UINT32_MAX && lxs_emit_binary_gate(nl, LXS_GATE_AND, inputs[0], inv1, output);
-			}
-		case 0x5U:
-			return lxs_emit_unary_gate(nl, LXS_GATE_NOT, inputs[1], output);
-		case 0x6U:
-			return lxs_emit_binary_gate(nl, LXS_GATE_XOR, inputs[0], inputs[1], output);
-		case 0x7U:
-			return lxs_emit_binary_gate(nl, LXS_GATE_NAND, inputs[0], inputs[1], output);
-		case 0x8U:
-			return lxs_emit_binary_gate(nl, LXS_GATE_AND, inputs[0], inputs[1], output);
-		case 0x9U:
-			return lxs_emit_binary_gate(nl, LXS_GATE_XNOR, inputs[0], inputs[1], output);
-		case 0xAU:
-			return lxs_emit_unary_gate(nl, LXS_GATE_BUF, inputs[1], output);
-		case 0xCU:
-			return lxs_emit_unary_gate(nl, LXS_GATE_BUF, inputs[0], output);
-		case 0xEU:
-			return lxs_emit_binary_gate(nl, LXS_GATE_OR, inputs[0], inputs[1], output);
-		case 0xFU:
-			{
-			uint32_t const1 = lxs_blif_const1(nl, const1_id);
-			if (const1 == UINT32_MAX)
-				{
-				return 0;
-				}
-			return lxs_emit_unary_gate(nl, LXS_GATE_BUF, const1, output);
-			}
-		default:
-			return 0;
-		}
 	}
 
 static uint32_t lxs_gate_level(
@@ -942,6 +481,49 @@ static int lxs_gate_uses_input(const lxs_gate_ir *gate, uint32_t net_id)
 
 	return 0;
 	}
+
+static int32_t lxs_find_unique_consumer(
+	const lxs_netlist *nl,
+	uint32_t net_id,
+	uint32_t type,
+	int32_t exclude_index)
+	{
+	int32_t found = -1;
+
+	for (uint32_t i = 0; i < nl->gate_count; ++i)
+		{
+		if ((int32_t)i == exclude_index)
+			{
+			continue;
+			}
+
+		if (nl->gates[i].type != type || !lxs_gate_uses_input(&nl->gates[i], net_id))
+			{
+			continue;
+			}
+
+		if (found >= 0)
+			{
+			return -1;
+			}
+
+		found = (int32_t)i;
+		}
+
+	return found;
+	}
+
+typedef struct lxs_fa_cinv_desc lxs_fa_cinv_desc;
+struct lxs_fa_cinv_desc
+	{
+	uint32_t a;
+	uint32_t b;
+	uint32_t cin_n;
+	uint32_t sum_out;
+	uint32_t carry_out;
+	uint32_t level;
+	uint32_t gate_indices[6];
+	};
 
 static int lxs_try_match_mux2(
 	const lxs_netlist *nl,
@@ -1641,8 +1223,21 @@ static uint32_t lxs_collect_macros(
 		{
 		lxs_macro_plan macro;
 
-		if (lxs_try_match_sum_cinv2(nl, comb_driver, net_use_count, matched_gates, i, &macro) ||
-			lxs_try_match_xnor2(nl, comb_driver, net_use_count, matched_gates, i, &macro) ||
+		if (lxs_try_match_sum_cinv2(nl, comb_driver, net_use_count, matched_gates, i, &macro))
+			{
+			if (macros)
+				{
+				macros[macro_count] = macro;
+				}
+			macro_count++;
+			}
+		}
+
+	for (uint32_t i = 0; i < nl->gate_count; ++i)
+		{
+		lxs_macro_plan macro;
+
+		if (lxs_try_match_xnor2(nl, comb_driver, net_use_count, matched_gates, i, &macro) ||
 			lxs_try_match_carry_inv2(nl, comb_driver, net_use_count, matched_gates, i, &macro) ||
 			lxs_try_match_xor2_nor_and(nl, comb_driver, net_use_count, matched_gates, i, &macro) ||
 			lxs_try_match_xor2(nl, comb_driver, net_use_count, matched_gates, i, &macro) ||
@@ -1659,6 +1254,265 @@ static uint32_t lxs_collect_macros(
 	lxs_free_aligned(net_use_count);
 	return macro_count;
 	}
+
+static int lxs_try_describe_full_adder_cinv(
+	const lxs_netlist *nl,
+	const int32_t *comb_driver,
+	const uint32_t *net_use_count,
+	const uint8_t *matched_gates,
+	uint32_t gate_index,
+	uint32_t xor_index,
+	uint32_t cin_n,
+	lxs_fa_cinv_desc *desc)
+	{
+	const lxs_gate_ir *sum_gate;
+	const lxs_gate_ir *xor_gate;
+	const lxs_gate_ir *carry_gate;
+	const lxs_gate_ir *inner_nor;
+	const lxs_gate_ir *and_gate;
+	const lxs_gate_ir *nor_ab_gate;
+	int32_t carry_index;
+	int32_t inner_index;
+	int32_t and_index;
+	int32_t nor_ab_index;
+	uint32_t a;
+	uint32_t b;
+	uint32_t inner_output;
+	uint32_t level;
+
+	sum_gate = &nl->gates[gate_index];
+	xor_gate = &nl->gates[xor_index];
+	if (matched_gates[xor_index] || xor_gate->input_count != 2U || net_use_count[xor_gate->output] != 1U)
+		{
+		return 0;
+		}
+
+	and_index = comb_driver[xor_gate->inputs[0]];
+	nor_ab_index = comb_driver[xor_gate->inputs[1]];
+	if (and_index < 0 || nor_ab_index < 0 ||
+		nl->gates[and_index].type != LXS_GATE_AND ||
+		nl->gates[nor_ab_index].type != LXS_GATE_NOR)
+		{
+		and_index = comb_driver[xor_gate->inputs[1]];
+		nor_ab_index = comb_driver[xor_gate->inputs[0]];
+		if (and_index < 0 || nor_ab_index < 0 ||
+			nl->gates[and_index].type != LXS_GATE_AND ||
+			nl->gates[nor_ab_index].type != LXS_GATE_NOR)
+			{
+			return 0;
+			}
+		}
+
+	and_gate = &nl->gates[and_index];
+	nor_ab_gate = &nl->gates[nor_ab_index];
+	if (matched_gates[and_index] || matched_gates[nor_ab_index] ||
+		and_gate->input_count != 2U || nor_ab_gate->input_count != 2U ||
+		net_use_count[and_gate->output] != 2U || net_use_count[nor_ab_gate->output] != 2U)
+		{
+		return 0;
+		}
+
+	a = and_gate->inputs[0];
+	b = and_gate->inputs[1];
+	if (!((nor_ab_gate->inputs[0] == a && nor_ab_gate->inputs[1] == b) ||
+		(nor_ab_gate->inputs[0] == b && nor_ab_gate->inputs[1] == a)))
+		{
+		return 0;
+		}
+
+	carry_index = lxs_find_unique_consumer(nl, and_gate->output, LXS_GATE_NOR, (int32_t)xor_index);
+	if (carry_index < 0 || matched_gates[carry_index])
+		{
+		return 0;
+		}
+
+	carry_gate = &nl->gates[carry_index];
+	if (carry_gate->input_count != 2U || !lxs_gate_uses_input(carry_gate, and_gate->output))
+		{
+		return 0;
+		}
+
+	inner_index = lxs_find_unique_consumer(nl, nor_ab_gate->output, LXS_GATE_NOR, (int32_t)xor_index);
+	if (inner_index < 0 || matched_gates[inner_index])
+		{
+		return 0;
+		}
+
+	inner_nor = &nl->gates[inner_index];
+	inner_output = inner_nor->output;
+	if (inner_nor->input_count != 2U || net_use_count[inner_nor->output] != 1U ||
+		!lxs_gate_uses_input(inner_nor, cin_n) ||
+		!lxs_gate_uses_input(inner_nor, nor_ab_gate->output) ||
+		!lxs_gate_uses_input(carry_gate, inner_output))
+		{
+		return 0;
+		}
+
+	level = sum_gate->level;
+	if (carry_gate->level > level)
+		{
+		level = carry_gate->level;
+		}
+
+	memset(desc, 0, sizeof(*desc));
+	desc->a = a;
+	desc->b = b;
+	desc->cin_n = cin_n;
+	desc->sum_out = sum_gate->output;
+	desc->carry_out = carry_gate->output;
+	desc->level = level;
+	desc->gate_indices[0] = gate_index;
+	desc->gate_indices[1] = (uint32_t)xor_index;
+	desc->gate_indices[2] = (uint32_t)and_index;
+	desc->gate_indices[3] = (uint32_t)nor_ab_index;
+	desc->gate_indices[4] = (uint32_t)inner_index;
+	desc->gate_indices[5] = (uint32_t)carry_index;
+	return 1;
+	}
+
+static int lxs_describe_full_adder_cinv(
+	const lxs_netlist *nl,
+	const int32_t *comb_driver,
+	const uint32_t *net_use_count,
+	const uint8_t *matched_gates,
+	uint32_t gate_index,
+	lxs_fa_cinv_desc *desc)
+	{
+	const lxs_gate_ir *sum_gate;
+	int32_t xor_index;
+
+	sum_gate = &nl->gates[gate_index];
+	if (sum_gate->type != LXS_GATE_XNOR || sum_gate->input_count != 2U || matched_gates[gate_index])
+		{
+		return 0;
+		}
+
+	xor_index = comb_driver[sum_gate->inputs[0]];
+	if (xor_index >= 0 && nl->gates[xor_index].type == LXS_GATE_NOR &&
+		lxs_try_describe_full_adder_cinv(
+			nl,
+			comb_driver,
+			net_use_count,
+			matched_gates,
+			gate_index,
+			(uint32_t)xor_index,
+			sum_gate->inputs[1],
+			desc))
+		{
+		return 1;
+		}
+
+	xor_index = comb_driver[sum_gate->inputs[1]];
+	if (xor_index >= 0 && nl->gates[xor_index].type == LXS_GATE_NOR &&
+		lxs_try_describe_full_adder_cinv(
+			nl,
+			comb_driver,
+			net_use_count,
+			matched_gates,
+			gate_index,
+			(uint32_t)xor_index,
+			sum_gate->inputs[0],
+			desc))
+		{
+		return 1;
+		}
+
+	return 0;
+	}
+
+static uint32_t lxs_collect_multi_macros(
+	const lxs_netlist *nl,
+	const int32_t *comb_driver,
+	uint8_t *matched_gates,
+	lxs_multi_macro_plan *macros)
+	{
+	uint32_t *net_use_count;
+	uint32_t macro_count = 0U;
+
+	net_use_count = lxs_calloc_aligned(nl->net_count, sizeof(uint32_t));
+	if (!net_use_count)
+		{
+		return UINT32_MAX;
+		}
+
+	for (uint32_t i = 0; i < nl->gate_count; ++i)
+		{
+		for (uint32_t j = 0; j < nl->gates[i].input_count; ++j)
+			{
+			net_use_count[nl->gates[i].inputs[j]]++;
+			}
+		}
+
+	for (uint32_t i = 0; i < nl->output_count; ++i)
+		{
+		net_use_count[nl->outputs[i]]++;
+		}
+
+	for (uint32_t i = 0; i < nl->gate_count; ++i)
+		{
+		lxs_fa_cinv_desc cell0;
+		lxs_fa_cinv_desc cell1;
+		int32_t next_sum_index;
+		lxs_multi_macro_plan macro;
+		uint32_t level;
+
+		if (!lxs_describe_full_adder_cinv(nl, comb_driver, net_use_count, matched_gates, i, &cell0))
+			{
+			continue;
+			}
+
+		next_sum_index = lxs_find_unique_consumer(nl, cell0.carry_out, LXS_GATE_XNOR, (int32_t)i);
+		if (next_sum_index < 0 ||
+			!lxs_describe_full_adder_cinv(
+				nl,
+				comb_driver,
+				net_use_count,
+				matched_gates,
+				(uint32_t)next_sum_index,
+				&cell1) ||
+			cell1.cin_n != cell0.carry_out)
+			{
+			continue;
+			}
+
+		for (uint32_t j = 0; j < 6U; ++j)
+			{
+			matched_gates[cell0.gate_indices[j]] = 1U;
+			matched_gates[cell1.gate_indices[j]] = 1U;
+			}
+
+		level = cell0.level;
+		if (cell1.level > level)
+			{
+			level = cell1.level;
+			}
+
+		memset(&macro, 0, sizeof(macro));
+		macro.type = LXS_MULTI_MACRO_RIPPLE_SLICE2_CINV;
+		macro.level = level;
+		macro.inputs[0] = cell0.a;
+		macro.inputs[1] = cell0.b;
+		macro.inputs[2] = cell1.a;
+		macro.inputs[3] = cell1.b;
+		macro.inputs[4] = cell0.cin_n;
+		macro.outputs[0] = cell0.sum_out;
+		macro.outputs[1] = cell1.sum_out;
+		macro.outputs[2] = cell1.carry_out;
+		macro.input_count = 5U;
+		macro.output_count = 3U;
+		macro.gate_equiv_count = 12U;
+
+		if (macros)
+			{
+			macros[macro_count] = macro;
+			}
+		macro_count++;
+		}
+
+	lxs_free_aligned(net_use_count);
+	return macro_count;
+	}
+
 
 static lxs_netlist* lxs_load_bench(const char *path)
 	{
@@ -1801,194 +1655,8 @@ static lxs_netlist* lxs_load_bench(const char *path)
 	return nl;
 	}
 
-static lxs_netlist* lxs_load_blif(const char *path)
-	{
-	FILE *stream;
-	char **lines = NULL;
-	uint32_t line_count = 0U;
-	lxs_netlist *nl = NULL;
-	uint32_t *invert_cache = NULL;
-	uint32_t invert_cap = 0U;
-	uint32_t const1_id = UINT32_MAX;
-
-	stream = fopen(path, "r");
-	if (!stream)
-		{
-		return NULL;
-		}
-
-	if (!lxs_load_logical_lines(stream, &lines, &line_count))
-		{
-		fclose(stream);
-		return NULL;
-		}
-
-	fclose(stream);
-	nl = lxs_calloc_aligned(1U, sizeof(lxs_netlist));
-	if (!nl)
-		{
-		lxs_free_lines(lines, line_count);
-		return NULL;
-		}
-
-	for (uint32_t i = 0; i < line_count; ++i)
-		{
-		char *trimmed = lxs_trim(lines[i]);
-
-		if (trimmed[0] == '\0' || trimmed[0] == '#')
-			{
-			continue;
-			}
-
-		if (strncmp(trimmed, ".model", 6) == 0 || strncmp(trimmed, ".end", 4) == 0)
-			{
-			continue;
-			}
-
-		if (strncmp(trimmed, ".inputs", 7) == 0 || strncmp(trimmed, ".outputs", 8) == 0)
-			{
-			char *ctx = NULL;
-			char *token = strtok_s(trimmed, " \t", &ctx);
-			int is_input = token && strcmp(token, ".inputs") == 0;
-
-			token = strtok_s(NULL, " \t", &ctx);
-			while (token)
-				{
-				uint32_t id = lxs_intern_net(nl, token);
-				if (id == UINT32_MAX)
-					{
-					lxs_free_lines(lines, line_count);
-					lxs_free_aligned(invert_cache);
-					lxs_free_netlist(nl);
-					return NULL;
-					}
-
-				if (is_input)
-					{
-					if (!lxs_push_u32(&nl->inputs, &nl->input_count, &nl->input_cap, id))
-						{
-						lxs_free_lines(lines, line_count);
-						lxs_free_aligned(invert_cache);
-						lxs_free_netlist(nl);
-						return NULL;
-						}
-					}
-				else
-					{
-					if (!lxs_push_u32(&nl->outputs, &nl->output_count, &nl->output_cap, id))
-						{
-						lxs_free_lines(lines, line_count);
-						lxs_free_aligned(invert_cache);
-						lxs_free_netlist(nl);
-						return NULL;
-						}
-					}
-
-				token = strtok_s(NULL, " \t", &ctx);
-				}
-			continue;
-			}
-
-		if (strncmp(trimmed, ".names", 6) == 0)
-			{
-			char *ctx = NULL;
-			char *token = strtok_s(trimmed, " \t", &ctx);
-			char *tokens[4];
-			uint32_t token_count = 0U;
-			uint32_t input_ids[2];
-			char *covers[16];
-			uint32_t cover_count = 0U;
-			uint32_t cover_end = i;
-			uint8_t truth[4];
-			uint32_t output_id;
-
-			token = strtok_s(NULL, " \t", &ctx);
-			while (token && token_count < 4U)
-				{
-				tokens[token_count++] = token;
-				token = strtok_s(NULL, " \t", &ctx);
-				}
-
-			if (token_count == 0U || token_count > 3U)
-				{
-				lxs_free_lines(lines, line_count);
-				lxs_free_aligned(invert_cache);
-				lxs_free_netlist(nl);
-				return NULL;
-				}
-
-			for (uint32_t j = i + 1U; j < line_count; ++j)
-				{
-				char *cover = lxs_trim(lines[j]);
-				if (cover[0] == '\0' || cover[0] == '#')
-					{
-					continue;
-					}
-				if (cover[0] == '.')
-					{
-					break;
-					}
-				if (cover_count < 16U)
-					{
-					covers[cover_count++] = cover;
-					}
-				cover_end = j;
-				}
-
-			output_id = lxs_intern_net(nl, tokens[token_count - 1U]);
-			if (output_id == UINT32_MAX)
-				{
-				lxs_free_lines(lines, line_count);
-				lxs_free_aligned(invert_cache);
-				lxs_free_netlist(nl);
-				return NULL;
-				}
-
-			for (uint32_t j = 0; j + 1U < token_count; ++j)
-				{
-				input_ids[j] = lxs_intern_net(nl, tokens[j]);
-				if (input_ids[j] == UINT32_MAX)
-					{
-					lxs_free_lines(lines, line_count);
-					lxs_free_aligned(invert_cache);
-					lxs_free_netlist(nl);
-					return NULL;
-					}
-				}
-
-			if (!lxs_blif_truth_table(token_count - 1U, covers, cover_count, truth) ||
-				!lxs_blif_emit_truth(
-					nl,
-					output_id,
-					input_ids,
-					token_count - 1U,
-					truth,
-					&invert_cache,
-					&invert_cap,
-					&const1_id))
-				{
-				lxs_free_lines(lines, line_count);
-				lxs_free_aligned(invert_cache);
-				lxs_free_netlist(nl);
-				return NULL;
-				}
-
-			i = cover_end;
-			}
-		}
-
-	lxs_free_lines(lines, line_count);
-	lxs_free_aligned(invert_cache);
-	return nl;
-	}
-
 lxs_netlist* lxs_load_iscas(const char *path)
 	{
-	if (lxs_has_suffix_ci(path, ".blif"))
-		{
-		return lxs_load_blif(path);
-		}
-
 	return lxs_load_bench(path);
 	}
 
@@ -2019,6 +1687,7 @@ lxs_plan* lxs_compile_to_plan(lxs_netlist *nl)
 	uint32_t *net_remap;
 	uint8_t *net_assigned;
 	uint8_t *matched_gates;
+	uint8_t *multi_matched_gates;
 	lxs_plan *plan;
 	uint32_t max_level = 0U;
 	uint32_t chunk_fill = 0U;
@@ -2026,7 +1695,9 @@ lxs_plan* lxs_compile_to_plan(lxs_netlist *nl)
 	uint32_t dff_fill = 0U;
 	uint32_t next_net_id = 0U;
 	uint32_t macro_fill = 0U;
+	uint32_t multi_macro_fill = 0U;
 	uint32_t macro_level_fill = 0U;
+	uint32_t multi_macro_level_fill = 0U;
 
 	if (!nl)
 		{
@@ -2039,7 +1710,8 @@ lxs_plan* lxs_compile_to_plan(lxs_netlist *nl)
 	net_remap = lxs_calloc_aligned(nl->net_count, sizeof(uint32_t));
 	net_assigned = lxs_calloc_aligned(nl->net_count, sizeof(uint8_t));
 	matched_gates = lxs_calloc_aligned(nl->gate_count, sizeof(uint8_t));
-	if (!comb_driver || !level_cache || !visiting || !net_remap || !net_assigned || !matched_gates)
+	multi_matched_gates = lxs_calloc_aligned(nl->gate_count, sizeof(uint8_t));
+	if (!comb_driver || !level_cache || !visiting || !net_remap || !net_assigned || !matched_gates || !multi_matched_gates)
 		{
 		lxs_free_aligned(comb_driver);
 		lxs_free_aligned(level_cache);
@@ -2047,6 +1719,7 @@ lxs_plan* lxs_compile_to_plan(lxs_netlist *nl)
 		lxs_free_aligned(net_remap);
 		lxs_free_aligned(net_assigned);
 		lxs_free_aligned(matched_gates);
+		lxs_free_aligned(multi_matched_gates);
 		return NULL;
 		}
 
@@ -2100,6 +1773,17 @@ lxs_plan* lxs_compile_to_plan(lxs_netlist *nl)
 	lxs_apply_net_remap_to_array(nl->inputs, nl->input_count, net_remap);
 	lxs_apply_net_remap_to_array(nl->outputs, nl->output_count, net_remap);
 	lxs_apply_net_remap_to_gates(nl->gates, nl->gate_count, net_remap);
+	for (uint32_t i = 0; i < nl->net_count; ++i)
+		{
+		comb_driver[i] = -1;
+		}
+	for (uint32_t i = 0; i < nl->gate_count; ++i)
+		{
+		if (nl->gates[i].type != LXS_GATE_DFF)
+			{
+			comb_driver[nl->gates[i].output] = (int32_t)i;
+			}
+		}
 
 	plan = lxs_calloc_aligned(1U, sizeof(lxs_plan));
 	if (!plan)
@@ -2110,11 +1794,26 @@ lxs_plan* lxs_compile_to_plan(lxs_netlist *nl)
 		lxs_free_aligned(net_remap);
 		lxs_free_aligned(net_assigned);
 		lxs_free_aligned(matched_gates);
+		lxs_free_aligned(multi_matched_gates);
 		return NULL;
 		}
 
 	plan->net_count = nl->net_count;
 	plan->gate_count = nl->gate_count;
+	plan->multi_macro_count = lxs_collect_multi_macros(nl, comb_driver, multi_matched_gates, NULL);
+	if (plan->multi_macro_count == UINT32_MAX)
+		{
+		lxs_free_aligned(comb_driver);
+		lxs_free_aligned(level_cache);
+		lxs_free_aligned(visiting);
+		lxs_free_aligned(net_remap);
+		lxs_free_aligned(net_assigned);
+		lxs_free_aligned(matched_gates);
+		lxs_free_aligned(multi_matched_gates);
+		lxs_free_aligned(plan);
+		return NULL;
+		}
+	memcpy(matched_gates, multi_matched_gates, (size_t)nl->gate_count * sizeof(uint8_t));
 	plan->macro_count = lxs_collect_macros(nl, comb_driver, matched_gates, NULL);
 	if (plan->macro_count == UINT32_MAX)
 		{
@@ -2124,6 +1823,7 @@ lxs_plan* lxs_compile_to_plan(lxs_netlist *nl)
 		lxs_free_aligned(net_remap);
 		lxs_free_aligned(net_assigned);
 		lxs_free_aligned(matched_gates);
+		lxs_free_aligned(multi_matched_gates);
 		lxs_free_aligned(plan);
 		return NULL;
 		}
@@ -2157,13 +1857,15 @@ lxs_plan* lxs_compile_to_plan(lxs_netlist *nl)
 	plan->comb_gates = lxs_calloc_aligned(plan->comb_gate_count, sizeof(lxs_gate_ir));
 	plan->chunks = lxs_calloc_aligned(plan->comb_gate_count, sizeof(lxs_chunk_plan));
 	plan->macros = lxs_calloc_aligned(plan->macro_count, sizeof(lxs_macro_plan));
+	plan->multi_macros = lxs_calloc_aligned(plan->multi_macro_count, sizeof(lxs_multi_macro_plan));
 
 	if ((plan->inputs.count && !plan->inputs.net_ids) ||
 		(plan->outputs.count && !plan->outputs.net_ids) ||
 		(plan->state.count && (!plan->state.d_inputs || !plan->state.q_outputs)) ||
 		(plan->level_count && !plan->levels) ||
 		(plan->comb_gate_count && (!plan->comb_gates || !plan->chunks)) ||
-		(plan->macro_count && !plan->macros))
+		(plan->macro_count && !plan->macros) ||
+		(plan->multi_macro_count && !plan->multi_macros))
 		{
 		lxs_free_plan(plan);
 		lxs_free_aligned(comb_driver);
@@ -2172,6 +1874,7 @@ lxs_plan* lxs_compile_to_plan(lxs_netlist *nl)
 		lxs_free_aligned(net_remap);
 		lxs_free_aligned(net_assigned);
 		lxs_free_aligned(matched_gates);
+		lxs_free_aligned(multi_matched_gates);
 		return NULL;
 		}
 
@@ -2196,9 +1899,28 @@ lxs_plan* lxs_compile_to_plan(lxs_netlist *nl)
 	plan->state.q_is_contiguous =
 		lxs_find_contiguous_range(plan->state.q_outputs, plan->state.count, &plan->state.q_contiguous_base);
 
+		if (plan->multi_macro_count > 0U)
+		{
+		memset(multi_matched_gates, 0, (size_t)nl->gate_count * sizeof(uint8_t));
+		multi_macro_fill = lxs_collect_multi_macros(nl, comb_driver, multi_matched_gates, plan->multi_macros);
+		if (multi_macro_fill == UINT32_MAX)
+			{
+			lxs_free_plan(plan);
+			lxs_free_aligned(comb_driver);
+			lxs_free_aligned(level_cache);
+			lxs_free_aligned(visiting);
+			lxs_free_aligned(net_remap);
+			lxs_free_aligned(net_assigned);
+			lxs_free_aligned(matched_gates);
+			lxs_free_aligned(multi_matched_gates);
+			return NULL;
+			}
+		plan->multi_macro_count = multi_macro_fill;
+		}
+
+	memcpy(matched_gates, multi_matched_gates, (size_t)nl->gate_count * sizeof(uint8_t));
 	if (plan->macro_count > 0U)
 		{
-		memset(matched_gates, 0, (size_t)nl->gate_count * sizeof(uint8_t));
 		macro_fill = lxs_collect_macros(nl, comb_driver, matched_gates, plan->macros);
 		if (macro_fill == UINT32_MAX)
 			{
@@ -2209,6 +1931,7 @@ lxs_plan* lxs_compile_to_plan(lxs_netlist *nl)
 			lxs_free_aligned(net_remap);
 			lxs_free_aligned(net_assigned);
 			lxs_free_aligned(matched_gates);
+			lxs_free_aligned(multi_matched_gates);
 			return NULL;
 			}
 		plan->macro_count = macro_fill;
@@ -2265,6 +1988,14 @@ lxs_plan* lxs_compile_to_plan(lxs_netlist *nl)
 			}
 		plan->levels[level].macro_start = level_macro_start;
 		plan->levels[level].macro_count = macro_level_fill - level_macro_start;
+
+		plan->levels[level].multi_macro_start = multi_macro_level_fill;
+		while (multi_macro_level_fill < plan->multi_macro_count &&
+			plan->multi_macros[multi_macro_level_fill].level == level)
+			{
+			multi_macro_level_fill++;
+			}
+		plan->levels[level].multi_macro_count = multi_macro_level_fill - plan->levels[level].multi_macro_start;
 		}
 
 	plan->span_count = chunk_fill;
@@ -2275,6 +2006,7 @@ lxs_plan* lxs_compile_to_plan(lxs_netlist *nl)
 	lxs_free_aligned(net_remap);
 	lxs_free_aligned(net_assigned);
 	lxs_free_aligned(matched_gates);
+	lxs_free_aligned(multi_matched_gates);
 	return plan;
 	}
 
@@ -2288,6 +2020,7 @@ void lxs_free_plan(lxs_plan *plan)
 	lxs_free_aligned(plan->comb_gates);
 	lxs_free_aligned(plan->chunks);
 	lxs_free_aligned(plan->macros);
+	lxs_free_aligned(plan->multi_macros);
 	lxs_free_aligned(plan->levels);
 	lxs_free_aligned(plan->inputs.net_ids);
 	lxs_free_aligned(plan->outputs.net_ids);

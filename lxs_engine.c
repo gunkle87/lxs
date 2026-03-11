@@ -361,6 +361,168 @@ static void lxs_execute_macros(
 		}
 	}
 
+static void lxs_execute_multi_macros(
+	lxs_engine_ctx *ctx,
+	const lxs_multi_macro_plan *macros,
+	uint32_t count)
+	{
+	uint64_t *restrict net_value = (uint64_t*)LXS_ASSUME_ALIGNED_64(ctx->net_value);
+	uint64_t *restrict net_mask = (uint64_t*)LXS_ASSUME_ALIGNED_64(ctx->net_mask);
+
+	for (uint32_t i = 0; i < count; ++i)
+		{
+		const lxs_multi_macro_plan *macro = &macros[i];
+		uint64_t and_value;
+		uint64_t and_mask;
+		uint64_t nor_value;
+		uint64_t nor_mask;
+		uint64_t xor_value;
+		uint64_t xor_mask;
+		uint64_t inner_value;
+		uint64_t inner_mask;
+		uint64_t sum_value;
+		uint64_t sum_mask;
+		uint64_t carry_value;
+		uint64_t carry_mask;
+		uint64_t and0_value;
+		uint64_t and0_mask;
+		uint64_t nor0_value;
+		uint64_t nor0_mask;
+		uint64_t xor0_value;
+		uint64_t xor0_mask;
+		uint64_t inner0_value;
+		uint64_t inner0_mask;
+		uint64_t sum0_value;
+		uint64_t sum0_mask;
+		uint64_t carry0_value;
+		uint64_t carry0_mask;
+		uint64_t and1_value;
+		uint64_t and1_mask;
+		uint64_t nor1_value;
+		uint64_t nor1_mask;
+		uint64_t xor1_value;
+		uint64_t xor1_mask;
+		uint64_t inner1_value;
+		uint64_t inner1_mask;
+		uint64_t sum1_value;
+		uint64_t sum1_mask;
+		uint64_t carry1_value;
+		uint64_t carry1_mask;
+
+		if (macro->type == LXS_MULTI_MACRO_FULL_ADDER_CINV)
+			{
+			LXS_EVAL_AND(
+				net_value[macro->inputs[0]],
+				net_mask[macro->inputs[0]],
+				net_value[macro->inputs[1]],
+				net_mask[macro->inputs[1]],
+				and_value,
+				and_mask);
+			LXS_EVAL_NOR(
+				net_value[macro->inputs[0]],
+				net_mask[macro->inputs[0]],
+				net_value[macro->inputs[1]],
+				net_mask[macro->inputs[1]],
+				nor_value,
+				nor_mask);
+			LXS_EVAL_NOR(nor_value, nor_mask, and_value, and_mask, xor_value, xor_mask);
+			LXS_EVAL_XNOR(
+				net_value[macro->inputs[2]],
+				net_mask[macro->inputs[2]],
+				xor_value,
+				xor_mask,
+				sum_value,
+				sum_mask);
+			LXS_EVAL_NOR(
+				net_value[macro->inputs[2]],
+				net_mask[macro->inputs[2]],
+				nor_value,
+				nor_mask,
+				inner_value,
+				inner_mask);
+			LXS_EVAL_NOR(
+				and_value,
+				and_mask,
+				inner_value,
+				inner_mask,
+				carry_value,
+				carry_mask);
+
+			net_value[macro->outputs[0]] = sum_value;
+			net_mask[macro->outputs[0]] = sum_mask;
+			net_value[macro->outputs[1]] = carry_value;
+			net_mask[macro->outputs[1]] = carry_mask;
+			}
+		else if (macro->type == LXS_MULTI_MACRO_RIPPLE_SLICE2_CINV)
+			{
+			LXS_EVAL_AND(
+				net_value[macro->inputs[0]],
+				net_mask[macro->inputs[0]],
+				net_value[macro->inputs[1]],
+				net_mask[macro->inputs[1]],
+				and0_value,
+				and0_mask);
+			LXS_EVAL_NOR(
+				net_value[macro->inputs[0]],
+				net_mask[macro->inputs[0]],
+				net_value[macro->inputs[1]],
+				net_mask[macro->inputs[1]],
+				nor0_value,
+				nor0_mask);
+			LXS_EVAL_NOR(nor0_value, nor0_mask, and0_value, and0_mask, xor0_value, xor0_mask);
+			LXS_EVAL_XNOR(
+				net_value[macro->inputs[4]],
+				net_mask[macro->inputs[4]],
+				xor0_value,
+				xor0_mask,
+				sum0_value,
+				sum0_mask);
+			LXS_EVAL_NOR(
+				net_value[macro->inputs[4]],
+				net_mask[macro->inputs[4]],
+				nor0_value,
+				nor0_mask,
+				inner0_value,
+				inner0_mask);
+			LXS_EVAL_NOR(
+				and0_value,
+				and0_mask,
+				inner0_value,
+				inner0_mask,
+				carry0_value,
+				carry0_mask);
+
+			LXS_EVAL_AND(
+				net_value[macro->inputs[2]],
+				net_mask[macro->inputs[2]],
+				net_value[macro->inputs[3]],
+				net_mask[macro->inputs[3]],
+				and1_value,
+				and1_mask);
+			LXS_EVAL_NOR(
+				net_value[macro->inputs[2]],
+				net_mask[macro->inputs[2]],
+				net_value[macro->inputs[3]],
+				net_mask[macro->inputs[3]],
+				nor1_value,
+				nor1_mask);
+			LXS_EVAL_NOR(nor1_value, nor1_mask, and1_value, and1_mask, xor1_value, xor1_mask);
+			LXS_EVAL_XNOR(carry0_value, carry0_mask, xor1_value, xor1_mask, sum1_value, sum1_mask);
+			LXS_EVAL_NOR(carry0_value, carry0_mask, nor1_value, nor1_mask, inner1_value, inner1_mask);
+			LXS_EVAL_NOR(and1_value, and1_mask, inner1_value, inner1_mask, carry1_value, carry1_mask);
+
+			net_value[macro->outputs[0]] = sum0_value;
+			net_mask[macro->outputs[0]] = sum0_mask;
+			net_value[macro->outputs[1]] = sum1_value;
+			net_mask[macro->outputs[1]] = sum1_mask;
+			net_value[macro->outputs[2]] = carry1_value;
+			net_mask[macro->outputs[2]] = carry1_mask;
+			}
+		ctx->probes.chunk_exec++;
+		ctx->probes.gate_eval += macro->gate_equiv_count;
+		}
+	}
+
 static void lxs_execute_chunk(
 	lxs_engine_ctx *ctx,
 	const lxs_chunk_plan *chunk,
@@ -551,6 +713,13 @@ void lxs_execute_levels(lxs_engine_ctx *ctx, const lxs_plan *plan)
 				ctx,
 				plan->macros + level_plan->macro_start,
 				level_plan->macro_count);
+			}
+		if (level_plan->multi_macro_count > 0U)
+			{
+			lxs_execute_multi_macros(
+				ctx,
+				plan->multi_macros + level_plan->multi_macro_start,
+				level_plan->multi_macro_count);
 			}
 		}
 	}
