@@ -1,0 +1,4 @@
+INPUT(hz_000001__sig)
+
+y = BUF(hz_000001__sig)
+OUTPUT(y)

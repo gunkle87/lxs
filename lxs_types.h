@@ -34,10 +34,21 @@ typedef enum lxs_macro_type
 
 typedef enum lxs_multi_macro_type
 	{
-	LXS_MULTI_MACRO_FULL_ADDER_CINV = 0,
+	LXS_MULTI_MACRO_HALF_ADDER = 0,
+	LXS_MULTI_MACRO_FULL_ADDER,
+	LXS_MULTI_MACRO_RIPPLE_SLICE2,
+	LXS_MULTI_MACRO_FULL_ADDER_CINV,
 	LXS_MULTI_MACRO_RIPPLE_SLICE2_CINV,
 	LXS_MULTI_MACRO_TYPE_COUNT
 	} lxs_multi_macro_type;
+
+typedef enum lxs_source_multi_macro_type
+	{
+	LXS_SOURCE_MULTI_MACRO_HALF_ADDER = 0,
+	LXS_SOURCE_MULTI_MACRO_FULL_ADDER,
+	LXS_SOURCE_MULTI_MACRO_RIPPLE_SLICE2,
+	LXS_SOURCE_MULTI_MACRO_TYPE_COUNT
+	} lxs_source_multi_macro_type;
 
 typedef struct lxs_gate_ir lxs_gate_ir;
 struct lxs_gate_ir
@@ -50,6 +61,7 @@ struct lxs_gate_ir
 	};
 
 typedef struct lxs_netlist lxs_netlist;
+typedef struct lxs_source_multi_macro lxs_source_multi_macro;
 struct lxs_netlist
 	{
 	char **net_names;
@@ -67,6 +79,21 @@ struct lxs_netlist
 	lxs_gate_ir *gates;
 	uint32_t gate_count;
 	uint32_t gate_cap;
+
+	lxs_source_multi_macro *source_multi_macros;
+	uint32_t source_multi_macro_count;
+	uint32_t source_multi_macro_cap;
+	};
+
+struct lxs_source_multi_macro
+	{
+	uint32_t type;
+	uint32_t inputs[5];
+	uint32_t outputs[3];
+	uint32_t gate_indices[10];
+	uint32_t input_count;
+	uint32_t output_count;
+	uint32_t gate_count;
 	};
 
 typedef struct lxs_chunk_plan lxs_chunk_plan;

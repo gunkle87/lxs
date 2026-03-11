@@ -1,0 +1,5 @@
+.model top
+.outputs y
+.names y
+1
+.end

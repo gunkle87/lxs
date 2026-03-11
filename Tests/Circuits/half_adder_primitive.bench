@@ -1,0 +1,7 @@
+INPUT(a)
+INPUT(b)
+OUTPUT(sum)
+OUTPUT(carry)
+
+sum = XOR(a, b)
+carry = AND(a, b)

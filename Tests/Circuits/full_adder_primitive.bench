@@ -1,0 +1,11 @@
+INPUT(a)
+INPUT(b)
+INPUT(cin)
+OUTPUT(sum)
+OUTPUT(carry)
+
+xab = XOR(a, b)
+sum = XOR(xab, cin)
+ab = AND(a, b)
+xc = AND(xab, cin)
+carry = OR(ab, xc)

@@ -1,0 +1,4 @@
+INPUT(a)
+
+y = BUF(a)
+OUTPUT(y)

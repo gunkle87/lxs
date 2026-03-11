@@ -225,7 +225,7 @@ static int lxs_test_mask_and(void)
 	return ok;
 	}
 
-static int lxs_test_blif_basic(void)
+static int lxs_test_canonical_basic(void)
 	{
 	lxs_loaded_case loaded;
 	uint64_t values[2];
@@ -234,9 +234,9 @@ static int lxs_test_blif_basic(void)
 	uint64_t out_masks[3];
 	int ok = 1;
 
-	if (!lxs_load_case("Tests\\Circuits\\blif_basic.bench", &loaded))
+	if (!lxs_load_case("Tests\\Circuits\\canonical_basic.bench", &loaded))
 		{
-		fprintf(stderr, "FAIL blif_basic: unable to load test circuit\n");
+		fprintf(stderr, "FAIL canonical_basic: unable to load test circuit\n");
 		return 0;
 		}
 
@@ -247,21 +247,21 @@ static int lxs_test_blif_basic(void)
 	lxs_apply_inputs(&loaded.ctx, loaded.plan, values, masks);
 	lxs_execute_plan(&loaded.ctx, loaded.plan);
 	lxs_read_outputs(&loaded.ctx, loaded.plan, out_values, out_masks);
-	ok &= lxs_expect_u64("blif_basic.y_or.high", out_values[0], ~0ULL);
-	ok &= lxs_expect_u64("blif_basic.y_or.mask.high", out_masks[0], 0ULL);
-	ok &= lxs_expect_u64("blif_basic.y_sel.high", out_values[1], ~0ULL);
-	ok &= lxs_expect_u64("blif_basic.y_sel.mask.high", out_masks[1], 0ULL);
-	ok &= lxs_expect_u64("blif_basic.y_const1.high", out_values[2], ~0ULL);
-	ok &= lxs_expect_u64("blif_basic.y_const1.mask.high", out_masks[2], 0ULL);
+	ok &= lxs_expect_u64("canonical_basic.y_or.high", out_values[0], ~0ULL);
+	ok &= lxs_expect_u64("canonical_basic.y_or.mask.high", out_masks[0], 0ULL);
+	ok &= lxs_expect_u64("canonical_basic.y_sel.high", out_values[1], ~0ULL);
+	ok &= lxs_expect_u64("canonical_basic.y_sel.mask.high", out_masks[1], 0ULL);
+	ok &= lxs_expect_u64("canonical_basic.y_const1.high", out_values[2], ~0ULL);
+	ok &= lxs_expect_u64("canonical_basic.y_const1.mask.high", out_masks[2], 0ULL);
 
 	values[0] = 0ULL;
 	values[1] = ~0ULL;
 	lxs_apply_inputs(&loaded.ctx, loaded.plan, values, masks);
 	lxs_execute_plan(&loaded.ctx, loaded.plan);
 	lxs_read_outputs(&loaded.ctx, loaded.plan, out_values, out_masks);
-	ok &= lxs_expect_u64("blif_basic.y_or.low", out_values[0], ~0ULL);
-	ok &= lxs_expect_u64("blif_basic.y_sel.low", out_values[1], 0ULL);
-	ok &= lxs_expect_u64("blif_basic.y_const1.low", out_values[2], ~0ULL);
+	ok &= lxs_expect_u64("canonical_basic.y_or.low", out_values[0], ~0ULL);
+	ok &= lxs_expect_u64("canonical_basic.y_sel.low", out_values[1], 0ULL);
+	ok &= lxs_expect_u64("canonical_basic.y_const1.low", out_values[2], ~0ULL);
 
 	lxs_unload_case(&loaded);
 	return ok;
@@ -610,6 +610,163 @@ static int lxs_test_ripple_slice2_macro(void)
 	return ok;
 	}
 
+static int lxs_test_half_adder_explicit(void)
+	{
+	lxs_loaded_case loaded;
+	uint64_t values[2];
+	uint64_t masks[2];
+	uint64_t out_values[2];
+	uint64_t out_masks[2];
+	int ok = 1;
+
+	if (!lxs_load_case("Tests\\Circuits\\half_adder_explicit.bench", &loaded))
+		{
+		fprintf(stderr, "FAIL half_adder_explicit: unable to load test circuit\n");
+		return 0;
+		}
+
+	ok &= lxs_expect_u64("half_adder_explicit.macro_count", loaded.plan->macro_count, 0ULL);
+	ok &= lxs_expect_u64("half_adder_explicit.multi_macro_count", loaded.plan->multi_macro_count, 1ULL);
+	ok &= lxs_expect_u64("half_adder_explicit.comb_gate_count", loaded.plan->comb_gate_count, 0ULL);
+
+	for (uint32_t combo = 0; combo < 4U; ++combo)
+		{
+		uint32_t a = (combo >> 1U) & 1U;
+		uint32_t b = combo & 1U;
+		char label[80];
+
+		values[0] = a ? ~0ULL : 0ULL;
+		values[1] = b ? ~0ULL : 0ULL;
+		masks[0] = 0ULL;
+		masks[1] = 0ULL;
+
+		lxs_apply_inputs(&loaded.ctx, loaded.plan, values, masks);
+		lxs_execute_plan(&loaded.ctx, loaded.plan);
+		lxs_read_outputs(&loaded.ctx, loaded.plan, out_values, out_masks);
+
+		snprintf(label, sizeof(label), "half_adder_explicit.sum.%u", combo);
+		ok &= lxs_expect_u64(label, out_values[0], (a ^ b) ? ~0ULL : 0ULL);
+		snprintf(label, sizeof(label), "half_adder_explicit.carry.%u", combo);
+		ok &= lxs_expect_u64(label, out_values[1], (a & b) ? ~0ULL : 0ULL);
+		snprintf(label, sizeof(label), "half_adder_explicit.sum.mask.%u", combo);
+		ok &= lxs_expect_u64(label, out_masks[0], 0ULL);
+		snprintf(label, sizeof(label), "half_adder_explicit.carry.mask.%u", combo);
+		ok &= lxs_expect_u64(label, out_masks[1], 0ULL);
+		}
+
+	lxs_unload_case(&loaded);
+	return ok;
+	}
+
+static int lxs_test_full_adder_explicit(void)
+	{
+	lxs_loaded_case loaded;
+	uint64_t values[3];
+	uint64_t masks[3];
+	uint64_t out_values[2];
+	uint64_t out_masks[2];
+	int ok = 1;
+
+	if (!lxs_load_case("Tests\\Circuits\\full_adder_explicit.bench", &loaded))
+		{
+		fprintf(stderr, "FAIL full_adder_explicit: unable to load test circuit\n");
+		return 0;
+		}
+
+	ok &= lxs_expect_u64("full_adder_explicit.macro_count", loaded.plan->macro_count, 0ULL);
+	ok &= lxs_expect_u64("full_adder_explicit.multi_macro_count", loaded.plan->multi_macro_count, 1ULL);
+	ok &= lxs_expect_u64("full_adder_explicit.comb_gate_count", loaded.plan->comb_gate_count, 0ULL);
+
+	for (uint32_t combo = 0; combo < 8U; ++combo)
+		{
+		uint32_t a = (combo >> 2U) & 1U;
+		uint32_t b = (combo >> 1U) & 1U;
+		uint32_t cin = combo & 1U;
+		uint32_t sum = a ^ b ^ cin;
+		uint32_t carry = (a & b) | (a & cin) | (b & cin);
+		char label[80];
+
+		values[0] = a ? ~0ULL : 0ULL;
+		values[1] = b ? ~0ULL : 0ULL;
+		values[2] = cin ? ~0ULL : 0ULL;
+		memset(masks, 0, sizeof(masks));
+
+		lxs_apply_inputs(&loaded.ctx, loaded.plan, values, masks);
+		lxs_execute_plan(&loaded.ctx, loaded.plan);
+		lxs_read_outputs(&loaded.ctx, loaded.plan, out_values, out_masks);
+
+		snprintf(label, sizeof(label), "full_adder_explicit.sum.%u", combo);
+		ok &= lxs_expect_u64(label, out_values[0], sum ? ~0ULL : 0ULL);
+		snprintf(label, sizeof(label), "full_adder_explicit.carry.%u", combo);
+		ok &= lxs_expect_u64(label, out_values[1], carry ? ~0ULL : 0ULL);
+		snprintf(label, sizeof(label), "full_adder_explicit.sum.mask.%u", combo);
+		ok &= lxs_expect_u64(label, out_masks[0], 0ULL);
+		snprintf(label, sizeof(label), "full_adder_explicit.carry.mask.%u", combo);
+		ok &= lxs_expect_u64(label, out_masks[1], 0ULL);
+		}
+
+	lxs_unload_case(&loaded);
+	return ok;
+	}
+
+static int lxs_test_ripple_slice2_explicit(void)
+	{
+	lxs_loaded_case loaded;
+	uint64_t values[5];
+	uint64_t masks[5];
+	uint64_t out_values[3];
+	uint64_t out_masks[3];
+	int ok = 1;
+
+	if (!lxs_load_case("Tests\\Circuits\\ripple_slice2_explicit.bench", &loaded))
+		{
+		fprintf(stderr, "FAIL ripple_slice2_explicit: unable to load test circuit\n");
+		return 0;
+		}
+
+	ok &= lxs_expect_u64("ripple_slice2_explicit.macro_count", loaded.plan->macro_count, 0ULL);
+	ok &= lxs_expect_u64("ripple_slice2_explicit.multi_macro_count", loaded.plan->multi_macro_count, 1ULL);
+	ok &= lxs_expect_u64("ripple_slice2_explicit.comb_gate_count", loaded.plan->comb_gate_count, 0ULL);
+
+	for (uint32_t combo = 0; combo < 32U; ++combo)
+		{
+		uint32_t a0 = (combo >> 4U) & 1U;
+		uint32_t b0 = (combo >> 3U) & 1U;
+		uint32_t a1 = (combo >> 2U) & 1U;
+		uint32_t b1 = (combo >> 1U) & 1U;
+		uint32_t cin = combo & 1U;
+		uint32_t total = (a0 + (a1 << 1U)) + (b0 + (b1 << 1U)) + cin;
+		char label[96];
+
+		values[0] = a0 ? ~0ULL : 0ULL;
+		values[1] = b0 ? ~0ULL : 0ULL;
+		values[2] = a1 ? ~0ULL : 0ULL;
+		values[3] = b1 ? ~0ULL : 0ULL;
+		values[4] = cin ? ~0ULL : 0ULL;
+		memset(masks, 0, sizeof(masks));
+
+		lxs_apply_inputs(&loaded.ctx, loaded.plan, values, masks);
+		lxs_execute_plan(&loaded.ctx, loaded.plan);
+		lxs_read_outputs(&loaded.ctx, loaded.plan, out_values, out_masks);
+
+		snprintf(label, sizeof(label), "ripple_slice2_explicit.sum0.%u", combo);
+		ok &= lxs_expect_u64(label, out_values[0], (total & 1U) ? ~0ULL : 0ULL);
+		snprintf(label, sizeof(label), "ripple_slice2_explicit.sum1.%u", combo);
+		ok &= lxs_expect_u64(label, out_values[1], (total & 2U) ? ~0ULL : 0ULL);
+		snprintf(label, sizeof(label), "ripple_slice2_explicit.carry.%u", combo);
+		ok &= lxs_expect_u64(label, out_values[2], (total & 4U) ? ~0ULL : 0ULL);
+		snprintf(label, sizeof(label), "ripple_slice2_explicit.sum0.mask.%u", combo);
+		ok &= lxs_expect_u64(label, out_masks[0], 0ULL);
+		snprintf(label, sizeof(label), "ripple_slice2_explicit.sum1.mask.%u", combo);
+		ok &= lxs_expect_u64(label, out_masks[1], 0ULL);
+		snprintf(label, sizeof(label), "ripple_slice2_explicit.carry.mask.%u", combo);
+		ok &= lxs_expect_u64(label, out_masks[2], 0ULL);
+		}
+
+	lxs_unload_case(&loaded);
+	return ok;
+	}
+
 static int lxs_test_dff_not(void)
 	{
 	lxs_loaded_case loaded;
@@ -671,7 +828,7 @@ int main(void)
 
 	ok &= lxs_test_comb_chain();
 	ok &= lxs_test_mask_and();
-	ok &= lxs_test_blif_basic();
+	ok &= lxs_test_canonical_basic();
 	ok &= lxs_test_multi_macro_full_adder_cinv();
 	ok &= lxs_test_mux2_macro();
 	ok &= lxs_test_xor2_macro();
@@ -680,6 +837,9 @@ int main(void)
 	ok &= lxs_test_carry_inv2_macro();
 	ok &= lxs_test_sum_cinv2_macro();
 	ok &= lxs_test_ripple_slice2_macro();
+	ok &= lxs_test_half_adder_explicit();
+	ok &= lxs_test_full_adder_explicit();
+	ok &= lxs_test_ripple_slice2_explicit();
 	ok &= lxs_test_dff_not();
 
 	if (!ok)

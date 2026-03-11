@@ -1,0 +1,7 @@
+INPUT(a)
+INPUT(b)
+INPUT(c)
+
+__t_000001 = OR(a,b)
+y = OR(__t_000001,c)
+OUTPUT(y)

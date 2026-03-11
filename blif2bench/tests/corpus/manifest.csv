@@ -1,0 +1,16 @@
+id,format,input_path,expect,output_path,name_map_path,stdout_mode,flags
+blif_buf,blif,tests/inputs/blif/buf.blif,pass,tests/artifacts/blif_buf.bench,,0,--overwrite replace --quiet
+blif_or,blif,tests/inputs/blif/or.blif,pass,tests/artifacts/blif_or.bench,,0,--overwrite replace --quiet
+blif_const_fail,blif,tests/inputs/blif/const_fail.blif,fail,,,0,--overwrite replace --quiet
+blif_multi_model_fail,blif,tests/inputs/blif/multi_model_fail.blif,fail,,,0,--overwrite replace --quiet
+blif_missing_end_fail,blif,tests/inputs/blif/missing_end_fail.blif,fail,,,0,--overwrite replace --quiet
+blif_decl_conflict_fail,blif,tests/inputs/blif/decl_conflict_fail.blif,fail,,,0,--overwrite replace --quiet
+blif_gate_fail,blif,tests/inputs/blif/gate_fail.blif,fail,,,0,--overwrite replace --quiet
+verilog_and,verilog,tests/inputs/verilog/and_gate.v,pass,tests/artifacts/verilog_and.bench,,0,--overwrite replace --quiet
+verilog_alias_output,verilog,tests/inputs/verilog/alias_output.v,pass,tests/artifacts/verilog_alias_output.bench,,0,--overwrite replace --quiet
+verilog_decl_conflict_fail,verilog,tests/inputs/verilog/decl_conflict_fail.v,fail,,,0,--overwrite replace --quiet
+verilog_vector,verilog,tests/inputs/verilog/vector_or.v,pass,tests/artifacts/verilog_vector.bench,,0,--overwrite replace --quiet
+verilog_name_map,verilog,tests/inputs/verilog/name_map.v,pass,tests/artifacts/verilog_name_map.bench,tests/artifacts/verilog_name_map.csv,0,--overwrite replace --quiet
+verilog_wide_preserve,verilog,tests/inputs/verilog/wide_or.v,pass,tests/artifacts/verilog_wide_preserve.bench,,0,--overwrite replace --quiet --wide-gates preserve
+verilog_wide_lower,verilog,tests/inputs/verilog/wide_or.v,pass,tests/artifacts/verilog_wide_lower.bench,,0,--overwrite replace --quiet --wide-gates lower-binary
+verilog_behavior_fail,verilog,tests/inputs/verilog/behavior_fail.v,fail,,,0,--overwrite replace --quiet

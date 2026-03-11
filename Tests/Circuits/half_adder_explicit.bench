@@ -1,0 +1,6 @@
+INPUT(a)
+INPUT(b)
+OUTPUT(sum)
+OUTPUT(carry)
+
+sum, carry = HALF_ADDER(a, b)

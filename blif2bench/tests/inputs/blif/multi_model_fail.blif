@@ -1,0 +1,12 @@
+.model first
+.inputs a
+.outputs y
+.names a y
+1 1
+.end
+.model second
+.inputs b
+.outputs z
+.names b z
+1 1
+.end

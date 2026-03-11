@@ -1,0 +1,4 @@
+*.exe
+src/*.o
+tests/artifacts/*
+!tests/artifacts/.gitkeep

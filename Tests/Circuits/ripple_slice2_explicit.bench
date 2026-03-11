@@ -1,0 +1,10 @@
+INPUT(a0)
+INPUT(b0)
+INPUT(a1)
+INPUT(b1)
+INPUT(cin)
+OUTPUT(sum0)
+OUTPUT(sum1)
+OUTPUT(carry)
+
+sum0, sum1, carry = RIPPLE_SLICE2(a0, b0, a1, b1, cin)

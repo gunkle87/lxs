@@ -1,0 +1,7 @@
+INPUT(a)
+INPUT(b)
+INPUT(cin)
+OUTPUT(sum)
+OUTPUT(carry)
+
+sum, carry = FULL_ADDER(a, b, cin)

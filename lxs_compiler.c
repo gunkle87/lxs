@@ -166,6 +166,31 @@ static int lxs_reserve_gates(lxs_gate_ir **items, uint32_t *cap, uint32_t needed
 	return *items != NULL;
 	}
 
+static int lxs_reserve_source_multi_macros(
+	lxs_source_multi_macro **items,
+	uint32_t *cap,
+	uint32_t needed)
+	{
+	size_t old_size;
+
+	if (needed <= *cap)
+		{
+		return 1;
+		}
+
+	old_size = (size_t)(*cap) * sizeof(lxs_source_multi_macro);
+	while (*cap < needed)
+		{
+		*cap = (*cap == 0U) ? LXS_INITIAL_CAP : (*cap * 2U);
+		}
+
+	*items = lxs_realloc_aligned(
+		*items,
+		old_size,
+		(size_t)(*cap) * sizeof(lxs_source_multi_macro));
+	return *items != NULL;
+	}
+
 static uint32_t lxs_find_net(const lxs_netlist *nl, const char *name)
 	{
 	for (uint32_t i = 0; i < nl->net_count; ++i)
@@ -225,6 +250,20 @@ static int lxs_push_gate(lxs_netlist *nl, const lxs_gate_ir *gate)
 	return 1;
 	}
 
+static int lxs_push_source_multi_macro(lxs_netlist *nl, const lxs_source_multi_macro *macro)
+	{
+	if (!lxs_reserve_source_multi_macros(
+		&nl->source_multi_macros,
+		&nl->source_multi_macro_cap,
+		nl->source_multi_macro_count + 1U))
+		{
+		return 0;
+		}
+
+	nl->source_multi_macros[nl->source_multi_macro_count++] = *macro;
+	return 1;
+	}
+
 static lxs_gate_type lxs_string_to_gate_type(const char *name)
 	{
 	if (strcmp(name, "AND") == 0)
@@ -280,6 +319,226 @@ static lxs_gate_type lxs_string_to_gate_type(const char *name)
 	return LXS_GATE_BUF;
 	}
 
+static int lxs_emit_gate_record(
+	lxs_netlist *nl,
+	uint32_t type,
+	uint32_t output,
+	const uint32_t *inputs,
+	uint32_t input_count,
+	uint32_t *gate_index_out)
+	{
+	lxs_gate_ir gate;
+
+	memset(&gate, 0, sizeof(gate));
+	gate.type = type;
+	gate.output = output;
+	gate.input_count = input_count;
+	for (uint32_t i = 0; i < input_count && i < 2U; ++i)
+		{
+		gate.inputs[i] = inputs[i];
+		}
+
+	if (!lxs_push_gate(nl, &gate))
+		{
+		return 0;
+		}
+
+	if (gate_index_out)
+		{
+		*gate_index_out = nl->gate_count - 1U;
+		}
+	return 1;
+	}
+
+static uint32_t lxs_intern_temp_net(lxs_netlist *nl, const char *tag, uint32_t serial, const char *suffix)
+	{
+	char name[128];
+
+	snprintf(name, sizeof(name), "__lxs_%s_%u_%s", tag, serial, suffix);
+	return lxs_intern_net(nl, name);
+	}
+
+static int lxs_emit_half_adder_macro(
+	lxs_netlist *nl,
+	const uint32_t *outputs,
+	const uint32_t *inputs)
+	{
+	lxs_source_multi_macro macro;
+	uint32_t gate_inputs[2];
+
+	memset(&macro, 0, sizeof(macro));
+	macro.type = LXS_SOURCE_MULTI_MACRO_HALF_ADDER;
+	macro.input_count = 2U;
+	macro.output_count = 2U;
+	macro.gate_count = 2U;
+	macro.inputs[0] = inputs[0];
+	macro.inputs[1] = inputs[1];
+	macro.outputs[0] = outputs[0];
+	macro.outputs[1] = outputs[1];
+
+	gate_inputs[0] = inputs[0];
+	gate_inputs[1] = inputs[1];
+	if (!lxs_emit_gate_record(nl, LXS_GATE_XOR, outputs[0], gate_inputs, 2U, &macro.gate_indices[0]) ||
+		!lxs_emit_gate_record(nl, LXS_GATE_AND, outputs[1], gate_inputs, 2U, &macro.gate_indices[1]) ||
+		!lxs_push_source_multi_macro(nl, &macro))
+		{
+		return 0;
+		}
+
+	return 1;
+	}
+
+static int lxs_emit_full_adder_macro(
+	lxs_netlist *nl,
+	const uint32_t *outputs,
+	const uint32_t *inputs,
+	uint32_t serial)
+	{
+	lxs_source_multi_macro macro;
+	uint32_t xor_ab;
+	uint32_t and_ab;
+	uint32_t and_cin;
+	uint32_t gate_inputs[2];
+
+	memset(&macro, 0, sizeof(macro));
+	macro.type = LXS_SOURCE_MULTI_MACRO_FULL_ADDER;
+	macro.input_count = 3U;
+	macro.output_count = 2U;
+	macro.gate_count = 5U;
+	macro.inputs[0] = inputs[0];
+	macro.inputs[1] = inputs[1];
+	macro.inputs[2] = inputs[2];
+	macro.outputs[0] = outputs[0];
+	macro.outputs[1] = outputs[1];
+
+	xor_ab = lxs_intern_temp_net(nl, "fa", serial, "xor_ab");
+	and_ab = lxs_intern_temp_net(nl, "fa", serial, "and_ab");
+	and_cin = lxs_intern_temp_net(nl, "fa", serial, "and_cin");
+	if (xor_ab == UINT32_MAX || and_ab == UINT32_MAX || and_cin == UINT32_MAX)
+		{
+		return 0;
+		}
+
+	gate_inputs[0] = inputs[0];
+	gate_inputs[1] = inputs[1];
+	if (!lxs_emit_gate_record(nl, LXS_GATE_XOR, xor_ab, gate_inputs, 2U, &macro.gate_indices[0]) ||
+		!lxs_emit_gate_record(nl, LXS_GATE_AND, and_ab, gate_inputs, 2U, &macro.gate_indices[2]))
+		{
+		return 0;
+		}
+
+	gate_inputs[0] = xor_ab;
+	gate_inputs[1] = inputs[2];
+	if (!lxs_emit_gate_record(nl, LXS_GATE_XOR, outputs[0], gate_inputs, 2U, &macro.gate_indices[1]) ||
+		!lxs_emit_gate_record(nl, LXS_GATE_AND, and_cin, gate_inputs, 2U, &macro.gate_indices[3]))
+		{
+		return 0;
+		}
+
+	gate_inputs[0] = and_ab;
+	gate_inputs[1] = and_cin;
+	if (!lxs_emit_gate_record(nl, LXS_GATE_OR, outputs[1], gate_inputs, 2U, &macro.gate_indices[4]) ||
+		!lxs_push_source_multi_macro(nl, &macro))
+		{
+		return 0;
+		}
+
+	return 1;
+	}
+
+static int lxs_emit_ripple_slice2_macro(
+	lxs_netlist *nl,
+	const uint32_t *outputs,
+	const uint32_t *inputs,
+	uint32_t serial)
+	{
+	lxs_source_multi_macro macro;
+	uint32_t gate_inputs[2];
+	uint32_t xor0;
+	uint32_t and0a;
+	uint32_t and0b;
+	uint32_t carry0;
+	uint32_t xor1;
+	uint32_t and1a;
+	uint32_t and1b;
+
+	memset(&macro, 0, sizeof(macro));
+	macro.type = LXS_SOURCE_MULTI_MACRO_RIPPLE_SLICE2;
+	macro.input_count = 5U;
+	macro.output_count = 3U;
+	macro.gate_count = 10U;
+	for (uint32_t i = 0; i < 5U; ++i)
+		{
+		macro.inputs[i] = inputs[i];
+		}
+	for (uint32_t i = 0; i < 3U; ++i)
+		{
+		macro.outputs[i] = outputs[i];
+		}
+
+	xor0 = lxs_intern_temp_net(nl, "rs2", serial, "xor0");
+	and0a = lxs_intern_temp_net(nl, "rs2", serial, "and0a");
+	and0b = lxs_intern_temp_net(nl, "rs2", serial, "and0b");
+	carry0 = lxs_intern_temp_net(nl, "rs2", serial, "carry0");
+	xor1 = lxs_intern_temp_net(nl, "rs2", serial, "xor1");
+	and1a = lxs_intern_temp_net(nl, "rs2", serial, "and1a");
+	and1b = lxs_intern_temp_net(nl, "rs2", serial, "and1b");
+	if (xor0 == UINT32_MAX || and0a == UINT32_MAX || and0b == UINT32_MAX || carry0 == UINT32_MAX ||
+		xor1 == UINT32_MAX || and1a == UINT32_MAX || and1b == UINT32_MAX)
+		{
+		return 0;
+		}
+
+	gate_inputs[0] = inputs[0];
+	gate_inputs[1] = inputs[1];
+	if (!lxs_emit_gate_record(nl, LXS_GATE_XOR, xor0, gate_inputs, 2U, &macro.gate_indices[0]) ||
+		!lxs_emit_gate_record(nl, LXS_GATE_AND, and0a, gate_inputs, 2U, &macro.gate_indices[2]))
+		{
+		return 0;
+		}
+
+	gate_inputs[0] = xor0;
+	gate_inputs[1] = inputs[4];
+	if (!lxs_emit_gate_record(nl, LXS_GATE_XOR, outputs[0], gate_inputs, 2U, &macro.gate_indices[1]) ||
+		!lxs_emit_gate_record(nl, LXS_GATE_AND, and0b, gate_inputs, 2U, &macro.gate_indices[3]))
+		{
+		return 0;
+		}
+
+	gate_inputs[0] = and0a;
+	gate_inputs[1] = and0b;
+	if (!lxs_emit_gate_record(nl, LXS_GATE_OR, carry0, gate_inputs, 2U, &macro.gate_indices[4]))
+		{
+		return 0;
+		}
+
+	gate_inputs[0] = inputs[2];
+	gate_inputs[1] = inputs[3];
+	if (!lxs_emit_gate_record(nl, LXS_GATE_XOR, xor1, gate_inputs, 2U, &macro.gate_indices[5]) ||
+		!lxs_emit_gate_record(nl, LXS_GATE_AND, and1a, gate_inputs, 2U, &macro.gate_indices[7]))
+		{
+		return 0;
+		}
+
+	gate_inputs[0] = xor1;
+	gate_inputs[1] = carry0;
+	if (!lxs_emit_gate_record(nl, LXS_GATE_XOR, outputs[1], gate_inputs, 2U, &macro.gate_indices[6]) ||
+		!lxs_emit_gate_record(nl, LXS_GATE_AND, and1b, gate_inputs, 2U, &macro.gate_indices[8]))
+		{
+		return 0;
+		}
+
+	gate_inputs[0] = and1a;
+	gate_inputs[1] = and1b;
+	if (!lxs_emit_gate_record(nl, LXS_GATE_OR, outputs[2], gate_inputs, 2U, &macro.gate_indices[9]) ||
+		!lxs_push_source_multi_macro(nl, &macro))
+		{
+		return 0;
+		}
+
+	return 1;
+	}
+
 static uint32_t lxs_gate_level(
 	uint32_t gate_index,
 	const lxs_netlist *nl,
@@ -316,6 +575,78 @@ static uint32_t lxs_gate_level(
 	visiting[gate_index] = 0U;
 	cache[gate_index] = max_level;
 	return max_level;
+	}
+
+static uint8_t lxs_force_source_multi_output_levels(
+	const lxs_netlist *nl,
+	const int32_t *comb_driver,
+	uint32_t *forced_levels)
+	{
+	uint8_t changed = 0U;
+
+	for (uint32_t i = 0; i < nl->source_multi_macro_count; ++i)
+		{
+		const lxs_source_multi_macro *macro = &nl->source_multi_macros[i];
+		uint32_t local_levels[16];
+		uint32_t macro_level = 0U;
+
+		for (uint32_t j = 0; j < macro->gate_count; ++j)
+			{
+			const lxs_gate_ir *gate = &nl->gates[macro->gate_indices[j]];
+			uint32_t gate_level = 0U;
+
+			for (uint32_t k = 0; k < gate->input_count; ++k)
+				{
+				int32_t driver = comb_driver[gate->inputs[k]];
+				uint32_t input_level = 0U;
+
+				if (driver >= 0)
+					{
+					uint8_t local_found = 0U;
+					for (uint32_t m = 0; m < j; ++m)
+						{
+						if (macro->gate_indices[m] == (uint32_t)driver)
+							{
+							input_level = local_levels[m];
+							local_found = 1U;
+							break;
+							}
+						}
+					if (!local_found)
+						{
+						input_level = nl->gates[(uint32_t)driver].level;
+						}
+					}
+
+				if ((input_level + 1U) > gate_level)
+					{
+					gate_level = input_level + 1U;
+					}
+				}
+
+			local_levels[j] = gate_level;
+			if (gate_level > macro_level)
+				{
+				macro_level = gate_level;
+				}
+			}
+
+		for (uint32_t j = 0; j < macro->output_count; ++j)
+			{
+			int32_t driver = comb_driver[macro->outputs[j]];
+			if (driver >= 0)
+				{
+				if (forced_levels[(uint32_t)driver] == UINT32_MAX ||
+					forced_levels[(uint32_t)driver] < macro_level)
+					{
+					forced_levels[(uint32_t)driver] = macro_level;
+					changed = 1U;
+					}
+				}
+			}
+		}
+
+	return changed;
 	}
 
 static uint32_t lxs_count_bucket_gates(const lxs_netlist *nl, uint32_t level, uint32_t type)
@@ -375,6 +706,52 @@ static void lxs_sort_bucket_gates(lxs_gate_ir *gates, uint32_t count, uint32_t t
 	qsort(gates, count, sizeof(lxs_gate_ir), lxs_compare_bucket_gates);
 	}
 
+static int lxs_compare_macros(const void *lhs, const void *rhs)
+	{
+	const lxs_macro_plan *a = (const lxs_macro_plan*)lhs;
+	const lxs_macro_plan *b = (const lxs_macro_plan*)rhs;
+
+	if (a->level != b->level)
+		{
+		return a->level < b->level ? -1 : 1;
+		}
+
+	if (a->output != b->output)
+		{
+		return a->output < b->output ? -1 : 1;
+		}
+
+	if (a->type != b->type)
+		{
+		return a->type < b->type ? -1 : 1;
+		}
+
+	return 0;
+	}
+
+static int lxs_compare_multi_macros(const void *lhs, const void *rhs)
+	{
+	const lxs_multi_macro_plan *a = (const lxs_multi_macro_plan*)lhs;
+	const lxs_multi_macro_plan *b = (const lxs_multi_macro_plan*)rhs;
+
+	if (a->level != b->level)
+		{
+		return a->level < b->level ? -1 : 1;
+		}
+
+	if (a->outputs[0] != b->outputs[0])
+		{
+		return a->outputs[0] < b->outputs[0] ? -1 : 1;
+		}
+
+	if (a->type != b->type)
+		{
+		return a->type < b->type ? -1 : 1;
+		}
+
+	return 0;
+	}
+
 static void lxs_assign_net_group(
 	uint32_t *remap,
 	uint8_t *assigned,
@@ -426,6 +803,24 @@ static void lxs_apply_net_remap_to_gates(lxs_gate_ir *gates, uint32_t count, con
 			gates[i].inputs[j] = remap[gates[i].inputs[j]];
 			}
 		gates[i].output = remap[gates[i].output];
+		}
+	}
+
+static void lxs_apply_net_remap_to_source_multi_macros(
+	lxs_source_multi_macro *macros,
+	uint32_t count,
+	const uint32_t *remap)
+	{
+	for (uint32_t i = 0; i < count; ++i)
+		{
+		for (uint32_t j = 0; j < macros[i].input_count; ++j)
+			{
+			macros[i].inputs[j] = remap[macros[i].inputs[j]];
+			}
+		for (uint32_t j = 0; j < macros[i].output_count; ++j)
+			{
+			macros[i].outputs[j] = remap[macros[i].outputs[j]];
+			}
 		}
 	}
 
@@ -1420,6 +1815,66 @@ static int lxs_describe_full_adder_cinv(
 	return 0;
 	}
 
+static uint32_t lxs_collect_source_multi_macros(
+	const lxs_netlist *nl,
+	uint8_t *matched_gates,
+	lxs_multi_macro_plan *macros)
+	{
+	for (uint32_t i = 0; i < nl->source_multi_macro_count; ++i)
+		{
+		const lxs_source_multi_macro *source = &nl->source_multi_macros[i];
+		lxs_multi_macro_plan macro;
+		uint32_t level = 0U;
+
+		memset(&macro, 0, sizeof(macro));
+		if (source->type == LXS_SOURCE_MULTI_MACRO_HALF_ADDER)
+			{
+			macro.type = LXS_MULTI_MACRO_HALF_ADDER;
+			macro.gate_equiv_count = 2U;
+			}
+		else if (source->type == LXS_SOURCE_MULTI_MACRO_FULL_ADDER)
+			{
+			macro.type = LXS_MULTI_MACRO_FULL_ADDER;
+			macro.gate_equiv_count = 5U;
+			}
+		else
+			{
+			macro.type = LXS_MULTI_MACRO_RIPPLE_SLICE2;
+			macro.gate_equiv_count = 10U;
+			}
+
+		for (uint32_t j = 0; j < source->gate_count; ++j)
+			{
+			uint32_t gate_index = source->gate_indices[j];
+
+			matched_gates[gate_index] = 1U;
+			if (nl->gates[gate_index].level > level)
+				{
+				level = nl->gates[gate_index].level;
+				}
+			}
+
+		macro.level = level;
+		macro.input_count = source->input_count;
+		macro.output_count = source->output_count;
+		for (uint32_t j = 0; j < source->input_count; ++j)
+			{
+			macro.inputs[j] = source->inputs[j];
+			}
+		for (uint32_t j = 0; j < source->output_count; ++j)
+			{
+			macro.outputs[j] = source->outputs[j];
+			}
+
+		if (macros)
+			{
+			macros[i] = macro;
+			}
+		}
+
+	return nl->source_multi_macro_count;
+	}
+
 static uint32_t lxs_collect_multi_macros(
 	const lxs_netlist *nl,
 	const int32_t *comb_driver,
@@ -1519,6 +1974,7 @@ static lxs_netlist* lxs_load_bench(const char *path)
 	FILE *stream;
 	char line[1024];
 	lxs_netlist *nl;
+	uint32_t macro_serial = 0U;
 
 	stream = fopen(path, "r");
 	if (!stream)
@@ -1599,6 +2055,16 @@ static lxs_netlist* lxs_load_bench(const char *path)
 		char *gate_part = lxs_trim(equal_sign + 1);
 		char *open_paren = strchr(gate_part, '(');
 		char *close_paren;
+		char *output_ctx = NULL;
+		char *input_ctx = NULL;
+		char *output_token;
+		char *input_token;
+		char *output_names[3];
+		uint32_t output_ids[3];
+		uint32_t input_ids[5];
+		uint32_t output_count = 0U;
+		uint32_t input_count = 0U;
+		uint32_t is_multi_macro = 0U;
 		lxs_gate_ir gate;
 
 		if (!open_paren)
@@ -1614,39 +2080,90 @@ static lxs_netlist* lxs_load_bench(const char *path)
 			}
 
 		*close_paren = '\0';
-		memset(&gate, 0, sizeof(gate));
-		gate.type = lxs_string_to_gate_type(lxs_trim(gate_part));
-		gate.output = lxs_intern_net(nl, out_name);
-		if (gate.output == UINT32_MAX)
+		output_token = strtok_s(out_name, ",", &output_ctx);
+		while (output_token && output_count < 3U)
 			{
-			lxs_free_netlist(nl);
-			fclose(stream);
-			return NULL;
+			output_names[output_count++] = lxs_trim(output_token);
+			output_token = strtok_s(NULL, ",", &output_ctx);
 			}
 
-		{
-		char *ctx = NULL;
-		char *token = strtok_s(open_paren + 1, ",", &ctx);
-		while (token && gate.input_count < 2U)
+		input_token = strtok_s(open_paren + 1, ",", &input_ctx);
+		while (input_token && input_count < 5U)
 			{
-			uint32_t id = lxs_intern_net(nl, lxs_trim(token));
-			if (id == UINT32_MAX)
+			input_ids[input_count] = lxs_intern_net(nl, lxs_trim(input_token));
+			if (input_ids[input_count] == UINT32_MAX)
 				{
 				lxs_free_netlist(nl);
 				fclose(stream);
 				return NULL;
 				}
 
-			gate.inputs[gate.input_count++] = id;
-			token = strtok_s(NULL, ",", &ctx);
+			input_count++;
+			input_token = strtok_s(NULL, ",", &input_ctx);
 			}
-		}
 
-		if (!lxs_push_gate(nl, &gate))
+		for (uint32_t i = 0; i < output_count; ++i)
 			{
-			lxs_free_netlist(nl);
-			fclose(stream);
-			return NULL;
+			output_ids[i] = lxs_intern_net(nl, output_names[i]);
+			if (output_ids[i] == UINT32_MAX)
+				{
+				lxs_free_netlist(nl);
+				fclose(stream);
+				return NULL;
+				}
+			}
+
+		if (strcmp(lxs_trim(gate_part), "HALF_ADDER") == 0)
+			{
+			if (output_count != 2U || input_count != 2U ||
+				!lxs_emit_half_adder_macro(nl, output_ids, input_ids))
+				{
+				lxs_free_netlist(nl);
+				fclose(stream);
+				return NULL;
+				}
+			is_multi_macro = 1U;
+			}
+		else if (strcmp(lxs_trim(gate_part), "FULL_ADDER") == 0)
+			{
+			if (output_count != 2U || input_count != 3U ||
+				!lxs_emit_full_adder_macro(nl, output_ids, input_ids, macro_serial++))
+				{
+				lxs_free_netlist(nl);
+				fclose(stream);
+				return NULL;
+				}
+			is_multi_macro = 1U;
+			}
+		else if (strcmp(lxs_trim(gate_part), "RIPPLE_SLICE2") == 0)
+			{
+			if (output_count != 3U || input_count != 5U ||
+				!lxs_emit_ripple_slice2_macro(nl, output_ids, input_ids, macro_serial++))
+				{
+				lxs_free_netlist(nl);
+				fclose(stream);
+				return NULL;
+				}
+			is_multi_macro = 1U;
+			}
+
+		if (!is_multi_macro)
+			{
+			memset(&gate, 0, sizeof(gate));
+			gate.type = lxs_string_to_gate_type(lxs_trim(gate_part));
+			gate.output = output_ids[0];
+			gate.input_count = input_count > 2U ? 2U : input_count;
+			for (uint32_t i = 0; i < gate.input_count; ++i)
+				{
+				gate.inputs[i] = input_ids[i];
+				}
+
+			if (!lxs_push_gate(nl, &gate))
+				{
+				lxs_free_netlist(nl);
+				fclose(stream);
+				return NULL;
+				}
 			}
 		}
 		}
@@ -1676,6 +2193,7 @@ void lxs_free_netlist(lxs_netlist *nl)
 	lxs_free_aligned(nl->inputs);
 	lxs_free_aligned(nl->outputs);
 	lxs_free_aligned(nl->gates);
+	lxs_free_aligned(nl->source_multi_macros);
 	lxs_free_aligned(nl);
 	}
 
@@ -1684,6 +2202,7 @@ lxs_plan* lxs_compile_to_plan(lxs_netlist *nl)
 	int32_t *comb_driver;
 	uint32_t *level_cache;
 	uint8_t *visiting;
+	uint32_t *forced_levels;
 	uint32_t *net_remap;
 	uint8_t *net_assigned;
 	uint8_t *matched_gates;
@@ -1707,15 +2226,18 @@ lxs_plan* lxs_compile_to_plan(lxs_netlist *nl)
 	comb_driver = lxs_calloc_aligned(nl->net_count, sizeof(int32_t));
 	level_cache = lxs_calloc_aligned(nl->gate_count, sizeof(uint32_t));
 	visiting = lxs_calloc_aligned(nl->gate_count, sizeof(uint8_t));
+	forced_levels = lxs_calloc_aligned(nl->gate_count, sizeof(uint32_t));
 	net_remap = lxs_calloc_aligned(nl->net_count, sizeof(uint32_t));
 	net_assigned = lxs_calloc_aligned(nl->net_count, sizeof(uint8_t));
 	matched_gates = lxs_calloc_aligned(nl->gate_count, sizeof(uint8_t));
 	multi_matched_gates = lxs_calloc_aligned(nl->gate_count, sizeof(uint8_t));
-	if (!comb_driver || !level_cache || !visiting || !net_remap || !net_assigned || !matched_gates || !multi_matched_gates)
+	if (!comb_driver || !level_cache || !visiting || !forced_levels ||
+		!net_remap || !net_assigned || !matched_gates || !multi_matched_gates)
 		{
 		lxs_free_aligned(comb_driver);
 		lxs_free_aligned(level_cache);
 		lxs_free_aligned(visiting);
+		lxs_free_aligned(forced_levels);
 		lxs_free_aligned(net_remap);
 		lxs_free_aligned(net_assigned);
 		lxs_free_aligned(matched_gates);
@@ -1726,6 +2248,10 @@ lxs_plan* lxs_compile_to_plan(lxs_netlist *nl)
 	for (uint32_t i = 0; i < nl->net_count; ++i)
 		{
 		comb_driver[i] = -1;
+		}
+	for (uint32_t i = 0; i < nl->gate_count; ++i)
+		{
+		forced_levels[i] = UINT32_MAX;
 		}
 
 	for (uint32_t i = 0; i < nl->gate_count; ++i)
@@ -1752,6 +2278,45 @@ lxs_plan* lxs_compile_to_plan(lxs_netlist *nl)
 			}
 		}
 
+	if (nl->source_multi_macro_count > 0U)
+		{
+		for (;;)
+			{
+			uint8_t changed;
+
+			max_level = 0U;
+			for (uint32_t i = 0; i < nl->gate_count; ++i)
+				{
+				level_cache[i] = UINT32_MAX;
+				if (forced_levels[i] != UINT32_MAX)
+					{
+					level_cache[i] = forced_levels[i];
+					}
+				}
+			memset(visiting, 0, (size_t)nl->gate_count * sizeof(uint8_t));
+			for (uint32_t i = 0; i < nl->gate_count; ++i)
+				{
+				if (nl->gates[i].type == LXS_GATE_DFF)
+					{
+					nl->gates[i].level = UINT32_MAX;
+					continue;
+					}
+
+				nl->gates[i].level = lxs_gate_level(i, nl, comb_driver, level_cache, visiting);
+				if (nl->gates[i].level > max_level)
+					{
+					max_level = nl->gates[i].level;
+					}
+				}
+			changed = lxs_force_source_multi_output_levels(nl, comb_driver, forced_levels);
+
+			if (!changed)
+				{
+				break;
+				}
+			}
+		}
+
 	lxs_assign_net_group(net_remap, net_assigned, nl->inputs, nl->input_count, &next_net_id);
 	for (uint32_t i = 0; i < nl->gate_count; ++i)
 		{
@@ -1773,6 +2338,10 @@ lxs_plan* lxs_compile_to_plan(lxs_netlist *nl)
 	lxs_apply_net_remap_to_array(nl->inputs, nl->input_count, net_remap);
 	lxs_apply_net_remap_to_array(nl->outputs, nl->output_count, net_remap);
 	lxs_apply_net_remap_to_gates(nl->gates, nl->gate_count, net_remap);
+	lxs_apply_net_remap_to_source_multi_macros(
+		nl->source_multi_macros,
+		nl->source_multi_macro_count,
+		net_remap);
 	for (uint32_t i = 0; i < nl->net_count; ++i)
 		{
 		comb_driver[i] = -1;
@@ -1791,6 +2360,7 @@ lxs_plan* lxs_compile_to_plan(lxs_netlist *nl)
 		lxs_free_aligned(comb_driver);
 		lxs_free_aligned(level_cache);
 		lxs_free_aligned(visiting);
+		lxs_free_aligned(forced_levels);
 		lxs_free_aligned(net_remap);
 		lxs_free_aligned(net_assigned);
 		lxs_free_aligned(matched_gates);
@@ -1800,12 +2370,15 @@ lxs_plan* lxs_compile_to_plan(lxs_netlist *nl)
 
 	plan->net_count = nl->net_count;
 	plan->gate_count = nl->gate_count;
-	plan->multi_macro_count = lxs_collect_multi_macros(nl, comb_driver, multi_matched_gates, NULL);
-	if (plan->multi_macro_count == UINT32_MAX)
+	plan->multi_macro_count = lxs_collect_source_multi_macros(nl, multi_matched_gates, NULL);
+	{
+	uint32_t recognized_multi_count = lxs_collect_multi_macros(nl, comb_driver, multi_matched_gates, NULL);
+	if (recognized_multi_count == UINT32_MAX)
 		{
 		lxs_free_aligned(comb_driver);
 		lxs_free_aligned(level_cache);
 		lxs_free_aligned(visiting);
+		lxs_free_aligned(forced_levels);
 		lxs_free_aligned(net_remap);
 		lxs_free_aligned(net_assigned);
 		lxs_free_aligned(matched_gates);
@@ -1813,6 +2386,8 @@ lxs_plan* lxs_compile_to_plan(lxs_netlist *nl)
 		lxs_free_aligned(plan);
 		return NULL;
 		}
+	plan->multi_macro_count += recognized_multi_count;
+	}
 	memcpy(matched_gates, multi_matched_gates, (size_t)nl->gate_count * sizeof(uint8_t));
 	plan->macro_count = lxs_collect_macros(nl, comb_driver, matched_gates, NULL);
 	if (plan->macro_count == UINT32_MAX)
@@ -1820,6 +2395,7 @@ lxs_plan* lxs_compile_to_plan(lxs_netlist *nl)
 		lxs_free_aligned(comb_driver);
 		lxs_free_aligned(level_cache);
 		lxs_free_aligned(visiting);
+		lxs_free_aligned(forced_levels);
 		lxs_free_aligned(net_remap);
 		lxs_free_aligned(net_assigned);
 		lxs_free_aligned(matched_gates);
@@ -1871,6 +2447,7 @@ lxs_plan* lxs_compile_to_plan(lxs_netlist *nl)
 		lxs_free_aligned(comb_driver);
 		lxs_free_aligned(level_cache);
 		lxs_free_aligned(visiting);
+		lxs_free_aligned(forced_levels);
 		lxs_free_aligned(net_remap);
 		lxs_free_aligned(net_assigned);
 		lxs_free_aligned(matched_gates);
@@ -1902,19 +2479,28 @@ lxs_plan* lxs_compile_to_plan(lxs_netlist *nl)
 		if (plan->multi_macro_count > 0U)
 		{
 		memset(multi_matched_gates, 0, (size_t)nl->gate_count * sizeof(uint8_t));
-		multi_macro_fill = lxs_collect_multi_macros(nl, comb_driver, multi_matched_gates, plan->multi_macros);
-		if (multi_macro_fill == UINT32_MAX)
+		multi_macro_fill = lxs_collect_source_multi_macros(nl, multi_matched_gates, plan->multi_macros);
+		{
+		uint32_t recognized_multi_fill = lxs_collect_multi_macros(
+			nl,
+			comb_driver,
+			multi_matched_gates,
+			plan->multi_macros + multi_macro_fill);
+		if (recognized_multi_fill == UINT32_MAX)
 			{
 			lxs_free_plan(plan);
 			lxs_free_aligned(comb_driver);
 			lxs_free_aligned(level_cache);
 			lxs_free_aligned(visiting);
+			lxs_free_aligned(forced_levels);
 			lxs_free_aligned(net_remap);
 			lxs_free_aligned(net_assigned);
 			lxs_free_aligned(matched_gates);
 			lxs_free_aligned(multi_matched_gates);
 			return NULL;
 			}
+		multi_macro_fill += recognized_multi_fill;
+		}
 		plan->multi_macro_count = multi_macro_fill;
 		}
 
@@ -1928,6 +2514,7 @@ lxs_plan* lxs_compile_to_plan(lxs_netlist *nl)
 			lxs_free_aligned(comb_driver);
 			lxs_free_aligned(level_cache);
 			lxs_free_aligned(visiting);
+			lxs_free_aligned(forced_levels);
 			lxs_free_aligned(net_remap);
 			lxs_free_aligned(net_assigned);
 			lxs_free_aligned(matched_gates);
@@ -1935,6 +2522,20 @@ lxs_plan* lxs_compile_to_plan(lxs_netlist *nl)
 			return NULL;
 			}
 		plan->macro_count = macro_fill;
+		qsort(plan->macros, plan->macro_count, sizeof(lxs_macro_plan), lxs_compare_macros);
+		}
+	else
+		{
+		plan->macro_count = 0U;
+		}
+
+	if (plan->multi_macro_count > 1U)
+		{
+		qsort(
+			plan->multi_macros,
+			plan->multi_macro_count,
+			sizeof(lxs_multi_macro_plan),
+			lxs_compare_multi_macros);
 		}
 
 	for (uint32_t level = 0; level < plan->level_count; ++level)
@@ -2003,6 +2604,7 @@ lxs_plan* lxs_compile_to_plan(lxs_netlist *nl)
 	lxs_free_aligned(comb_driver);
 	lxs_free_aligned(level_cache);
 	lxs_free_aligned(visiting);
+	lxs_free_aligned(forced_levels);
 	lxs_free_aligned(net_remap);
 	lxs_free_aligned(net_assigned);
 	lxs_free_aligned(matched_gates);

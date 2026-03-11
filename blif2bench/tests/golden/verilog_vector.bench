@@ -1,0 +1,5 @@
+INPUT(a[1])
+INPUT(a[0])
+
+y = OR(a[1],a[0])
+OUTPUT(y)

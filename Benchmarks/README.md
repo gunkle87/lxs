@@ -16,6 +16,9 @@
 ## Notes
 
 - `ITC99` is directly runnable.
-- `EPFL` is committed as converted `.bench` files produced by the offline `lxs_blif2bench` converter.
-- Direct `.blif` parsing is intentionally not part of the live engine path.
+- `EPFL` is committed as converted `.bench` files produced offline before entering the engine repo.
+- BLIF and flat structural Verilog inputs must be converted with `blif2bench\\net2bench.exe` before they enter the LXS engine workflow.
+- The live engine path is canonical BENCH only.
 - `IWLS2005` remains staged until a compatible source/parser path is added.
+- `tools\lxs_rewrite.ps1` is the unified offline arithmetic rewrite entry point.
+- `tools\lxs_rewrite_report.ps1` regenerates the current trusted rewrite report for original vs anchor vs packed arithmetic benches.
