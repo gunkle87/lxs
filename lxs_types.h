@@ -67,6 +67,18 @@ typedef enum lxs_source_macro_type
 	LXS_SOURCE_MACRO_TYPE_COUNT
 	} lxs_source_macro_type;
 
+typedef enum lxs_recognition_family
+	{
+	LXS_RECOGNITION_FAMILY_PARITY = 0,
+	LXS_RECOGNITION_FAMILY_SHARED_XOR,
+	LXS_RECOGNITION_FAMILY_SHARED_AND,
+	LXS_RECOGNITION_FAMILY_COMPARE,
+	LXS_RECOGNITION_FAMILY_REGISTER_EN,
+	LXS_RECOGNITION_FAMILY_ARITHMETIC,
+	LXS_RECOGNITION_FAMILY_CONTROL,
+	LXS_RECOGNITION_FAMILY_COUNT
+	} lxs_recognition_family;
+
 typedef enum lxs_register_mode
 	{
 	LXS_REGISTER_MODE_PLAIN = 0,
@@ -336,6 +348,9 @@ struct lxs_plan
 	uint32_t max_span_count;
 	uint32_t macro_count;
 	uint32_t multi_macro_count;
+	uint32_t recognition_mask;
+	uint32_t recognition_match_count[LXS_RECOGNITION_FAMILY_COUNT];
+	uint32_t recognition_node_reduction[LXS_RECOGNITION_FAMILY_COUNT];
 
 	lxs_gate_ir *comb_gates;
 	lxs_chunk_plan *chunks;

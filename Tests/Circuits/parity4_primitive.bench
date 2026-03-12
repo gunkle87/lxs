@@ -1,0 +1,8 @@
+INPUT(a)
+INPUT(b)
+INPUT(c)
+INPUT(d)
+OUTPUT(y)
+n0 = XOR(a, b)
+n1 = XOR(c, d)
+y = XOR(n0, n1)

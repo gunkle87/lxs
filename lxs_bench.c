@@ -98,6 +98,9 @@ typedef struct lxs_plan_profile
 	uint32_t max_level_chunk_count;
 	uint32_t single_chunk_level_count;
 	uint32_t gate_type_count[LXS_GATE_TYPE_COUNT];
+	uint32_t recognition_mask;
+	uint32_t recognition_match_count[LXS_RECOGNITION_FAMILY_COUNT];
+	uint32_t recognition_node_reduction[LXS_RECOGNITION_FAMILY_COUNT];
 	double mean_chunk_size;
 	} lxs_plan_profile;
 
@@ -455,6 +458,15 @@ static void lxs_build_plan_profile(
 
 	memset(profile, 0, sizeof(*profile));
 	lxs_make_circuit_name(root, path, profile->circuit_name, sizeof(profile->circuit_name));
+	profile->recognition_mask = plan->recognition_mask;
+	memcpy(
+		profile->recognition_match_count,
+		plan->recognition_match_count,
+		sizeof(profile->recognition_match_count));
+	memcpy(
+		profile->recognition_node_reduction,
+		plan->recognition_node_reduction,
+		sizeof(profile->recognition_node_reduction));
 	profile->comb_gate_count = plan->comb_gate_count;
 	profile->dff_count = plan->state.count;
 	profile->chunk_count = plan->span_count;
@@ -569,6 +581,32 @@ static void lxs_write_plan_profile(FILE *stream, const lxs_plan_profile *profile
 		profile->gate_type_count[LXS_GATE_NOR],
 		profile->gate_type_count[LXS_GATE_XNOR],
 		profile->gate_type_count[LXS_GATE_BUF]);
+
+	fprintf(
+		stream,
+		"# recognition,%s,mask=%u,parity_matches=%u,parity_node_reduction=%u,"
+		"shared_xor_matches=%u,shared_xor_node_reduction=%u,"
+		"shared_and_matches=%u,shared_and_node_reduction=%u,"
+		"compare_matches=%u,compare_node_reduction=%u,"
+		"register_en_matches=%u,register_en_node_reduction=%u,"
+		"arithmetic_matches=%u,arithmetic_node_reduction=%u,"
+		"control_matches=%u,control_node_reduction=%u\n",
+		profile->circuit_name,
+		profile->recognition_mask,
+		profile->recognition_match_count[LXS_RECOGNITION_FAMILY_PARITY],
+		profile->recognition_node_reduction[LXS_RECOGNITION_FAMILY_PARITY],
+		profile->recognition_match_count[LXS_RECOGNITION_FAMILY_SHARED_XOR],
+		profile->recognition_node_reduction[LXS_RECOGNITION_FAMILY_SHARED_XOR],
+		profile->recognition_match_count[LXS_RECOGNITION_FAMILY_SHARED_AND],
+		profile->recognition_node_reduction[LXS_RECOGNITION_FAMILY_SHARED_AND],
+		profile->recognition_match_count[LXS_RECOGNITION_FAMILY_COMPARE],
+		profile->recognition_node_reduction[LXS_RECOGNITION_FAMILY_COMPARE],
+		profile->recognition_match_count[LXS_RECOGNITION_FAMILY_REGISTER_EN],
+		profile->recognition_node_reduction[LXS_RECOGNITION_FAMILY_REGISTER_EN],
+		profile->recognition_match_count[LXS_RECOGNITION_FAMILY_ARITHMETIC],
+		profile->recognition_node_reduction[LXS_RECOGNITION_FAMILY_ARITHMETIC],
+		profile->recognition_match_count[LXS_RECOGNITION_FAMILY_CONTROL],
+		profile->recognition_node_reduction[LXS_RECOGNITION_FAMILY_CONTROL]);
 	}
 
 static void lxs_write_trace_header(FILE *stream)

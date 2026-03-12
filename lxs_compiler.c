@@ -2724,10 +2724,203 @@ static int lxs_try_match_sum_cinv2(
 	return 1;
 	}
 
+static uint32_t lxs_default_recognition_mask(void)
+	{
+	const char *text = getenv("LXS_RECOGNITION_MASK");
+	char *end = NULL;
+	unsigned long value;
+
+	if (!text || text[0] == '\0')
+		{
+		return 1UL << LXS_RECOGNITION_FAMILY_PARITY;
+		}
+
+	value = strtoul(text, &end, 0);
+	if (!end || *end != '\0')
+		{
+		return 1UL << LXS_RECOGNITION_FAMILY_PARITY;
+		}
+
+	return (uint32_t)value;
+	}
+
+static int lxs_recognition_family_enabled(uint32_t mask, uint32_t family)
+	{
+	if (family >= LXS_RECOGNITION_FAMILY_COUNT)
+		{
+		return 0;
+		}
+
+	return ((mask >> family) & 1U) != 0U;
+	}
+
+static void lxs_record_recognition(
+	uint32_t *match_count,
+	uint32_t *node_reduction,
+	uint32_t family,
+	uint32_t matched_gate_count)
+	{
+	if (!match_count || !node_reduction || family >= LXS_RECOGNITION_FAMILY_COUNT)
+		{
+		return;
+		}
+
+	match_count[family]++;
+	node_reduction[family] += matched_gate_count > 0U ? matched_gate_count - 1U : 0U;
+	}
+
+static int lxs_collect_parity_leaves(
+	const lxs_netlist *nl,
+	const int32_t *comb_driver,
+	const uint32_t *net_use_count,
+	const uint8_t *matched_gates,
+	uint32_t net_id,
+	uint32_t max_leaves,
+	uint32_t *leaves,
+	uint32_t *leaf_count,
+	uint32_t *gate_indices,
+	uint32_t *gate_count)
+	{
+	int32_t driver = comb_driver[net_id];
+	uint32_t leaf_slot;
+
+	if (driver < 0)
+		{
+		if (*leaf_count >= max_leaves)
+			{
+			return 0;
+			}
+		leaf_slot = *leaf_count;
+		leaves[leaf_slot] = net_id;
+		*leaf_count = leaf_slot + 1U;
+		return 1;
+		}
+
+	{
+	const lxs_gate_ir *gate = &nl->gates[(uint32_t)driver];
+	if (gate->type != LXS_GATE_XOR ||
+		gate->input_count != 2U ||
+		matched_gates[(uint32_t)driver] ||
+		net_use_count[net_id] != 1U)
+		{
+		if (*leaf_count >= max_leaves)
+			{
+			return 0;
+			}
+		leaf_slot = *leaf_count;
+		leaves[leaf_slot] = net_id;
+		*leaf_count = leaf_slot + 1U;
+		return 1;
+		}
+
+	if (!lxs_collect_parity_leaves(
+		nl,
+		comb_driver,
+		net_use_count,
+		matched_gates,
+		gate->inputs[0],
+		max_leaves,
+		leaves,
+		leaf_count,
+		gate_indices,
+		gate_count) ||
+		!lxs_collect_parity_leaves(
+			nl,
+			comb_driver,
+			net_use_count,
+			matched_gates,
+			gate->inputs[1],
+			max_leaves,
+			leaves,
+			leaf_count,
+			gate_indices,
+			gate_count))
+		{
+		return 0;
+		}
+
+	gate_indices[*gate_count] = (uint32_t)driver;
+	(*gate_count)++;
+	return 1;
+	}
+	}
+
+static int lxs_try_match_parity(
+	const lxs_netlist *nl,
+	const int32_t *comb_driver,
+	const uint32_t *net_use_count,
+	uint8_t *matched_gates,
+	uint32_t gate_index,
+	uint32_t leaf_target,
+	lxs_macro_plan *macro)
+	{
+	const lxs_gate_ir *root = &nl->gates[gate_index];
+	uint32_t leaves[8];
+	uint32_t gate_indices[7];
+	uint32_t leaf_count = 0U;
+	uint32_t gate_count = 0U;
+
+	if (root->type != LXS_GATE_XOR || root->input_count != 2U || matched_gates[gate_index])
+		{
+		return 0;
+		}
+
+	if (!lxs_collect_parity_leaves(
+		nl,
+		comb_driver,
+		net_use_count,
+		matched_gates,
+		root->inputs[0],
+		leaf_target,
+		leaves,
+		&leaf_count,
+		gate_indices,
+		&gate_count) ||
+		!lxs_collect_parity_leaves(
+			nl,
+			comb_driver,
+			net_use_count,
+			matched_gates,
+			root->inputs[1],
+			leaf_target,
+			leaves,
+			&leaf_count,
+			gate_indices,
+			&gate_count))
+		{
+		return 0;
+		}
+
+	gate_indices[gate_count++] = gate_index;
+	if (leaf_count != leaf_target || gate_count != (leaf_target - 1U))
+		{
+		return 0;
+		}
+
+	for (uint32_t i = 0; i < gate_count; ++i)
+		{
+		matched_gates[gate_indices[i]] = 1U;
+		}
+
+	memset(macro, 0, sizeof(*macro));
+	macro->type = (leaf_target == 8U) ? LXS_MACRO_PARITY8 : LXS_MACRO_PARITY4;
+	macro->level = root->level;
+	macro->output = root->output;
+	for (uint32_t i = 0; i < leaf_target; ++i)
+		{
+		macro->inputs[i] = leaves[i];
+		}
+	macro->gate_equiv_count = gate_count;
+	return 1;
+	}
+
 static uint32_t lxs_collect_macros(
 	const lxs_netlist *nl,
 	const int32_t *comb_driver,
 	uint8_t *matched_gates,
+	uint32_t recognition_mask,
+	uint32_t *family_match_count,
+	uint32_t *family_node_reduction,
 	lxs_macro_plan *macros)
 	{
 	uint32_t *net_use_count;
@@ -2736,6 +2929,7 @@ static uint32_t lxs_collect_macros(
 	net_use_count = lxs_calloc_aligned(nl->net_count, sizeof(uint32_t));
 	if (!net_use_count)
 		{
+		lxs_free_aligned(net_use_count);
 		return UINT32_MAX;
 		}
 
@@ -2750,6 +2944,29 @@ static uint32_t lxs_collect_macros(
 	for (uint32_t i = 0; i < nl->output_count; ++i)
 		{
 		net_use_count[nl->outputs[i]]++;
+		}
+
+	if (lxs_recognition_family_enabled(recognition_mask, LXS_RECOGNITION_FAMILY_PARITY))
+		{
+		for (uint32_t i = 0; i < nl->gate_count; ++i)
+			{
+			lxs_macro_plan macro;
+
+			if (lxs_try_match_parity(nl, comb_driver, net_use_count, matched_gates, i, 8U, &macro) ||
+				lxs_try_match_parity(nl, comb_driver, net_use_count, matched_gates, i, 4U, &macro))
+				{
+				if (macros)
+					{
+					macros[macro_count] = macro;
+					}
+				lxs_record_recognition(
+					family_match_count,
+					family_node_reduction,
+					LXS_RECOGNITION_FAMILY_PARITY,
+					macro.gate_equiv_count);
+				macro_count++;
+				}
+			}
 		}
 
 	for (uint32_t i = 0; i < nl->gate_count; ++i)
@@ -3074,14 +3291,21 @@ static uint32_t lxs_collect_multi_macros(
 	const lxs_netlist *nl,
 	const int32_t *comb_driver,
 	uint8_t *matched_gates,
+	uint32_t recognition_mask,
+	uint32_t *family_match_count,
+	uint32_t *family_node_reduction,
 	lxs_multi_macro_plan *macros)
 	{
 	uint32_t *net_use_count;
+	uint32_t *gate_use_count;
 	uint32_t macro_count = 0U;
 
 	net_use_count = lxs_calloc_aligned(nl->net_count, sizeof(uint32_t));
-	if (!net_use_count)
+	gate_use_count = lxs_calloc_aligned(nl->net_count, sizeof(uint32_t));
+	if (!net_use_count || !gate_use_count)
 		{
+		lxs_free_aligned(net_use_count);
+		lxs_free_aligned(gate_use_count);
 		return UINT32_MAX;
 		}
 
@@ -3090,12 +3314,134 @@ static uint32_t lxs_collect_multi_macros(
 		for (uint32_t j = 0; j < nl->gates[i].input_count; ++j)
 			{
 			net_use_count[nl->gates[i].inputs[j]]++;
+			gate_use_count[nl->gates[i].inputs[j]]++;
 			}
 		}
 
 	for (uint32_t i = 0; i < nl->output_count; ++i)
 		{
 		net_use_count[nl->outputs[i]]++;
+		}
+
+	if (lxs_recognition_family_enabled(recognition_mask, LXS_RECOGNITION_FAMILY_SHARED_XOR))
+		{
+		for (uint32_t i = 0; i < nl->gate_count; ++i)
+			{
+			const lxs_gate_ir *seed = &nl->gates[i];
+			for (uint32_t shared_slot = 0; shared_slot < 2U; ++shared_slot)
+				{
+				uint32_t shared;
+				uint32_t output_ids[8];
+				uint32_t leaf_ids[8];
+				uint32_t level = 0U;
+				uint32_t found = 0U;
+				int blocked = 0;
+				lxs_multi_macro_plan macro;
+
+				if (seed->type != LXS_GATE_XOR || seed->input_count != 2U || matched_gates[i])
+					{
+					continue;
+					}
+
+				shared = seed->inputs[shared_slot];
+				for (uint32_t j = 0; j < i; ++j)
+					{
+					const lxs_gate_ir *prior = &nl->gates[j];
+					if (matched_gates[j] || prior->type != LXS_GATE_XOR || prior->input_count != 2U)
+						{
+						continue;
+						}
+					if (prior->inputs[0] == shared || prior->inputs[1] == shared)
+						{
+						blocked = 1;
+						break;
+						}
+					}
+				if (blocked)
+					{
+					continue;
+					}
+
+				for (uint32_t j = i; j < nl->gate_count && found < 8U; ++j)
+					{
+					const lxs_gate_ir *gate = &nl->gates[j];
+					uint32_t leaf;
+					if (matched_gates[j] || gate->type != LXS_GATE_XOR || gate->input_count != 2U)
+						{
+						continue;
+						}
+					if (gate->inputs[0] == shared)
+						{
+						leaf = gate->inputs[1];
+						}
+					else if (gate->inputs[1] == shared)
+						{
+						leaf = gate->inputs[0];
+						}
+					else
+						{
+						continue;
+						}
+					if (gate_use_count[gate->output] > 0U)
+						{
+						continue;
+						}
+
+					output_ids[found] = gate->output;
+					leaf_ids[found] = leaf;
+					if (gate->level > level)
+						{
+						level = gate->level;
+						}
+					found++;
+					}
+
+				if (found != 8U)
+					{
+					continue;
+					}
+
+				for (uint32_t j = i, captured = 0U; j < nl->gate_count && captured < 8U; ++j)
+					{
+					const lxs_gate_ir *gate = &nl->gates[j];
+					if (matched_gates[j] || gate->type != LXS_GATE_XOR || gate->input_count != 2U)
+						{
+						continue;
+						}
+					if ((gate->inputs[0] == shared && gate->inputs[1] == leaf_ids[captured] && gate->output == output_ids[captured]) ||
+						(gate->inputs[1] == shared && gate->inputs[0] == leaf_ids[captured] && gate->output == output_ids[captured]))
+						{
+						matched_gates[j] = 1U;
+						captured++;
+						}
+					}
+
+				memset(&macro, 0, sizeof(macro));
+				macro.type = LXS_MULTI_MACRO_XOR_FAN8;
+				macro.level = level;
+				macro.inputs[0] = shared;
+				for (uint32_t j = 0; j < 8U; ++j)
+					{
+					macro.inputs[j + 1U] = leaf_ids[j];
+					macro.outputs[j] = output_ids[j];
+					}
+				macro.input_count = 9U;
+				macro.output_count = 8U;
+				macro.gate_equiv_count = 8U;
+
+				if (macros)
+					{
+					macros[macro_count] = macro;
+					}
+				lxs_record_recognition(
+					family_match_count,
+					family_node_reduction,
+					LXS_RECOGNITION_FAMILY_SHARED_XOR,
+					8U);
+				macro_count++;
+				break;
+				}
+			}
 		}
 
 	for (uint32_t i = 0; i < nl->gate_count; ++i)
@@ -3160,6 +3506,7 @@ static uint32_t lxs_collect_multi_macros(
 		}
 
 	lxs_free_aligned(net_use_count);
+	lxs_free_aligned(gate_use_count);
 	return macro_count;
 	}
 
@@ -4035,9 +4382,17 @@ lxs_plan* lxs_compile_to_plan(lxs_netlist *nl)
 
 	plan->net_count = nl->net_count;
 	plan->gate_count = nl->gate_count;
+	plan->recognition_mask = lxs_default_recognition_mask();
 	plan->multi_macro_count = lxs_collect_source_multi_macros(nl, multi_matched_gates, NULL);
 	{
-	uint32_t recognized_multi_count = lxs_collect_multi_macros(nl, comb_driver, multi_matched_gates, NULL);
+	uint32_t recognized_multi_count = lxs_collect_multi_macros(
+		nl,
+		comb_driver,
+		multi_matched_gates,
+		plan->recognition_mask,
+		plan->recognition_match_count,
+		plan->recognition_node_reduction,
+		NULL);
 	if (recognized_multi_count == UINT32_MAX)
 		{
 		lxs_free_aligned(comb_driver);
@@ -4055,7 +4410,14 @@ lxs_plan* lxs_compile_to_plan(lxs_netlist *nl)
 	memcpy(matched_gates, multi_matched_gates, (size_t)nl->gate_count * sizeof(uint8_t));
 	plan->macro_count = lxs_collect_source_macros(nl, matched_gates, NULL);
 	{
-	uint32_t recognized_macro_count = lxs_collect_macros(nl, comb_driver, matched_gates, NULL);
+	uint32_t recognized_macro_count = lxs_collect_macros(
+		nl,
+		comb_driver,
+		matched_gates,
+		plan->recognition_mask,
+		plan->recognition_match_count,
+		plan->recognition_node_reduction,
+		NULL);
 	if (recognized_macro_count == UINT32_MAX)
 		{
 		lxs_free_aligned(comb_driver);
@@ -4244,6 +4606,9 @@ lxs_plan* lxs_compile_to_plan(lxs_netlist *nl)
 			nl,
 			comb_driver,
 			multi_matched_gates,
+			plan->recognition_mask,
+			NULL,
+			NULL,
 			plan->multi_macros + multi_macro_fill);
 		if (recognized_multi_fill == UINT32_MAX)
 			{
@@ -4271,6 +4636,9 @@ lxs_plan* lxs_compile_to_plan(lxs_netlist *nl)
 			nl,
 			comb_driver,
 			matched_gates,
+			plan->recognition_mask,
+			NULL,
+			NULL,
 			plan->macros + macro_fill);
 		if (recognized_macro_fill == UINT32_MAX)
 			{

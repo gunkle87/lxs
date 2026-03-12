@@ -10,6 +10,15 @@ typedef struct lxs_loaded_case
 	lxs_engine_ctx ctx;
 	} lxs_loaded_case;
 
+static int lxs_set_env_var(const char *name, const char *value)
+	{
+#ifdef _WIN32
+	return _putenv_s(name, value) == 0;
+#else
+	return setenv(name, value, 1) == 0;
+#endif
+	}
+
 static int lxs_load_case(const char *path, lxs_loaded_case *loaded)
 	{
 	memset(loaded, 0, sizeof(*loaded));
@@ -581,6 +590,103 @@ static int lxs_test_parity8_explicit(void)
 	return ok;
 	}
 
+static int lxs_test_parity4_recognition(void)
+	{
+	lxs_loaded_case loaded;
+	uint64_t values[4];
+	uint64_t masks[4];
+	uint64_t out_values[1];
+	uint64_t out_masks[1];
+	int ok = 1;
+
+	if (!lxs_set_env_var("LXS_RECOGNITION_MASK", "1"))
+		{
+		fprintf(stderr, "FAIL parity4_recognition: unable to set recognition mask\n");
+		return 0;
+		}
+
+	if (!lxs_load_case("Tests\\Circuits\\parity4_primitive.bench", &loaded))
+		{
+		lxs_set_env_var("LXS_RECOGNITION_MASK", "");
+		fprintf(stderr, "FAIL parity4_recognition: unable to load test circuit\n");
+		return 0;
+		}
+
+	ok &= lxs_expect_u64("parity4_recognition.macro_count", loaded.plan->macro_count, 1ULL);
+	ok &= lxs_expect_u64("parity4_recognition.comb_gate_count", loaded.plan->comb_gate_count, 0ULL);
+	ok &= lxs_expect_u64(
+		"parity4_recognition.match_count",
+		loaded.plan->recognition_match_count[LXS_RECOGNITION_FAMILY_PARITY],
+		1ULL);
+	ok &= lxs_expect_u64(
+		"parity4_recognition.node_reduction",
+		loaded.plan->recognition_node_reduction[LXS_RECOGNITION_FAMILY_PARITY],
+		2ULL);
+
+	for (uint32_t combo = 0; combo < 16U; ++combo)
+		{
+		uint32_t a = (combo >> 3U) & 1U;
+		uint32_t b = (combo >> 2U) & 1U;
+		uint32_t c = (combo >> 1U) & 1U;
+		uint32_t d = combo & 1U;
+		uint32_t y = a ^ b ^ c ^ d;
+		char label[96];
+
+		values[0] = a ? ~0ULL : 0ULL;
+		values[1] = b ? ~0ULL : 0ULL;
+		values[2] = c ? ~0ULL : 0ULL;
+		values[3] = d ? ~0ULL : 0ULL;
+		memset(masks, 0, sizeof(masks));
+
+		lxs_apply_inputs(&loaded.ctx, loaded.plan, values, masks);
+		lxs_execute_plan(&loaded.ctx, loaded.plan);
+		lxs_read_outputs(&loaded.ctx, loaded.plan, out_values, out_masks);
+
+		snprintf(label, sizeof(label), "parity4_recognition.y.%u", combo);
+		ok &= lxs_expect_u64(label, out_values[0], y ? ~0ULL : 0ULL);
+		snprintf(label, sizeof(label), "parity4_recognition.mask.%u", combo);
+		ok &= lxs_expect_u64(label, out_masks[0], 0ULL);
+		}
+
+	lxs_unload_case(&loaded);
+	lxs_set_env_var("LXS_RECOGNITION_MASK", "");
+	return ok;
+	}
+
+static int lxs_test_parity4_recognition_negative(void)
+	{
+	lxs_loaded_case loaded;
+	int ok = 1;
+
+	if (!lxs_set_env_var("LXS_RECOGNITION_MASK", "1"))
+		{
+		fprintf(stderr, "FAIL parity4_recognition_negative: unable to set recognition mask\n");
+		return 0;
+		}
+
+	if (!lxs_load_case("Tests\\Circuits\\parity4_negative.bench", &loaded))
+		{
+		lxs_set_env_var("LXS_RECOGNITION_MASK", "");
+		fprintf(stderr, "FAIL parity4_recognition_negative: unable to load test circuit\n");
+		return 0;
+		}
+
+	ok &= lxs_expect_u64("parity4_recognition_negative.macro_count", loaded.plan->macro_count, 0ULL);
+	ok &= lxs_expect_u64("parity4_recognition_negative.comb_gate_count", loaded.plan->comb_gate_count, 4ULL);
+	ok &= lxs_expect_u64(
+		"parity4_recognition_negative.match_count",
+		loaded.plan->recognition_match_count[LXS_RECOGNITION_FAMILY_PARITY],
+		0ULL);
+	ok &= lxs_expect_u64(
+		"parity4_recognition_negative.node_reduction",
+		loaded.plan->recognition_node_reduction[LXS_RECOGNITION_FAMILY_PARITY],
+		0ULL);
+
+	lxs_unload_case(&loaded);
+	lxs_set_env_var("LXS_RECOGNITION_MASK", "");
+	return ok;
+	}
+
 static int lxs_test_xor_fan8_explicit(void)
 	{
 	lxs_loaded_case loaded;
@@ -629,6 +735,107 @@ static int lxs_test_xor_fan8_explicit(void)
 		}
 
 	lxs_unload_case(&loaded);
+	return ok;
+	}
+
+static int lxs_test_xor_fan8_recognition(void)
+	{
+	lxs_loaded_case loaded;
+	uint64_t values[9];
+	uint64_t masks[9];
+	uint64_t out_values[8];
+	uint64_t out_masks[8];
+	int ok = 1;
+
+	if (!lxs_set_env_var("LXS_RECOGNITION_MASK", "2"))
+		{
+		fprintf(stderr, "FAIL xor_fan8_recognition: unable to set recognition mask\n");
+		return 0;
+		}
+
+	if (!lxs_load_case("Tests\\Circuits\\xor_fan8_primitive.bench", &loaded))
+		{
+		lxs_set_env_var("LXS_RECOGNITION_MASK", "");
+		fprintf(stderr, "FAIL xor_fan8_recognition: unable to load test circuit\n");
+		return 0;
+		}
+
+	ok &= lxs_expect_u64("xor_fan8_recognition.macro_count", loaded.plan->macro_count, 0ULL);
+	ok &= lxs_expect_u64("xor_fan8_recognition.multi_macro_count", loaded.plan->multi_macro_count, 1ULL);
+	ok &= lxs_expect_u64("xor_fan8_recognition.comb_gate_count", loaded.plan->comb_gate_count, 0ULL);
+	ok &= lxs_expect_u64(
+		"xor_fan8_recognition.match_count",
+		loaded.plan->recognition_match_count[LXS_RECOGNITION_FAMILY_SHARED_XOR],
+		1ULL);
+	ok &= lxs_expect_u64(
+		"xor_fan8_recognition.node_reduction",
+		loaded.plan->recognition_node_reduction[LXS_RECOGNITION_FAMILY_SHARED_XOR],
+		7ULL);
+
+	for (uint32_t combo = 0; combo < 512U; ++combo)
+		{
+		uint32_t s = (combo >> 8U) & 1U;
+		char label[96];
+
+		values[0] = s ? ~0ULL : 0ULL;
+		masks[0] = 0ULL;
+		for (uint32_t i = 0; i < 8U; ++i)
+			{
+			uint32_t bit = (combo >> i) & 1U;
+			values[i + 1U] = bit ? ~0ULL : 0ULL;
+			masks[i + 1U] = 0ULL;
+			}
+
+		lxs_apply_inputs(&loaded.ctx, loaded.plan, values, masks);
+		lxs_execute_plan(&loaded.ctx, loaded.plan);
+		lxs_read_outputs(&loaded.ctx, loaded.plan, out_values, out_masks);
+
+		for (uint32_t i = 0; i < 8U; ++i)
+			{
+			uint32_t y = s ^ ((combo >> i) & 1U);
+			snprintf(label, sizeof(label), "xor_fan8_recognition.y%u.%u", i, combo);
+			ok &= lxs_expect_u64(label, out_values[i], y ? ~0ULL : 0ULL);
+			snprintf(label, sizeof(label), "xor_fan8_recognition.mask%u.%u", i, combo);
+			ok &= lxs_expect_u64(label, out_masks[i], 0ULL);
+			}
+		}
+
+	lxs_unload_case(&loaded);
+	lxs_set_env_var("LXS_RECOGNITION_MASK", "");
+	return ok;
+	}
+
+static int lxs_test_xor_fan8_recognition_negative(void)
+	{
+	lxs_loaded_case loaded;
+	int ok = 1;
+
+	if (!lxs_set_env_var("LXS_RECOGNITION_MASK", "2"))
+		{
+		fprintf(stderr, "FAIL xor_fan8_recognition_negative: unable to set recognition mask\n");
+		return 0;
+		}
+
+	if (!lxs_load_case("Tests\\Circuits\\xor_fan8_negative.bench", &loaded))
+		{
+		lxs_set_env_var("LXS_RECOGNITION_MASK", "");
+		fprintf(stderr, "FAIL xor_fan8_recognition_negative: unable to load test circuit\n");
+		return 0;
+		}
+
+	ok &= lxs_expect_u64("xor_fan8_recognition_negative.multi_macro_count", loaded.plan->multi_macro_count, 0ULL);
+	ok &= lxs_expect_u64("xor_fan8_recognition_negative.comb_gate_count", loaded.plan->comb_gate_count, 9ULL);
+	ok &= lxs_expect_u64(
+		"xor_fan8_recognition_negative.match_count",
+		loaded.plan->recognition_match_count[LXS_RECOGNITION_FAMILY_SHARED_XOR],
+		0ULL);
+	ok &= lxs_expect_u64(
+		"xor_fan8_recognition_negative.node_reduction",
+		loaded.plan->recognition_node_reduction[LXS_RECOGNITION_FAMILY_SHARED_XOR],
+		0ULL);
+
+	lxs_unload_case(&loaded);
+	lxs_set_env_var("LXS_RECOGNITION_MASK", "");
 	return ok;
 	}
 
@@ -2255,7 +2462,11 @@ int main(void)
 	ok &= lxs_test_xnor2_macro();
 	ok &= lxs_test_parity4_explicit();
 	ok &= lxs_test_parity8_explicit();
+	ok &= lxs_test_parity4_recognition();
+	ok &= lxs_test_parity4_recognition_negative();
 	ok &= lxs_test_xor_fan8_explicit();
+	ok &= lxs_test_xor_fan8_recognition();
+	ok &= lxs_test_xor_fan8_recognition_negative();
 	ok &= lxs_test_and_fan8_explicit();
 	ok &= lxs_test_guard_chain4_explicit();
 	ok &= lxs_test_xnor_bank4_explicit();
