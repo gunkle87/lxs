@@ -87,6 +87,9 @@ typedef struct lxs_plan_profile
 	uint32_t comb_gate_count;
 	uint32_t dff_count;
 	uint32_t chunk_count;
+	uint32_t primitive_step_count;
+	uint32_t macro_step_count;
+	uint32_t total_step_count;
 	uint32_t max_chunk_size;
 	uint32_t median_chunk_size;
 	uint32_t tiny_chunk_count;
@@ -101,7 +104,14 @@ typedef struct lxs_plan_profile
 	uint32_t recognition_mask;
 	uint32_t recognition_match_count[LXS_RECOGNITION_FAMILY_COUNT];
 	uint32_t recognition_node_reduction[LXS_RECOGNITION_FAMILY_COUNT];
+	uint32_t recognition_gate_equiv[LXS_RECOGNITION_FAMILY_COUNT];
+	uint64_t primitive_gate_equiv;
+	uint64_t macro_gate_equiv;
+	uint64_t total_gate_equiv;
 	double mean_chunk_size;
+	double macro_step_share;
+	double absorbed_work_share;
+	double recognition_absorbed_work_share[LXS_RECOGNITION_FAMILY_COUNT];
 	} lxs_plan_profile;
 
 typedef struct lxs_trace_row
@@ -470,6 +480,9 @@ static void lxs_build_plan_profile(
 	profile->comb_gate_count = plan->comb_gate_count;
 	profile->dff_count = plan->state.count;
 	profile->chunk_count = plan->span_count;
+	profile->primitive_step_count = plan->span_count;
+	profile->macro_step_count = plan->macro_count + plan->multi_macro_count;
+	profile->total_step_count = profile->primitive_step_count + profile->macro_step_count;
 
 	if (plan->span_count > 0U)
 		{
@@ -485,6 +498,8 @@ static void lxs_build_plan_profile(
 			{
 			chunk_sizes[i] = size;
 			}
+
+		profile->primitive_gate_equiv += chunk->gate_equiv_count;
 
 		profile->gate_type_count[chunk->type] += size;
 		if (size > profile->max_chunk_size)
@@ -514,6 +529,35 @@ static void lxs_build_plan_profile(
 	profile->binary_gate_count = plan->comb_gate_count - profile->unary_gate_count;
 	profile->mean_chunk_size =
 		plan->span_count > 0U ? (double)plan->comb_gate_count / (double)plan->span_count : 0.0;
+	for (uint32_t i = 0; i < plan->macro_count; ++i)
+		{
+		profile->macro_gate_equiv += plan->macros[i].gate_equiv_count;
+		}
+	for (uint32_t i = 0; i < plan->multi_macro_count; ++i)
+		{
+		profile->macro_gate_equiv += plan->multi_macros[i].gate_equiv_count;
+		}
+	profile->total_gate_equiv = profile->primitive_gate_equiv + profile->macro_gate_equiv;
+	if (profile->total_step_count > 0U)
+		{
+		profile->macro_step_share =
+			(double)profile->macro_step_count / (double)profile->total_step_count;
+		}
+	if (profile->total_gate_equiv > 0U)
+		{
+		profile->absorbed_work_share =
+			(double)profile->macro_gate_equiv / (double)profile->total_gate_equiv;
+		}
+	for (uint32_t family = 0; family < LXS_RECOGNITION_FAMILY_COUNT; ++family)
+		{
+		profile->recognition_gate_equiv[family] =
+			profile->recognition_match_count[family] + profile->recognition_node_reduction[family];
+		if (profile->total_gate_equiv > 0U)
+			{
+			profile->recognition_absorbed_work_share[family] =
+				(double)profile->recognition_gate_equiv[family] / (double)profile->total_gate_equiv;
+			}
+		}
 
 	for (uint32_t level = 0; level < plan->level_count; ++level)
 		{
@@ -553,7 +597,9 @@ static void lxs_write_plan_profile(FILE *stream, const lxs_plan_profile *profile
 	{
 	fprintf(
 		stream,
-		"# struct,%s,comb_gates=%u,dff=%u,chunks=%u,max_chunk=%u,median_chunk=%u,mean_chunk=%.3f,"
+		"# struct,%s,comb_gates=%u,dff=%u,chunks=%u,primitive_steps=%u,macro_steps=%u,total_steps=%u,"
+		"macro_step_share=%.6f,primitive_gate_equiv=%llu,macro_gate_equiv=%llu,total_gate_equiv=%llu,"
+		"absorbed_work_share=%.6f,max_chunk=%u,median_chunk=%u,mean_chunk=%.3f,"
 		"tiny_chunks=%u,small_chunks=%u,large_chunks=%u,unary_gates=%u,binary_gates=%u,"
 		"max_level_gates=%u,max_level_chunks=%u,single_chunk_levels=%u,"
 		"and=%u,or=%u,xor=%u,tri=%u,not=%u,nand=%u,nor=%u,xnor=%u,buf=%u\n",
@@ -561,6 +607,14 @@ static void lxs_write_plan_profile(FILE *stream, const lxs_plan_profile *profile
 		profile->comb_gate_count,
 		profile->dff_count,
 		profile->chunk_count,
+		profile->primitive_step_count,
+		profile->macro_step_count,
+		profile->total_step_count,
+		profile->macro_step_share,
+		(unsigned long long)profile->primitive_gate_equiv,
+		(unsigned long long)profile->macro_gate_equiv,
+		(unsigned long long)profile->total_gate_equiv,
+		profile->absorbed_work_share,
 		profile->max_chunk_size,
 		profile->median_chunk_size,
 		profile->mean_chunk_size,
@@ -585,28 +639,49 @@ static void lxs_write_plan_profile(FILE *stream, const lxs_plan_profile *profile
 	fprintf(
 		stream,
 		"# recognition,%s,mask=%u,parity_matches=%u,parity_node_reduction=%u,"
+		"parity_gate_equiv=%u,parity_absorbed_work_share=%.6f,"
 		"shared_xor_matches=%u,shared_xor_node_reduction=%u,"
+		"shared_xor_gate_equiv=%u,shared_xor_absorbed_work_share=%.6f,"
 		"shared_and_matches=%u,shared_and_node_reduction=%u,"
+		"shared_and_gate_equiv=%u,shared_and_absorbed_work_share=%.6f,"
 		"compare_matches=%u,compare_node_reduction=%u,"
+		"compare_gate_equiv=%u,compare_absorbed_work_share=%.6f,"
 		"register_en_matches=%u,register_en_node_reduction=%u,"
+		"register_en_gate_equiv=%u,register_en_absorbed_work_share=%.6f,"
 		"arithmetic_matches=%u,arithmetic_node_reduction=%u,"
-		"control_matches=%u,control_node_reduction=%u\n",
+		"arithmetic_gate_equiv=%u,arithmetic_absorbed_work_share=%.6f,"
+		"control_matches=%u,control_node_reduction=%u,"
+		"control_gate_equiv=%u,control_absorbed_work_share=%.6f\n",
 		profile->circuit_name,
 		profile->recognition_mask,
 		profile->recognition_match_count[LXS_RECOGNITION_FAMILY_PARITY],
 		profile->recognition_node_reduction[LXS_RECOGNITION_FAMILY_PARITY],
+		profile->recognition_gate_equiv[LXS_RECOGNITION_FAMILY_PARITY],
+		profile->recognition_absorbed_work_share[LXS_RECOGNITION_FAMILY_PARITY],
 		profile->recognition_match_count[LXS_RECOGNITION_FAMILY_SHARED_XOR],
 		profile->recognition_node_reduction[LXS_RECOGNITION_FAMILY_SHARED_XOR],
+		profile->recognition_gate_equiv[LXS_RECOGNITION_FAMILY_SHARED_XOR],
+		profile->recognition_absorbed_work_share[LXS_RECOGNITION_FAMILY_SHARED_XOR],
 		profile->recognition_match_count[LXS_RECOGNITION_FAMILY_SHARED_AND],
 		profile->recognition_node_reduction[LXS_RECOGNITION_FAMILY_SHARED_AND],
+		profile->recognition_gate_equiv[LXS_RECOGNITION_FAMILY_SHARED_AND],
+		profile->recognition_absorbed_work_share[LXS_RECOGNITION_FAMILY_SHARED_AND],
 		profile->recognition_match_count[LXS_RECOGNITION_FAMILY_COMPARE],
 		profile->recognition_node_reduction[LXS_RECOGNITION_FAMILY_COMPARE],
+		profile->recognition_gate_equiv[LXS_RECOGNITION_FAMILY_COMPARE],
+		profile->recognition_absorbed_work_share[LXS_RECOGNITION_FAMILY_COMPARE],
 		profile->recognition_match_count[LXS_RECOGNITION_FAMILY_REGISTER_EN],
 		profile->recognition_node_reduction[LXS_RECOGNITION_FAMILY_REGISTER_EN],
+		profile->recognition_gate_equiv[LXS_RECOGNITION_FAMILY_REGISTER_EN],
+		profile->recognition_absorbed_work_share[LXS_RECOGNITION_FAMILY_REGISTER_EN],
 		profile->recognition_match_count[LXS_RECOGNITION_FAMILY_ARITHMETIC],
 		profile->recognition_node_reduction[LXS_RECOGNITION_FAMILY_ARITHMETIC],
+		profile->recognition_gate_equiv[LXS_RECOGNITION_FAMILY_ARITHMETIC],
+		profile->recognition_absorbed_work_share[LXS_RECOGNITION_FAMILY_ARITHMETIC],
 		profile->recognition_match_count[LXS_RECOGNITION_FAMILY_CONTROL],
-		profile->recognition_node_reduction[LXS_RECOGNITION_FAMILY_CONTROL]);
+		profile->recognition_node_reduction[LXS_RECOGNITION_FAMILY_CONTROL],
+		profile->recognition_gate_equiv[LXS_RECOGNITION_FAMILY_CONTROL],
+		profile->recognition_absorbed_work_share[LXS_RECOGNITION_FAMILY_CONTROL]);
 	}
 
 static void lxs_write_trace_header(FILE *stream)
