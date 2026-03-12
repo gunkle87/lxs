@@ -1013,6 +1013,219 @@ static int lxs_test_xnor_bank4_explicit(void)
 	return ok;
 	}
 
+static int lxs_test_xnor_bank4_recognition(void)
+	{
+	lxs_loaded_case loaded;
+	uint64_t values[8];
+	uint64_t masks[8];
+	uint64_t out_values[4];
+	uint64_t out_masks[4];
+	int ok = 1;
+
+	if (!lxs_set_env_var("LXS_RECOGNITION_MASK", "8"))
+		{
+		fprintf(stderr, "FAIL xnor_bank4_recognition: unable to set recognition mask\n");
+		return 0;
+		}
+
+	if (!lxs_load_case("Tests\\Circuits\\xnor_bank4_primitive.bench", &loaded))
+		{
+		fprintf(stderr, "FAIL xnor_bank4_recognition: unable to load test circuit\n");
+		lxs_set_env_var("LXS_RECOGNITION_MASK", NULL);
+		return 0;
+		}
+
+	ok &= lxs_expect_u64("xnor_bank4_recognition.macro_count", loaded.plan->macro_count, 0ULL);
+	ok &= lxs_expect_u64("xnor_bank4_recognition.multi_macro_count", loaded.plan->multi_macro_count, 1ULL);
+	ok &= lxs_expect_u64("xnor_bank4_recognition.comb_gate_count", loaded.plan->comb_gate_count, 0ULL);
+	ok &= lxs_expect_u64(
+		"xnor_bank4_recognition.match_count",
+		loaded.plan->recognition_match_count[LXS_RECOGNITION_FAMILY_COMPARE],
+		1ULL);
+	ok &= lxs_expect_u64(
+		"xnor_bank4_recognition.node_reduction",
+		loaded.plan->recognition_node_reduction[LXS_RECOGNITION_FAMILY_COMPARE],
+		7ULL);
+
+	for (uint32_t combo = 0; combo < 256U; ++combo)
+		{
+		char label[96];
+
+		for (uint32_t i = 0; i < 8U; ++i)
+			{
+			uint32_t bit = (combo >> i) & 1U;
+			values[i] = bit ? ~0ULL : 0ULL;
+			masks[i] = 0ULL;
+			}
+
+		lxs_apply_inputs(&loaded.ctx, loaded.plan, values, masks);
+		lxs_execute_plan(&loaded.ctx, loaded.plan);
+		lxs_read_outputs(&loaded.ctx, loaded.plan, out_values, out_masks);
+
+		for (uint32_t i = 0; i < 4U; ++i)
+			{
+			uint32_t lhs = (combo >> (i * 2U)) & 1U;
+			uint32_t rhs = (combo >> (i * 2U + 1U)) & 1U;
+			uint32_t eq = lhs == rhs ? 1U : 0U;
+
+			snprintf(label, sizeof(label), "xnor_bank4_recognition.eq%u.%u", i, combo);
+			ok &= lxs_expect_u64(label, out_values[i], eq ? ~0ULL : 0ULL);
+			snprintf(label, sizeof(label), "xnor_bank4_recognition.mask%u.%u", i, combo);
+			ok &= lxs_expect_u64(label, out_masks[i], 0ULL);
+			}
+		}
+
+	lxs_unload_case(&loaded);
+	lxs_set_env_var("LXS_RECOGNITION_MASK", NULL);
+	return ok;
+	}
+
+static int lxs_test_xnor_bank4_recognition_negative(void)
+	{
+	lxs_loaded_case loaded;
+	int ok = 1;
+
+	if (!lxs_set_env_var("LXS_RECOGNITION_MASK", "8"))
+		{
+		fprintf(stderr, "FAIL xnor_bank4_recognition_negative: unable to set recognition mask\n");
+		return 0;
+		}
+
+	if (!lxs_load_case("Tests\\Circuits\\xnor_bank4_negative.bench", &loaded))
+		{
+		fprintf(stderr, "FAIL xnor_bank4_recognition_negative: unable to load test circuit\n");
+		lxs_set_env_var("LXS_RECOGNITION_MASK", NULL);
+		return 0;
+		}
+
+	ok &= lxs_expect_u64("xnor_bank4_recognition_negative.multi_macro_count", loaded.plan->multi_macro_count, 0ULL);
+	ok &= lxs_expect_u64("xnor_bank4_recognition_negative.comb_gate_count", loaded.plan->comb_gate_count, 9ULL);
+	ok &= lxs_expect_u64(
+		"xnor_bank4_recognition_negative.match_count",
+		loaded.plan->recognition_match_count[LXS_RECOGNITION_FAMILY_COMPARE],
+		0ULL);
+	ok &= lxs_expect_u64(
+		"xnor_bank4_recognition_negative.node_reduction",
+		loaded.plan->recognition_node_reduction[LXS_RECOGNITION_FAMILY_COMPARE],
+		0ULL);
+
+	lxs_unload_case(&loaded);
+	lxs_set_env_var("LXS_RECOGNITION_MASK", NULL);
+	return ok;
+	}
+
+static int lxs_test_ripple_slice2_cinv_recognition(void)
+	{
+	lxs_loaded_case loaded;
+	uint64_t values[5];
+	uint64_t masks[5];
+	uint64_t out_values[3];
+	uint64_t out_masks[3];
+	int ok = 1;
+
+	if (!lxs_set_env_var("LXS_RECOGNITION_MASK", "32"))
+		{
+		fprintf(stderr, "FAIL ripple_slice2_cinv_recognition: unable to set recognition mask\n");
+		return 0;
+		}
+
+	if (!lxs_load_case("Tests\\Circuits\\ripple_slice2_cinv_primitive.bench", &loaded))
+		{
+		fprintf(stderr, "FAIL ripple_slice2_cinv_recognition: unable to load test circuit\n");
+		lxs_set_env_var("LXS_RECOGNITION_MASK", NULL);
+		return 0;
+		}
+
+	ok &= lxs_expect_u64("ripple_slice2_cinv_recognition.macro_count", loaded.plan->macro_count, 0ULL);
+	ok &= lxs_expect_u64("ripple_slice2_cinv_recognition.multi_macro_count", loaded.plan->multi_macro_count, 1ULL);
+	ok &= lxs_expect_u64("ripple_slice2_cinv_recognition.comb_gate_count", loaded.plan->comb_gate_count, 0ULL);
+	ok &= lxs_expect_u64(
+		"ripple_slice2_cinv_recognition.match_count",
+		loaded.plan->recognition_match_count[LXS_RECOGNITION_FAMILY_ARITHMETIC],
+		1ULL);
+	ok &= lxs_expect_u64(
+		"ripple_slice2_cinv_recognition.node_reduction",
+		loaded.plan->recognition_node_reduction[LXS_RECOGNITION_FAMILY_ARITHMETIC],
+		11ULL);
+
+	for (uint32_t combo = 0; combo < 32U; ++combo)
+		{
+		uint32_t a0 = (combo >> 4U) & 1U;
+		uint32_t b0 = (combo >> 3U) & 1U;
+		uint32_t a1 = (combo >> 2U) & 1U;
+		uint32_t b1 = (combo >> 1U) & 1U;
+		uint32_t cin_n = combo & 1U;
+		uint32_t cin = cin_n ? 0U : 1U;
+		uint32_t value = (a0 + b0 + cin) + ((a1 + b1) << 1U);
+		uint32_t low_sum = (a0 ^ b0 ^ cin) & 1U;
+		uint32_t carry0 = ((a0 & b0) | (a0 & cin) | (b0 & cin)) & 1U;
+		uint32_t high_sum = (a1 ^ b1 ^ carry0) & 1U;
+		uint32_t carry1 = ((a1 & b1) | (a1 & carry0) | (b1 & carry0)) & 1U;
+		char label[112];
+
+		(void)value;
+		values[0] = a0 ? ~0ULL : 0ULL;
+		values[1] = b0 ? ~0ULL : 0ULL;
+		values[2] = a1 ? ~0ULL : 0ULL;
+		values[3] = b1 ? ~0ULL : 0ULL;
+		values[4] = cin_n ? ~0ULL : 0ULL;
+		memset(masks, 0, sizeof(masks));
+
+		lxs_apply_inputs(&loaded.ctx, loaded.plan, values, masks);
+		lxs_execute_plan(&loaded.ctx, loaded.plan);
+		lxs_read_outputs(&loaded.ctx, loaded.plan, out_values, out_masks);
+
+		snprintf(label, sizeof(label), "ripple_slice2_cinv_recognition.sum0.%u", combo);
+		ok &= lxs_expect_u64(label, out_values[0], low_sum ? ~0ULL : 0ULL);
+		snprintf(label, sizeof(label), "ripple_slice2_cinv_recognition.sum1.%u", combo);
+		ok &= lxs_expect_u64(label, out_values[1], high_sum ? ~0ULL : 0ULL);
+		snprintf(label, sizeof(label), "ripple_slice2_cinv_recognition.cout_n.%u", combo);
+		ok &= lxs_expect_u64(label, out_values[2], carry1 ? 0ULL : ~0ULL);
+		for (uint32_t i = 0; i < 3U; ++i)
+			{
+			snprintf(label, sizeof(label), "ripple_slice2_cinv_recognition.mask%u.%u", i, combo);
+			ok &= lxs_expect_u64(label, out_masks[i], 0ULL);
+			}
+		}
+
+	lxs_unload_case(&loaded);
+	lxs_set_env_var("LXS_RECOGNITION_MASK", NULL);
+	return ok;
+	}
+
+static int lxs_test_ripple_slice2_cinv_recognition_negative(void)
+	{
+	lxs_loaded_case loaded;
+	int ok = 1;
+
+	if (!lxs_set_env_var("LXS_RECOGNITION_MASK", "32"))
+		{
+		fprintf(stderr, "FAIL ripple_slice2_cinv_recognition_negative: unable to set recognition mask\n");
+		return 0;
+		}
+
+	if (!lxs_load_case("Tests\\Circuits\\ripple_slice2_cinv_negative.bench", &loaded))
+		{
+		fprintf(stderr, "FAIL ripple_slice2_cinv_recognition_negative: unable to load test circuit\n");
+		lxs_set_env_var("LXS_RECOGNITION_MASK", NULL);
+		return 0;
+		}
+
+	ok &= lxs_expect_u64("ripple_slice2_cinv_recognition_negative.multi_macro_count", loaded.plan->multi_macro_count, 0ULL);
+	ok &= lxs_expect_u64(
+		"ripple_slice2_cinv_recognition_negative.match_count",
+		loaded.plan->recognition_match_count[LXS_RECOGNITION_FAMILY_ARITHMETIC],
+		0ULL);
+	ok &= lxs_expect_u64(
+		"ripple_slice2_cinv_recognition_negative.node_reduction",
+		loaded.plan->recognition_node_reduction[LXS_RECOGNITION_FAMILY_ARITHMETIC],
+		0ULL);
+
+	lxs_unload_case(&loaded);
+	lxs_set_env_var("LXS_RECOGNITION_MASK", NULL);
+	return ok;
+	}
+
 static int lxs_test_wide_gates_explicit(void)
 	{
 	lxs_loaded_case loaded;
@@ -2470,6 +2683,10 @@ int main(void)
 	ok &= lxs_test_and_fan8_explicit();
 	ok &= lxs_test_guard_chain4_explicit();
 	ok &= lxs_test_xnor_bank4_explicit();
+	ok &= lxs_test_xnor_bank4_recognition();
+	ok &= lxs_test_xnor_bank4_recognition_negative();
+	ok &= lxs_test_ripple_slice2_cinv_recognition();
+	ok &= lxs_test_ripple_slice2_cinv_recognition_negative();
 	ok &= lxs_test_wide_gates_explicit();
 	ok &= lxs_test_carry_inv2_macro();
 	ok &= lxs_test_sum_cinv2_macro();
