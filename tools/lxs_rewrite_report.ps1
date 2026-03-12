@@ -7,11 +7,27 @@ $cycles = if ($args.Length -gt 3) { [int]$args[3] } else { 10000 }
 $trials = if ($args.Length -gt 4) { [int]$args[4] } else { 512 }
 
 $root = Split-Path -Parent $MyInvocation.MyCommand.Path | Split-Path -Parent
-$benchExe = Join-Path $root "lxs_bench.exe"
-$compareExe = Join-Path $root "lxs_compare.exe"
+$benchExe = Join-Path $root "build\bin\lxs_bench.exe"
+$compareExe = Join-Path $root "build\bin\lxs_compare.exe"
 $reportPath = Join-Path $root "Benchmarks\Generated\rewrite_report.csv"
 
 $cases = @(
+	@{
+		Name = "c499_and_fan8"
+		Class = "routing_fanout"
+		Original = "Benchmarks\Benches\ISCAS85\c499.bench"
+		Anchor = "Benchmarks\Generated\c499_and_fan8.bench"
+		Packed = "Benchmarks\Generated\c499_and_fan8.bench"
+		Trials = 2048
+	},
+	@{
+		Name = "c499"
+		Class = "parity"
+		Original = "Benchmarks\Benches\ISCAS85\c499.bench"
+		Anchor = "Benchmarks\Generated\c499_parity4.bench"
+		Packed = "Benchmarks\Generated\c499_parity8.bench"
+		Trials = 2048
+	},
 	@{
 		Name = "c6288"
 		Class = "multiplier"

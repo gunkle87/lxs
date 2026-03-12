@@ -1,0 +1,13 @@
+INPUT(inv_in)
+INPUT(x0)
+INPUT(x1)
+INPUT(x2)
+INPUT(x3)
+
+OUTPUT(y0)
+OUTPUT(y1)
+OUTPUT(y2)
+OUTPUT(y3)
+OUTPUT(inv_out)
+
+y0, y1, y2, y3, inv_out = GUARD_CHAIN4(inv_in, x0, x1, x2, x3)

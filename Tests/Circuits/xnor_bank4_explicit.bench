@@ -1,0 +1,15 @@
+INPUT(a0)
+INPUT(b0)
+INPUT(a1)
+INPUT(b1)
+INPUT(a2)
+INPUT(b2)
+INPUT(a3)
+INPUT(b3)
+
+OUTPUT(eq0)
+OUTPUT(eq1)
+OUTPUT(eq2)
+OUTPUT(eq3)
+
+eq0, eq1, eq2, eq3 = XNOR_BANK4(a0, b0, a1, b1, a2, b2, a3, b3)

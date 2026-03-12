@@ -57,7 +57,399 @@ static void lxs_free_aligned(void *ptr)
 #endif
 	}
 
-static void lxs_execute_binary_chunk(
+static uint32_t lxs_read_index_bits(
+	const lxs_engine_ctx *ctx,
+	const uint32_t *net_ids,
+	uint32_t start,
+	uint32_t width,
+	uint8_t *unknown)
+	{
+	uint32_t index = 0U;
+
+	*unknown = 0U;
+	for (uint32_t bit = 0; bit < width; ++bit)
+		{
+		uint32_t net_id = net_ids[start + bit];
+		if (ctx->net_mask[net_id] != 0ULL)
+			{
+			*unknown = 1U;
+			continue;
+			}
+		if (ctx->net_value[net_id] != 0ULL)
+			{
+			index |= (1U << bit);
+			}
+		}
+
+	return index;
+	}
+
+static void lxs_write_unknown_outputs(
+	lxs_engine_ctx *ctx,
+	const uint32_t *net_ids,
+	uint32_t start,
+	uint32_t count)
+	{
+	for (uint32_t bit = 0; bit < count; ++bit)
+		{
+		uint32_t net_id = net_ids[start + bit];
+		ctx->net_value[net_id] = 0ULL;
+		ctx->net_mask[net_id] = ~0ULL;
+		}
+	}
+
+static void lxs_materialize_register_outputs(
+	lxs_engine_ctx *ctx,
+	const lxs_plan *plan)
+	{
+	for (uint32_t i = 0; i < plan->register_count; ++i)
+		{
+		const lxs_register_plan *reg = &plan->registers[i];
+		for (uint32_t bit = 0; bit < reg->width_bits; ++bit)
+			{
+			uint32_t storage_index = reg->storage_offset + bit;
+			uint32_t net_id = plan->register_output_net_ids[reg->output_start + bit];
+
+			ctx->net_value[net_id] = ctx->register_value[storage_index];
+			ctx->net_mask[net_id] = ctx->register_mask[storage_index];
+			}
+		}
+	}
+
+static void lxs_execute_roms(
+	lxs_engine_ctx *ctx,
+	const lxs_plan *plan)
+	{
+	for (uint32_t i = 0; i < plan->rom_count; ++i)
+		{
+		const lxs_rom_plan *rom = &plan->roms[i];
+		uint8_t unknown = 0U;
+		uint32_t address = lxs_read_index_bits(
+			ctx,
+			plan->rom_addr_net_ids,
+			rom->addr_input_start,
+			rom->addr_width,
+			&unknown);
+
+		if (unknown || address >= rom->depth)
+			{
+			lxs_write_unknown_outputs(ctx, plan->rom_output_net_ids, rom->output_start, rom->data_width);
+			continue;
+			}
+
+		for (uint32_t bit = 0; bit < rom->data_width; ++bit)
+			{
+			uint32_t net_id = plan->rom_output_net_ids[rom->output_start + bit];
+			uint32_t storage_index = rom->data_offset + (address * rom->data_width) + bit;
+
+			ctx->net_value[net_id] = plan->rom_init_value[storage_index];
+			ctx->net_mask[net_id] = plan->rom_init_mask[storage_index];
+			}
+		}
+	}
+
+static void lxs_execute_rams(
+	lxs_engine_ctx *ctx,
+	const lxs_plan *plan)
+	{
+	for (uint32_t i = 0; i < plan->ram_count; ++i)
+		{
+		const lxs_ram_plan *ram = &plan->rams[i];
+		uint8_t unknown = 0U;
+		uint32_t address = lxs_read_index_bits(
+			ctx,
+			plan->ram_read_addr_net_ids,
+			ram->read_addr_start,
+			ram->addr_width,
+			&unknown);
+
+		if (unknown || address >= ram->depth)
+			{
+			lxs_write_unknown_outputs(ctx, plan->ram_output_net_ids, ram->output_start, ram->data_width);
+			continue;
+			}
+
+		for (uint32_t bit = 0; bit < ram->data_width; ++bit)
+			{
+			uint32_t net_id = plan->ram_output_net_ids[ram->output_start + bit];
+			uint32_t storage_index = ram->storage_offset + (address * ram->data_width) + bit;
+
+			ctx->net_value[net_id] = ctx->ram_value[storage_index];
+			ctx->net_mask[net_id] = ctx->ram_mask[storage_index];
+			}
+		}
+	}
+
+static void lxs_capture_counter_step(
+	lxs_engine_ctx *ctx,
+	const lxs_register_plan *reg,
+	uint8_t decrement)
+	{
+	uint8_t carry = 1U;
+
+	for (uint32_t bit = 0; bit < reg->width_bits; ++bit)
+		{
+		uint32_t storage_index = reg->storage_offset + bit;
+		uint64_t cur_value = ctx->register_value[storage_index];
+		uint64_t cur_mask = ctx->register_mask[storage_index];
+
+		if (cur_mask != 0ULL)
+			{
+			for (uint32_t unknown_bit = bit; unknown_bit < reg->width_bits; ++unknown_bit)
+				{
+				uint32_t unknown_index = reg->storage_offset + unknown_bit;
+				ctx->next_register_value[unknown_index] = 0ULL;
+				ctx->next_register_mask[unknown_index] = ~0ULL;
+				}
+			return;
+			}
+
+		if (carry)
+			{
+			uint8_t cur_one = cur_value != 0ULL ? 1U : 0U;
+			uint8_t next_one = decrement ? (cur_one ? 0U : 1U) : (cur_one ? 0U : 1U);
+
+			ctx->next_register_value[storage_index] = next_one ? ~0ULL : 0ULL;
+			ctx->next_register_mask[storage_index] = 0ULL;
+			carry = decrement ? (cur_one ? 0U : 1U) : (cur_one ? 1U : 0U);
+			}
+		else
+			{
+			ctx->next_register_value[storage_index] = cur_value;
+			ctx->next_register_mask[storage_index] = cur_mask;
+			}
+		}
+	}
+
+static void lxs_capture_next_registers(
+	lxs_engine_ctx *ctx,
+	const lxs_plan *plan)
+	{
+	for (uint32_t i = 0; i < plan->register_count; ++i)
+		{
+		const lxs_register_plan *reg = &plan->registers[i];
+		uint8_t capture_inputs = 1U;
+		uint8_t counter_step = 0U;
+		uint8_t decrement = 0U;
+
+		if (reg->mode == LXS_REGISTER_MODE_COUNTER_EN || reg->mode == LXS_REGISTER_MODE_COUNTER_UPDOWN)
+			{
+			if (reg->control_net == UINT32_MAX)
+				{
+				counter_step = 1U;
+				}
+			else
+				{
+				uint64_t control_value = ctx->net_value[reg->control_net];
+				uint64_t control_mask = ctx->net_mask[reg->control_net];
+
+				if (control_mask != 0ULL)
+					{
+					for (uint32_t bit = 0; bit < reg->width_bits; ++bit)
+						{
+						uint32_t storage_index = reg->storage_offset + bit;
+						ctx->next_register_value[storage_index] = 0ULL;
+						ctx->next_register_mask[storage_index] = ~0ULL;
+						}
+					continue;
+					}
+				counter_step = control_value != 0ULL ? 1U : 0U;
+				}
+
+			if (!counter_step)
+				{
+				for (uint32_t bit = 0; bit < reg->width_bits; ++bit)
+					{
+					uint32_t storage_index = reg->storage_offset + bit;
+					ctx->next_register_value[storage_index] = ctx->register_value[storage_index];
+					ctx->next_register_mask[storage_index] = ctx->register_mask[storage_index];
+					}
+				continue;
+				}
+
+			if (reg->mode == LXS_REGISTER_MODE_COUNTER_UPDOWN)
+				{
+				if (reg->aux_control_net == UINT32_MAX)
+					{
+					decrement = 0U;
+					}
+				else if (ctx->net_mask[reg->aux_control_net] != 0ULL)
+					{
+					for (uint32_t bit = 0; bit < reg->width_bits; ++bit)
+						{
+						uint32_t storage_index = reg->storage_offset + bit;
+						ctx->next_register_value[storage_index] = 0ULL;
+						ctx->next_register_mask[storage_index] = ~0ULL;
+						}
+					continue;
+					}
+				else
+					{
+					decrement = ctx->net_value[reg->aux_control_net] != 0ULL ? 1U : 0U;
+					}
+				}
+
+			lxs_capture_counter_step(ctx, reg, decrement);
+			continue;
+			}
+
+		if (reg->control_net != UINT32_MAX)
+			{
+			uint64_t control_value = ctx->net_value[reg->control_net];
+			uint64_t control_mask = ctx->net_mask[reg->control_net];
+
+			if (control_mask != 0ULL)
+				{
+				capture_inputs = reg->control_invert ? 0U : 1U;
+				}
+			else
+				{
+				uint8_t control_one = control_value != 0ULL ? 1U : 0U;
+				capture_inputs = reg->control_invert ? (control_one ? 0U : 1U) : control_one;
+				}
+			}
+
+		for (uint32_t bit = 0; bit < reg->width_bits; ++bit)
+			{
+			uint32_t storage_index = reg->storage_offset + bit;
+
+			if (capture_inputs)
+				{
+				uint32_t net_id = plan->register_input_net_ids[reg->input_start + bit];
+				ctx->next_register_value[storage_index] = ctx->net_value[net_id];
+				ctx->next_register_mask[storage_index] = ctx->net_mask[net_id];
+				}
+			else
+				{
+				ctx->next_register_value[storage_index] = ctx->register_value[storage_index];
+				ctx->next_register_mask[storage_index] = ctx->register_mask[storage_index];
+				}
+			}
+		}
+	}
+
+static void lxs_commit_registers(
+	lxs_engine_ctx *ctx,
+	const lxs_plan *plan)
+	{
+	for (uint32_t i = 0; i < plan->register_count; ++i)
+		{
+		const lxs_register_plan *reg = &plan->registers[i];
+		for (uint32_t bit = 0; bit < reg->width_bits; ++bit)
+			{
+			uint32_t storage_index = reg->storage_offset + bit;
+			uint32_t net_id = plan->register_output_net_ids[reg->output_start + bit];
+
+#if LXS_TEST_PROBES
+			if (ctx->register_value[storage_index] != ctx->next_register_value[storage_index] ||
+				ctx->register_mask[storage_index] != ctx->next_register_mask[storage_index])
+				{
+				ctx->probes.state_change_commit++;
+				}
+#endif
+
+			ctx->register_value[storage_index] = ctx->next_register_value[storage_index];
+			ctx->register_mask[storage_index] = ctx->next_register_mask[storage_index];
+			ctx->net_value[net_id] = ctx->register_value[storage_index];
+			ctx->net_mask[net_id] = ctx->register_mask[storage_index];
+			}
+
+		ctx->probes.state_commit_count += reg->width_bits;
+		}
+	}
+
+static void lxs_capture_rams(
+	lxs_engine_ctx *ctx,
+	const lxs_plan *plan)
+	{
+	for (uint32_t i = 0; i < plan->ram_count; ++i)
+		{
+		const lxs_ram_plan *ram = &plan->rams[i];
+		uint8_t unknown = 0U;
+		uint32_t write_enable_net = ram->write_enable_net;
+		uint64_t write_enable_value;
+
+		ctx->ram_pending_write[i] = 0U;
+		if (write_enable_net == UINT32_MAX)
+			{
+			write_enable_value = ~0ULL;
+			}
+		else
+			{
+			if (ctx->net_mask[write_enable_net] != 0ULL)
+				{
+				continue;
+				}
+			write_enable_value = ctx->net_value[write_enable_net];
+			}
+
+		if (write_enable_value == 0ULL)
+			{
+			continue;
+			}
+
+		ctx->ram_pending_addr[i] = lxs_read_index_bits(
+			ctx,
+			plan->ram_write_addr_net_ids,
+			ram->write_addr_start,
+			ram->addr_width,
+			&unknown);
+		if (unknown || ctx->ram_pending_addr[i] >= ram->depth)
+			{
+			continue;
+			}
+
+		for (uint32_t bit = 0; bit < ram->data_width; ++bit)
+			{
+			uint32_t stage_index = ram->stage_offset + bit;
+			uint32_t net_id = plan->ram_data_input_net_ids[ram->data_input_start + bit];
+
+			ctx->ram_stage_value[stage_index] = ctx->net_value[net_id];
+			ctx->ram_stage_mask[stage_index] = ctx->net_mask[net_id];
+			}
+
+		ctx->ram_pending_write[i] = 1U;
+		}
+	}
+
+static void lxs_commit_rams(
+	lxs_engine_ctx *ctx,
+	const lxs_plan *plan)
+	{
+	for (uint32_t i = 0; i < plan->ram_count; ++i)
+		{
+		const lxs_ram_plan *ram = &plan->rams[i];
+		uint32_t address;
+
+		if (!ctx->ram_pending_write[i])
+			{
+			continue;
+			}
+
+		address = ctx->ram_pending_addr[i];
+		for (uint32_t bit = 0; bit < ram->data_width; ++bit)
+			{
+			uint32_t stage_index = ram->stage_offset + bit;
+			uint32_t storage_index = ram->storage_offset + (address * ram->data_width) + bit;
+
+#if LXS_TEST_PROBES
+			if (ctx->ram_value[storage_index] != ctx->ram_stage_value[stage_index] ||
+				ctx->ram_mask[storage_index] != ctx->ram_stage_mask[stage_index])
+				{
+				ctx->probes.state_change_commit++;
+				}
+#endif
+
+			ctx->ram_value[storage_index] = ctx->ram_stage_value[stage_index];
+			ctx->ram_mask[storage_index] = ctx->ram_stage_mask[stage_index];
+			}
+
+		ctx->ram_pending_write[i] = 0U;
+		ctx->probes.state_commit_count += ram->data_width;
+		}
+	}
+
+static void lxs_execute_logic_chunk(
 	lxs_engine_ctx *ctx,
 	const lxs_gate_ir *gates,
 	uint32_t count,
@@ -75,14 +467,23 @@ static void lxs_execute_binary_chunk(
 				{
 				uint64_t out_value;
 				uint64_t out_mask;
+				uint32_t input_count = gate->input_count;
 
-				LXS_EVAL_AND(
+				LXS_EVAL_BUF(
 					net_value[gate->inputs[0]],
 					net_mask[gate->inputs[0]],
-					net_value[gate->inputs[1]],
-					net_mask[gate->inputs[1]],
 					out_value,
 					out_mask);
+				for (uint32_t i = 1U; i < input_count; ++i)
+					{
+					LXS_EVAL_AND(
+						out_value,
+						out_mask,
+						net_value[gate->inputs[i]],
+						net_mask[gate->inputs[i]],
+						out_value,
+						out_mask);
+					}
 				net_value[gate->output] = out_value;
 				net_mask[gate->output] = out_mask;
 				}
@@ -92,14 +493,23 @@ static void lxs_execute_binary_chunk(
 				{
 				uint64_t out_value;
 				uint64_t out_mask;
+				uint32_t input_count = gate->input_count;
 
-				LXS_EVAL_OR(
+				LXS_EVAL_BUF(
 					net_value[gate->inputs[0]],
 					net_mask[gate->inputs[0]],
-					net_value[gate->inputs[1]],
-					net_mask[gate->inputs[1]],
 					out_value,
 					out_mask);
+				for (uint32_t i = 1U; i < input_count; ++i)
+					{
+					LXS_EVAL_OR(
+						out_value,
+						out_mask,
+						net_value[gate->inputs[i]],
+						net_mask[gate->inputs[i]],
+						out_value,
+						out_mask);
+					}
 				net_value[gate->output] = out_value;
 				net_mask[gate->output] = out_mask;
 				}
@@ -109,14 +519,23 @@ static void lxs_execute_binary_chunk(
 				{
 				uint64_t out_value;
 				uint64_t out_mask;
+				uint32_t input_count = gate->input_count;
 
-				LXS_EVAL_XOR(
+				LXS_EVAL_BUF(
 					net_value[gate->inputs[0]],
 					net_mask[gate->inputs[0]],
-					net_value[gate->inputs[1]],
-					net_mask[gate->inputs[1]],
 					out_value,
 					out_mask);
+				for (uint32_t i = 1U; i < input_count; ++i)
+					{
+					LXS_EVAL_XOR(
+						out_value,
+						out_mask,
+						net_value[gate->inputs[i]],
+						net_mask[gate->inputs[i]],
+						out_value,
+						out_mask);
+					}
 				net_value[gate->output] = out_value;
 				net_mask[gate->output] = out_mask;
 				}
@@ -143,14 +562,24 @@ static void lxs_execute_binary_chunk(
 				{
 				uint64_t out_value;
 				uint64_t out_mask;
+				uint32_t input_count = gate->input_count;
 
-				LXS_EVAL_NAND(
+				LXS_EVAL_BUF(
 					net_value[gate->inputs[0]],
 					net_mask[gate->inputs[0]],
-					net_value[gate->inputs[1]],
-					net_mask[gate->inputs[1]],
 					out_value,
 					out_mask);
+				for (uint32_t i = 1U; i < input_count; ++i)
+					{
+					LXS_EVAL_AND(
+						out_value,
+						out_mask,
+						net_value[gate->inputs[i]],
+						net_mask[gate->inputs[i]],
+						out_value,
+						out_mask);
+					}
+				LXS_EVAL_NOT(out_value, out_mask, out_value, out_mask);
 				net_value[gate->output] = out_value;
 				net_mask[gate->output] = out_mask;
 				}
@@ -160,14 +589,24 @@ static void lxs_execute_binary_chunk(
 				{
 				uint64_t out_value;
 				uint64_t out_mask;
+				uint32_t input_count = gate->input_count;
 
-				LXS_EVAL_NOR(
+				LXS_EVAL_BUF(
 					net_value[gate->inputs[0]],
 					net_mask[gate->inputs[0]],
-					net_value[gate->inputs[1]],
-					net_mask[gate->inputs[1]],
 					out_value,
 					out_mask);
+				for (uint32_t i = 1U; i < input_count; ++i)
+					{
+					LXS_EVAL_OR(
+						out_value,
+						out_mask,
+						net_value[gate->inputs[i]],
+						net_mask[gate->inputs[i]],
+						out_value,
+						out_mask);
+					}
+				LXS_EVAL_NOT(out_value, out_mask, out_value, out_mask);
 				net_value[gate->output] = out_value;
 				net_mask[gate->output] = out_mask;
 				}
@@ -177,14 +616,24 @@ static void lxs_execute_binary_chunk(
 				{
 				uint64_t out_value;
 				uint64_t out_mask;
+				uint32_t input_count = gate->input_count;
 
-				LXS_EVAL_XNOR(
+				LXS_EVAL_BUF(
 					net_value[gate->inputs[0]],
 					net_mask[gate->inputs[0]],
-					net_value[gate->inputs[1]],
-					net_mask[gate->inputs[1]],
 					out_value,
 					out_mask);
+				for (uint32_t i = 1U; i < input_count; ++i)
+					{
+					LXS_EVAL_XOR(
+						out_value,
+						out_mask,
+						net_value[gate->inputs[i]],
+						net_mask[gate->inputs[i]],
+						out_value,
+						out_mask);
+					}
+				LXS_EVAL_NOT(out_value, out_mask, out_value, out_mask);
 				net_value[gate->output] = out_value;
 				net_mask[gate->output] = out_mask;
 				}
@@ -308,6 +757,67 @@ static void lxs_execute_macros(
 				net_mask[macro->inputs[1]],
 				out_value,
 				out_mask);
+			}
+		else if (macro->type == LXS_MACRO_PARITY4)
+			{
+			LXS_EVAL_XOR(
+				net_value[macro->inputs[0]],
+				net_mask[macro->inputs[0]],
+				net_value[macro->inputs[1]],
+				net_mask[macro->inputs[1]],
+				lo_value,
+				lo_mask);
+			LXS_EVAL_XOR(
+				net_value[macro->inputs[2]],
+				net_mask[macro->inputs[2]],
+				net_value[macro->inputs[3]],
+				net_mask[macro->inputs[3]],
+				hi_value,
+				hi_mask);
+			LXS_EVAL_XOR(
+				lo_value,
+				lo_mask,
+				hi_value,
+				hi_mask,
+				out_value,
+				out_mask);
+			}
+		else if (macro->type == LXS_MACRO_PARITY8)
+			{
+			uint64_t lo2_value;
+			uint64_t lo2_mask;
+
+			LXS_EVAL_XOR(
+				net_value[macro->inputs[0]],
+				net_mask[macro->inputs[0]],
+				net_value[macro->inputs[1]],
+				net_mask[macro->inputs[1]],
+				lo_value,
+				lo_mask);
+			LXS_EVAL_XOR(
+				net_value[macro->inputs[2]],
+				net_mask[macro->inputs[2]],
+				net_value[macro->inputs[3]],
+				net_mask[macro->inputs[3]],
+				hi_value,
+				hi_mask);
+			LXS_EVAL_XOR(lo_value, lo_mask, hi_value, hi_mask, lo2_value, lo2_mask);
+			LXS_EVAL_XOR(
+				net_value[macro->inputs[4]],
+				net_mask[macro->inputs[4]],
+				net_value[macro->inputs[5]],
+				net_mask[macro->inputs[5]],
+				lo_value,
+				lo_mask);
+			LXS_EVAL_XOR(
+				net_value[macro->inputs[6]],
+				net_mask[macro->inputs[6]],
+				net_value[macro->inputs[7]],
+				net_mask[macro->inputs[7]],
+				hi_value,
+				hi_mask);
+			LXS_EVAL_XOR(lo_value, lo_mask, hi_value, hi_mask, out_value, out_mask);
+			LXS_EVAL_XOR(lo2_value, lo2_mask, out_value, out_mask, out_value, out_mask);
 			}
 		else if (macro->type == LXS_MACRO_CARRY_INV2)
 			{
@@ -531,6 +1041,104 @@ static void lxs_execute_multi_macros(
 			net_value[macro->outputs[2]] = carry1_value;
 			net_mask[macro->outputs[2]] = carry1_mask;
 			}
+		else if (macro->type == LXS_MULTI_MACRO_XOR_FAN8)
+			{
+			for (uint32_t j = 0; j < 8U; ++j)
+				{
+				LXS_EVAL_XOR(
+					net_value[macro->inputs[0]],
+					net_mask[macro->inputs[0]],
+					net_value[macro->inputs[j + 1U]],
+					net_mask[macro->inputs[j + 1U]],
+					sum_value,
+					sum_mask);
+				net_value[macro->outputs[j]] = sum_value;
+				net_mask[macro->outputs[j]] = sum_mask;
+				}
+			}
+		else if (macro->type == LXS_MULTI_MACRO_AND_FAN8)
+			{
+			for (uint32_t j = 0; j < 8U; ++j)
+				{
+				LXS_EVAL_AND(
+					net_value[macro->inputs[0]],
+					net_mask[macro->inputs[0]],
+					net_value[macro->inputs[j + 1U]],
+					net_mask[macro->inputs[j + 1U]],
+					sum_value,
+					sum_mask);
+				net_value[macro->outputs[j]] = sum_value;
+				net_mask[macro->outputs[j]] = sum_mask;
+				}
+			}
+		else if (macro->type == LXS_MULTI_MACRO_XNOR_BANK4)
+			{
+			for (uint32_t j = 0; j < 4U; ++j)
+				{
+				LXS_EVAL_XOR(
+					net_value[macro->inputs[j * 2U]],
+					net_mask[macro->inputs[j * 2U]],
+					net_value[macro->inputs[j * 2U + 1U]],
+					net_mask[macro->inputs[j * 2U + 1U]],
+					sum_value,
+					sum_mask);
+				LXS_EVAL_NOT(sum_value, sum_mask, sum_value, sum_mask);
+				net_value[macro->outputs[j]] = sum_value;
+				net_mask[macro->outputs[j]] = sum_mask;
+				}
+			}
+		else if (macro->type == LXS_MULTI_MACRO_GUARD_CHAIN4)
+			{
+			uint64_t inv_value;
+			uint64_t inv_mask;
+
+			LXS_EVAL_AND(
+				net_value[macro->inputs[1]],
+				net_mask[macro->inputs[1]],
+				net_value[macro->inputs[0]],
+				net_mask[macro->inputs[0]],
+				sum_value,
+				sum_mask);
+			net_value[macro->outputs[0]] = sum_value;
+			net_mask[macro->outputs[0]] = sum_mask;
+
+			LXS_EVAL_NOT(sum_value, sum_mask, inv_value, inv_mask);
+			LXS_EVAL_AND(
+				net_value[macro->inputs[2]],
+				net_mask[macro->inputs[2]],
+				inv_value,
+				inv_mask,
+				sum_value,
+				sum_mask);
+			net_value[macro->outputs[1]] = sum_value;
+			net_mask[macro->outputs[1]] = sum_mask;
+
+			LXS_EVAL_NOT(sum_value, sum_mask, inv_value, inv_mask);
+			LXS_EVAL_AND(
+				net_value[macro->inputs[3]],
+				net_mask[macro->inputs[3]],
+				inv_value,
+				inv_mask,
+				sum_value,
+				sum_mask);
+			net_value[macro->outputs[2]] = sum_value;
+			net_mask[macro->outputs[2]] = sum_mask;
+
+			LXS_EVAL_NOT(sum_value, sum_mask, inv_value, inv_mask);
+			LXS_EVAL_AND(
+				net_value[macro->inputs[4]],
+				net_mask[macro->inputs[4]],
+				inv_value,
+				inv_mask,
+				sum_value,
+				sum_mask);
+			net_value[macro->outputs[3]] = sum_value;
+			net_mask[macro->outputs[3]] = sum_mask;
+
+			LXS_EVAL_NOT(sum_value, sum_mask, sum_value, sum_mask);
+			net_value[macro->outputs[4]] = sum_value;
+			net_mask[macro->outputs[4]] = sum_mask;
+			}
 		else if (macro->type == LXS_MULTI_MACRO_FULL_ADDER_CINV)
 			{
 			LXS_EVAL_AND(
@@ -651,7 +1259,7 @@ static void lxs_execute_chunk(
 	const lxs_gate_ir *gates)
 	{
 	ctx->probes.chunk_exec++;
-	ctx->probes.gate_eval += chunk->count;
+	ctx->probes.gate_eval += chunk->gate_equiv_count;
 
 	if (chunk->type == LXS_GATE_NOT || chunk->type == LXS_GATE_BUF)
 		{
@@ -659,7 +1267,7 @@ static void lxs_execute_chunk(
 		}
 	else
 		{
-		lxs_execute_binary_chunk(ctx, gates, chunk->count, chunk->type);
+		lxs_execute_logic_chunk(ctx, gates, chunk->count, chunk->type);
 		}
 
 	}
@@ -674,6 +1282,16 @@ int lxs_init_engine(lxs_engine_ctx *ctx, const lxs_plan *plan)
 	ctx->next_state_mask = lxs_calloc_aligned(plan->state.count, sizeof(uint64_t));
 	ctx->output_value = lxs_calloc_aligned(plan->outputs.count, sizeof(uint64_t));
 	ctx->output_mask = lxs_calloc_aligned(plan->outputs.count, sizeof(uint64_t));
+	ctx->register_value = lxs_calloc_aligned(plan->register_bit_count, sizeof(uint64_t));
+	ctx->register_mask = lxs_calloc_aligned(plan->register_bit_count, sizeof(uint64_t));
+	ctx->next_register_value = lxs_calloc_aligned(plan->register_bit_count, sizeof(uint64_t));
+	ctx->next_register_mask = lxs_calloc_aligned(plan->register_bit_count, sizeof(uint64_t));
+	ctx->ram_value = lxs_calloc_aligned(plan->ram_storage_bit_count, sizeof(uint64_t));
+	ctx->ram_mask = lxs_calloc_aligned(plan->ram_storage_bit_count, sizeof(uint64_t));
+	ctx->ram_stage_value = lxs_calloc_aligned(plan->ram_stage_bit_count, sizeof(uint64_t));
+	ctx->ram_stage_mask = lxs_calloc_aligned(plan->ram_stage_bit_count, sizeof(uint64_t));
+	ctx->ram_pending_addr = lxs_calloc_aligned(plan->ram_count, sizeof(uint32_t));
+	ctx->ram_pending_write = lxs_calloc_aligned(plan->ram_count, sizeof(uint8_t));
 
 #if LXS_TEST_PROBES
 	ctx->input_shadow_value = lxs_calloc_aligned(plan->inputs.count, sizeof(uint64_t));
@@ -682,7 +1300,13 @@ int lxs_init_engine(lxs_engine_ctx *ctx, const lxs_plan *plan)
 
 	if ((plan->net_count && (!ctx->net_value || !ctx->net_mask)) ||
 		(plan->state.count && (!ctx->next_state_value || !ctx->next_state_mask)) ||
-		(plan->outputs.count && (!ctx->output_value || !ctx->output_mask))
+		(plan->outputs.count && (!ctx->output_value || !ctx->output_mask)) ||
+		(plan->register_bit_count &&
+			(!ctx->register_value || !ctx->register_mask ||
+			!ctx->next_register_value || !ctx->next_register_mask)) ||
+		(plan->ram_storage_bit_count && (!ctx->ram_value || !ctx->ram_mask)) ||
+		(plan->ram_stage_bit_count && (!ctx->ram_stage_value || !ctx->ram_stage_mask)) ||
+		(plan->ram_count && (!ctx->ram_pending_addr || !ctx->ram_pending_write))
 #if LXS_TEST_PROBES
 		|| (plan->inputs.count && (!ctx->input_shadow_value || !ctx->input_shadow_mask))
 #endif
@@ -692,6 +1316,7 @@ int lxs_init_engine(lxs_engine_ctx *ctx, const lxs_plan *plan)
 		return 0;
 		}
 
+	lxs_reset_engine(ctx, plan);
 	return 1;
 	}
 
@@ -715,6 +1340,56 @@ void lxs_reset_engine(lxs_engine_ctx *ctx, const lxs_plan *plan)
 		memset(ctx->output_mask, 0, (size_t)plan->outputs.count * sizeof(uint64_t));
 		}
 
+	if (plan->register_bit_count > 0U)
+		{
+		memcpy(
+			ctx->register_value,
+			plan->register_init_value,
+			(size_t)plan->register_bit_count * sizeof(uint64_t));
+		memcpy(
+			ctx->register_mask,
+			plan->register_init_mask,
+			(size_t)plan->register_bit_count * sizeof(uint64_t));
+		memset(
+			ctx->next_register_value,
+			0,
+			(size_t)plan->register_bit_count * sizeof(uint64_t));
+		memset(
+			ctx->next_register_mask,
+			0,
+			(size_t)plan->register_bit_count * sizeof(uint64_t));
+		}
+
+	if (plan->ram_storage_bit_count > 0U)
+		{
+		memcpy(
+			ctx->ram_value,
+			plan->ram_init_value,
+			(size_t)plan->ram_storage_bit_count * sizeof(uint64_t));
+		memcpy(
+			ctx->ram_mask,
+			plan->ram_init_mask,
+			(size_t)plan->ram_storage_bit_count * sizeof(uint64_t));
+		}
+
+	if (plan->ram_stage_bit_count > 0U)
+		{
+		memset(
+			ctx->ram_stage_value,
+			0,
+			(size_t)plan->ram_stage_bit_count * sizeof(uint64_t));
+		memset(
+			ctx->ram_stage_mask,
+			0,
+			(size_t)plan->ram_stage_bit_count * sizeof(uint64_t));
+		}
+
+	if (plan->ram_count > 0U)
+		{
+		memset(ctx->ram_pending_addr, 0, (size_t)plan->ram_count * sizeof(uint32_t));
+		memset(ctx->ram_pending_write, 0, (size_t)plan->ram_count * sizeof(uint8_t));
+		}
+
 #if LXS_TEST_PROBES
 	if (plan->inputs.count > 0U)
 		{
@@ -724,6 +1399,7 @@ void lxs_reset_engine(lxs_engine_ctx *ctx, const lxs_plan *plan)
 #endif
 
 	memset(&ctx->probes, 0, sizeof(ctx->probes));
+	lxs_materialize_register_outputs(ctx, plan);
 	}
 
 void lxs_free_engine(lxs_engine_ctx *ctx)
@@ -734,6 +1410,16 @@ void lxs_free_engine(lxs_engine_ctx *ctx)
 	lxs_free_aligned(ctx->next_state_mask);
 	lxs_free_aligned(ctx->output_value);
 	lxs_free_aligned(ctx->output_mask);
+	lxs_free_aligned(ctx->register_value);
+	lxs_free_aligned(ctx->register_mask);
+	lxs_free_aligned(ctx->next_register_value);
+	lxs_free_aligned(ctx->next_register_mask);
+	lxs_free_aligned(ctx->ram_value);
+	lxs_free_aligned(ctx->ram_mask);
+	lxs_free_aligned(ctx->ram_stage_value);
+	lxs_free_aligned(ctx->ram_stage_mask);
+	lxs_free_aligned(ctx->ram_pending_addr);
+	lxs_free_aligned(ctx->ram_pending_write);
 
 #if LXS_TEST_PROBES
 	lxs_free_aligned(ctx->input_shadow_value);
@@ -942,10 +1628,16 @@ void lxs_commit_state(lxs_engine_ctx *ctx, const lxs_plan *plan)
 void lxs_execute_plan(lxs_engine_ctx *ctx, const lxs_plan *plan)
 	{
 	lxs_begin_tick(ctx);
+	lxs_execute_roms(ctx, plan);
+	lxs_execute_rams(ctx, plan);
 	lxs_execute_levels(ctx, plan);
 	lxs_capture_outputs(ctx, plan);
 	lxs_capture_next_state(ctx, plan);
+	lxs_capture_next_registers(ctx, plan);
+	lxs_capture_rams(ctx, plan);
 	lxs_commit_state(ctx, plan);
+	lxs_commit_registers(ctx, plan);
+	lxs_commit_rams(ctx, plan);
 	}
 
 void lxs_read_outputs(

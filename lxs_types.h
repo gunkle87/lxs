@@ -27,6 +27,8 @@ typedef enum lxs_macro_type
 	LXS_MACRO_MUX2 = 0,
 	LXS_MACRO_XOR2,
 	LXS_MACRO_XNOR2,
+	LXS_MACRO_PARITY4,
+	LXS_MACRO_PARITY8,
 	LXS_MACRO_CARRY_INV2,
 	LXS_MACRO_SUM_CINV2,
 	LXS_MACRO_TYPE_COUNT
@@ -37,6 +39,10 @@ typedef enum lxs_multi_macro_type
 	LXS_MULTI_MACRO_HALF_ADDER = 0,
 	LXS_MULTI_MACRO_FULL_ADDER,
 	LXS_MULTI_MACRO_RIPPLE_SLICE2,
+	LXS_MULTI_MACRO_XOR_FAN8,
+	LXS_MULTI_MACRO_AND_FAN8,
+	LXS_MULTI_MACRO_XNOR_BANK4,
+	LXS_MULTI_MACRO_GUARD_CHAIN4,
 	LXS_MULTI_MACRO_FULL_ADDER_CINV,
 	LXS_MULTI_MACRO_RIPPLE_SLICE2_CINV,
 	LXS_MULTI_MACRO_TYPE_COUNT
@@ -47,21 +53,45 @@ typedef enum lxs_source_multi_macro_type
 	LXS_SOURCE_MULTI_MACRO_HALF_ADDER = 0,
 	LXS_SOURCE_MULTI_MACRO_FULL_ADDER,
 	LXS_SOURCE_MULTI_MACRO_RIPPLE_SLICE2,
+	LXS_SOURCE_MULTI_MACRO_XOR_FAN8,
+	LXS_SOURCE_MULTI_MACRO_AND_FAN8,
+	LXS_SOURCE_MULTI_MACRO_XNOR_BANK4,
+	LXS_SOURCE_MULTI_MACRO_GUARD_CHAIN4,
 	LXS_SOURCE_MULTI_MACRO_TYPE_COUNT
 	} lxs_source_multi_macro_type;
+
+typedef enum lxs_source_macro_type
+	{
+	LXS_SOURCE_MACRO_PARITY4 = 0,
+	LXS_SOURCE_MACRO_PARITY8,
+	LXS_SOURCE_MACRO_TYPE_COUNT
+	} lxs_source_macro_type;
+
+typedef enum lxs_register_mode
+	{
+	LXS_REGISTER_MODE_PLAIN = 0,
+	LXS_REGISTER_MODE_ENABLE,
+	LXS_REGISTER_MODE_HOLD,
+	LXS_REGISTER_MODE_COUNTER_EN,
+	LXS_REGISTER_MODE_COUNTER_UPDOWN
+	} lxs_register_mode;
 
 typedef struct lxs_gate_ir lxs_gate_ir;
 struct lxs_gate_ir
 	{
 	uint32_t type;
 	uint32_t input_count;
-	uint32_t inputs[2];
+	uint32_t inputs[8];
 	uint32_t output;
 	uint32_t level;
 	};
 
 typedef struct lxs_netlist lxs_netlist;
+typedef struct lxs_source_macro lxs_source_macro;
 typedef struct lxs_source_multi_macro lxs_source_multi_macro;
+typedef struct lxs_source_register lxs_source_register;
+typedef struct lxs_source_rom lxs_source_rom;
+typedef struct lxs_source_ram lxs_source_ram;
 struct lxs_netlist
 	{
 	char **net_names;
@@ -80,20 +110,116 @@ struct lxs_netlist
 	uint32_t gate_count;
 	uint32_t gate_cap;
 
+	lxs_source_macro *source_macros;
+	uint32_t source_macro_count;
+	uint32_t source_macro_cap;
+
 	lxs_source_multi_macro *source_multi_macros;
 	uint32_t source_multi_macro_count;
 	uint32_t source_multi_macro_cap;
+
+	lxs_source_register *source_registers;
+	uint32_t source_register_count;
+	uint32_t source_register_cap;
+	uint32_t *source_register_input_net_ids;
+	uint32_t source_register_input_count;
+	uint32_t source_register_input_cap;
+	uint32_t *source_register_output_net_ids;
+	uint32_t source_register_output_count;
+	uint32_t source_register_output_cap;
+
+	lxs_source_rom *source_roms;
+	uint32_t source_rom_count;
+	uint32_t source_rom_cap;
+	uint32_t *source_rom_addr_net_ids;
+	uint32_t source_rom_addr_count;
+	uint32_t source_rom_addr_cap;
+	uint32_t *source_rom_output_net_ids;
+	uint32_t source_rom_output_count;
+	uint32_t source_rom_output_cap;
+	uint64_t *source_rom_init_value;
+	uint32_t source_rom_init_count;
+	uint32_t source_rom_init_cap;
+	uint64_t *source_rom_init_mask;
+	uint32_t source_rom_mask_count;
+	uint32_t source_rom_mask_cap;
+
+	lxs_source_ram *source_rams;
+	uint32_t source_ram_count;
+	uint32_t source_ram_cap;
+	uint32_t *source_ram_read_addr_net_ids;
+	uint32_t source_ram_read_addr_count;
+	uint32_t source_ram_read_addr_cap;
+	uint32_t *source_ram_write_addr_net_ids;
+	uint32_t source_ram_write_addr_count;
+	uint32_t source_ram_write_addr_cap;
+	uint32_t *source_ram_data_input_net_ids;
+	uint32_t source_ram_data_input_count;
+	uint32_t source_ram_data_input_cap;
+	uint32_t *source_ram_output_net_ids;
+	uint32_t source_ram_output_count;
+	uint32_t source_ram_output_cap;
+	uint64_t *source_ram_init_value;
+	uint32_t source_ram_init_count;
+	uint32_t source_ram_init_cap;
+	uint64_t *source_ram_init_mask;
+	uint32_t source_ram_mask_count;
+	uint32_t source_ram_mask_cap;
+	};
+
+struct lxs_source_macro
+	{
+	uint32_t type;
+	uint32_t inputs[8];
+	uint32_t output;
+	uint32_t gate_indices[7];
+	uint32_t input_count;
+	uint32_t gate_count;
 	};
 
 struct lxs_source_multi_macro
 	{
 	uint32_t type;
-	uint32_t inputs[5];
-	uint32_t outputs[3];
+	uint32_t inputs[9];
+	uint32_t outputs[8];
 	uint32_t gate_indices[10];
 	uint32_t input_count;
 	uint32_t output_count;
 	uint32_t gate_count;
+	};
+
+struct lxs_source_register
+	{
+	uint32_t width_bits;
+	uint32_t input_start;
+	uint32_t output_start;
+	uint32_t control_net;
+	uint32_t aux_control_net;
+	uint32_t mode;
+	uint8_t control_invert;
+	};
+
+struct lxs_source_rom
+	{
+	uint32_t addr_width;
+	uint32_t data_width;
+	uint32_t depth;
+	uint32_t addr_start;
+	uint32_t output_start;
+	uint32_t data_start;
+	};
+
+struct lxs_source_ram
+	{
+	uint32_t addr_width;
+	uint32_t data_width;
+	uint32_t depth;
+	uint32_t read_addr_start;
+	uint32_t write_addr_start;
+	uint32_t data_input_start;
+	uint32_t output_start;
+	uint32_t data_start;
+	uint32_t write_enable_net;
 	};
 
 typedef struct lxs_chunk_plan lxs_chunk_plan;
@@ -103,6 +229,7 @@ struct lxs_chunk_plan
 	uint32_t type;
 	uint32_t start;
 	uint32_t count;
+	uint32_t gate_equiv_count;
 	};
 
 typedef struct lxs_level_plan lxs_level_plan;
@@ -121,7 +248,7 @@ struct lxs_macro_plan
 	{
 	uint32_t type;
 	uint32_t level;
-	uint32_t inputs[3];
+	uint32_t inputs[8];
 	uint32_t output;
 	uint32_t gate_equiv_count;
 	};
@@ -131,8 +258,8 @@ struct lxs_multi_macro_plan
 	{
 	uint32_t type;
 	uint32_t level;
-	uint32_t inputs[5];
-	uint32_t outputs[3];
+	uint32_t inputs[9];
+	uint32_t outputs[8];
 	uint32_t input_count;
 	uint32_t output_count;
 	uint32_t gate_equiv_count;
@@ -159,6 +286,45 @@ struct lxs_state_plan
 	uint8_t q_is_contiguous;
 	};
 
+typedef struct lxs_register_plan lxs_register_plan;
+struct lxs_register_plan
+	{
+	uint32_t width_bits;
+	uint32_t input_start;
+	uint32_t output_start;
+	uint32_t storage_offset;
+	uint32_t control_net;
+	uint32_t aux_control_net;
+	uint32_t mode;
+	uint8_t control_invert;
+	};
+
+typedef struct lxs_rom_plan lxs_rom_plan;
+struct lxs_rom_plan
+	{
+	uint32_t addr_width;
+	uint32_t data_width;
+	uint32_t depth;
+	uint32_t addr_input_start;
+	uint32_t output_start;
+	uint32_t data_offset;
+	};
+
+typedef struct lxs_ram_plan lxs_ram_plan;
+struct lxs_ram_plan
+	{
+	uint32_t addr_width;
+	uint32_t data_width;
+	uint32_t depth;
+	uint32_t read_addr_start;
+	uint32_t write_addr_start;
+	uint32_t data_input_start;
+	uint32_t output_start;
+	uint32_t storage_offset;
+	uint32_t stage_offset;
+	uint32_t write_enable_net;
+	};
+
 typedef struct lxs_plan lxs_plan;
 struct lxs_plan
 	{
@@ -180,6 +346,40 @@ struct lxs_plan
 	lxs_io_plan inputs;
 	lxs_io_plan outputs;
 	lxs_state_plan state;
+
+	uint32_t register_count;
+	uint32_t register_bit_count;
+	uint32_t register_input_net_count;
+	lxs_register_plan *registers;
+	uint32_t *register_input_net_ids;
+	uint32_t *register_output_net_ids;
+	uint64_t *register_init_value;
+	uint64_t *register_init_mask;
+
+	uint32_t rom_count;
+	uint32_t rom_addr_net_count;
+	uint32_t rom_output_net_count;
+	uint32_t rom_bit_count;
+	lxs_rom_plan *roms;
+	uint32_t *rom_addr_net_ids;
+	uint32_t *rom_output_net_ids;
+	uint64_t *rom_init_value;
+	uint64_t *rom_init_mask;
+
+	uint32_t ram_count;
+	uint32_t ram_storage_bit_count;
+	uint32_t ram_stage_bit_count;
+	uint32_t ram_read_addr_net_count;
+	uint32_t ram_write_addr_net_count;
+	uint32_t ram_data_input_net_count;
+	uint32_t ram_output_net_count;
+	lxs_ram_plan *rams;
+	uint32_t *ram_read_addr_net_ids;
+	uint32_t *ram_write_addr_net_ids;
+	uint32_t *ram_data_input_net_ids;
+	uint32_t *ram_output_net_ids;
+	uint64_t *ram_init_value;
+	uint64_t *ram_init_mask;
 	};
 
 typedef struct lxs_probes lxs_probes;
@@ -215,6 +415,16 @@ struct lxs_engine_ctx
 	uint64_t *next_state_mask;
 	uint64_t *output_value;
 	uint64_t *output_mask;
+	uint64_t *register_value;
+	uint64_t *register_mask;
+	uint64_t *next_register_value;
+	uint64_t *next_register_mask;
+	uint64_t *ram_value;
+	uint64_t *ram_mask;
+	uint64_t *ram_stage_value;
+	uint64_t *ram_stage_mask;
+	uint32_t *ram_pending_addr;
+	uint8_t *ram_pending_write;
 
 #if LXS_TEST_PROBES
 	uint64_t *input_shadow_value;

@@ -147,6 +147,25 @@ static int lxs_reserve_u32(uint32_t **items, uint32_t *cap, uint32_t needed)
 	return *items != NULL;
 	}
 
+static int lxs_reserve_u64(uint64_t **items, uint32_t *cap, uint32_t needed)
+	{
+	size_t old_size;
+
+	if (needed <= *cap)
+		{
+		return 1;
+		}
+
+	old_size = (size_t)(*cap) * sizeof(uint64_t);
+	while (*cap < needed)
+		{
+		*cap = (*cap == 0U) ? LXS_INITIAL_CAP : (*cap * 2U);
+		}
+
+	*items = lxs_realloc_aligned(*items, old_size, (size_t)(*cap) * sizeof(uint64_t));
+	return *items != NULL;
+	}
+
 static int lxs_reserve_gates(lxs_gate_ir **items, uint32_t *cap, uint32_t needed)
 	{
 	size_t old_size;
@@ -188,6 +207,97 @@ static int lxs_reserve_source_multi_macros(
 		*items,
 		old_size,
 		(size_t)(*cap) * sizeof(lxs_source_multi_macro));
+	return *items != NULL;
+	}
+
+static int lxs_reserve_source_macros(
+	lxs_source_macro **items,
+	uint32_t *cap,
+	uint32_t needed)
+	{
+	size_t old_size;
+
+	if (needed <= *cap)
+		{
+		return 1;
+		}
+
+	old_size = (size_t)(*cap) * sizeof(lxs_source_macro);
+	while (*cap < needed)
+		{
+		*cap = (*cap == 0U) ? LXS_INITIAL_CAP : (*cap * 2U);
+		}
+
+	*items = lxs_realloc_aligned(
+		*items,
+		old_size,
+		(size_t)(*cap) * sizeof(lxs_source_macro));
+	return *items != NULL;
+	}
+
+static int lxs_reserve_source_registers(
+	lxs_source_register **items,
+	uint32_t *cap,
+	uint32_t needed)
+	{
+	size_t old_size;
+
+	if (needed <= *cap)
+		{
+		return 1;
+		}
+
+	old_size = (size_t)(*cap) * sizeof(lxs_source_register);
+	while (*cap < needed)
+		{
+		*cap = (*cap == 0U) ? LXS_INITIAL_CAP : (*cap * 2U);
+		}
+
+	*items = lxs_realloc_aligned(*items, old_size, (size_t)(*cap) * sizeof(lxs_source_register));
+	return *items != NULL;
+	}
+
+static int lxs_reserve_source_roms(
+	lxs_source_rom **items,
+	uint32_t *cap,
+	uint32_t needed)
+	{
+	size_t old_size;
+
+	if (needed <= *cap)
+		{
+		return 1;
+		}
+
+	old_size = (size_t)(*cap) * sizeof(lxs_source_rom);
+	while (*cap < needed)
+		{
+		*cap = (*cap == 0U) ? LXS_INITIAL_CAP : (*cap * 2U);
+		}
+
+	*items = lxs_realloc_aligned(*items, old_size, (size_t)(*cap) * sizeof(lxs_source_rom));
+	return *items != NULL;
+	}
+
+static int lxs_reserve_source_rams(
+	lxs_source_ram **items,
+	uint32_t *cap,
+	uint32_t needed)
+	{
+	size_t old_size;
+
+	if (needed <= *cap)
+		{
+		return 1;
+		}
+
+	old_size = (size_t)(*cap) * sizeof(lxs_source_ram);
+	while (*cap < needed)
+		{
+		*cap = (*cap == 0U) ? LXS_INITIAL_CAP : (*cap * 2U);
+		}
+
+	*items = lxs_realloc_aligned(*items, old_size, (size_t)(*cap) * sizeof(lxs_source_ram));
 	return *items != NULL;
 	}
 
@@ -264,6 +374,73 @@ static int lxs_push_source_multi_macro(lxs_netlist *nl, const lxs_source_multi_m
 	return 1;
 	}
 
+static int lxs_push_source_macro(lxs_netlist *nl, const lxs_source_macro *macro)
+	{
+	if (!lxs_reserve_source_macros(
+		&nl->source_macros,
+		&nl->source_macro_cap,
+		nl->source_macro_count + 1U))
+		{
+		return 0;
+		}
+
+	nl->source_macros[nl->source_macro_count++] = *macro;
+	return 1;
+	}
+
+static int lxs_push_u64(uint64_t **items, uint32_t *count, uint32_t *cap, uint64_t value)
+	{
+	if (!lxs_reserve_u64(items, cap, *count + 1U))
+		{
+		return 0;
+		}
+
+	(*items)[(*count)++] = value;
+	return 1;
+	}
+
+static int lxs_push_source_register(lxs_netlist *nl, const lxs_source_register *reg)
+	{
+	if (!lxs_reserve_source_registers(
+		&nl->source_registers,
+		&nl->source_register_cap,
+		nl->source_register_count + 1U))
+		{
+		return 0;
+		}
+
+	nl->source_registers[nl->source_register_count++] = *reg;
+	return 1;
+	}
+
+static int lxs_push_source_rom(lxs_netlist *nl, const lxs_source_rom *rom)
+	{
+	if (!lxs_reserve_source_roms(
+		&nl->source_roms,
+		&nl->source_rom_cap,
+		nl->source_rom_count + 1U))
+		{
+		return 0;
+		}
+
+	nl->source_roms[nl->source_rom_count++] = *rom;
+	return 1;
+	}
+
+static int lxs_push_source_ram(lxs_netlist *nl, const lxs_source_ram *ram)
+	{
+	if (!lxs_reserve_source_rams(
+		&nl->source_rams,
+		&nl->source_ram_cap,
+		nl->source_ram_count + 1U))
+		{
+		return 0;
+		}
+
+	nl->source_rams[nl->source_ram_count++] = *ram;
+	return 1;
+	}
+
 static lxs_gate_type lxs_string_to_gate_type(const char *name)
 	{
 	if (strcmp(name, "AND") == 0)
@@ -333,7 +510,7 @@ static int lxs_emit_gate_record(
 	gate.type = type;
 	gate.output = output;
 	gate.input_count = input_count;
-	for (uint32_t i = 0; i < input_count && i < 2U; ++i)
+	for (uint32_t i = 0; i < input_count && i < 8U; ++i)
 		{
 		gate.inputs[i] = inputs[i];
 		}
@@ -356,6 +533,285 @@ static uint32_t lxs_intern_temp_net(lxs_netlist *nl, const char *tag, uint32_t s
 
 	snprintf(name, sizeof(name), "__lxs_%s_%u_%s", tag, serial, suffix);
 	return lxs_intern_net(nl, name);
+	}
+
+static int lxs_parse_literal_bits(const char *text, uint32_t width, uint64_t *values, uint64_t *masks)
+	{
+	char *end = NULL;
+	unsigned long long scalar;
+
+	scalar = strtoull(text, &end, 0);
+	if (!end || *lxs_trim(end) != '\0')
+		{
+		return 0;
+		}
+
+	for (uint32_t bit = 0; bit < width; ++bit)
+		{
+		values[bit] = ((scalar >> bit) & 1ULL) ? ~0ULL : 0ULL;
+		masks[bit] = 0ULL;
+		}
+
+	return 1;
+	}
+
+static int lxs_emit_register_descriptor(
+	lxs_netlist *nl,
+	const uint32_t *outputs,
+	const uint32_t *inputs,
+	uint32_t width_bits,
+	uint32_t control_net,
+	uint8_t control_invert)
+	{
+	lxs_source_register reg;
+
+	memset(&reg, 0, sizeof(reg));
+	reg.width_bits = width_bits;
+	reg.input_start = nl->source_register_input_count;
+	reg.output_start = nl->source_register_output_count;
+	reg.control_net = control_net;
+	reg.aux_control_net = UINT32_MAX;
+	reg.mode = control_net == UINT32_MAX ? LXS_REGISTER_MODE_PLAIN :
+		(control_invert ? LXS_REGISTER_MODE_HOLD : LXS_REGISTER_MODE_ENABLE);
+	reg.control_invert = control_invert;
+
+	for (uint32_t i = 0; i < width_bits; ++i)
+		{
+		if (!lxs_push_u32(
+				&nl->source_register_input_net_ids,
+				&nl->source_register_input_count,
+				&nl->source_register_input_cap,
+				inputs[i]) ||
+			!lxs_push_u32(
+				&nl->source_register_output_net_ids,
+				&nl->source_register_output_count,
+				&nl->source_register_output_cap,
+				outputs[i]))
+			{
+			return 0;
+			}
+		}
+
+	return lxs_push_source_register(nl, &reg);
+	}
+
+static int lxs_emit_counter_descriptor(
+	lxs_netlist *nl,
+	const uint32_t *outputs,
+	uint32_t width_bits,
+	uint32_t enable_net,
+	uint32_t down_net,
+	uint32_t mode)
+	{
+	lxs_source_register reg;
+
+	memset(&reg, 0, sizeof(reg));
+	reg.width_bits = width_bits;
+	reg.input_start = nl->source_register_input_count;
+	reg.output_start = nl->source_register_output_count;
+	reg.control_net = enable_net;
+	reg.aux_control_net = down_net;
+	reg.mode = mode;
+	reg.control_invert = 0U;
+
+	for (uint32_t i = 0; i < width_bits; ++i)
+		{
+		if (!lxs_push_u32(
+				&nl->source_register_output_net_ids,
+				&nl->source_register_output_count,
+				&nl->source_register_output_cap,
+				outputs[i]))
+			{
+			return 0;
+			}
+		}
+
+	return lxs_push_source_register(nl, &reg);
+	}
+
+static int lxs_emit_rom_descriptor(
+	lxs_netlist *nl,
+	const uint32_t *outputs,
+	uint32_t output_count,
+	const uint32_t *addr_inputs,
+	uint32_t addr_width,
+	char **data_tokens,
+	uint32_t data_token_count)
+	{
+	lxs_source_rom rom;
+	uint64_t values[64];
+	uint64_t masks[64];
+
+	if (output_count == 0U || output_count > 64U)
+		{
+		return 0;
+		}
+
+	if (data_token_count != (1U << addr_width))
+		{
+		return 0;
+		}
+
+	memset(&rom, 0, sizeof(rom));
+	rom.addr_width = addr_width;
+	rom.data_width = output_count;
+	rom.depth = data_token_count;
+	rom.addr_start = nl->source_rom_addr_count;
+	rom.output_start = nl->source_rom_output_count;
+	rom.data_start = nl->source_rom_init_count;
+
+	for (uint32_t i = 0; i < addr_width; ++i)
+		{
+		if (!lxs_push_u32(
+				&nl->source_rom_addr_net_ids,
+				&nl->source_rom_addr_count,
+				&nl->source_rom_addr_cap,
+				addr_inputs[i]))
+			{
+			return 0;
+			}
+		}
+
+	for (uint32_t i = 0; i < output_count; ++i)
+		{
+		if (!lxs_push_u32(
+				&nl->source_rom_output_net_ids,
+				&nl->source_rom_output_count,
+				&nl->source_rom_output_cap,
+				outputs[i]))
+			{
+			return 0;
+			}
+		}
+
+	for (uint32_t word = 0; word < data_token_count; ++word)
+		{
+		if (!lxs_parse_literal_bits(data_tokens[word], output_count, values, masks))
+			{
+			return 0;
+			}
+		for (uint32_t bit = 0; bit < output_count; ++bit)
+			{
+			if (!lxs_push_u64(
+					&nl->source_rom_init_value,
+					&nl->source_rom_init_count,
+					&nl->source_rom_init_cap,
+					values[bit]) ||
+				!lxs_push_u64(
+					&nl->source_rom_init_mask,
+					&nl->source_rom_mask_count,
+					&nl->source_rom_mask_cap,
+					masks[bit]))
+				{
+				return 0;
+				}
+			}
+		}
+
+	return lxs_push_source_rom(nl, &rom);
+	}
+
+static int lxs_emit_ram_descriptor(
+	lxs_netlist *nl,
+	const uint32_t *outputs,
+	uint32_t output_count,
+	const uint32_t *read_addr_inputs,
+	uint32_t read_addr_count,
+	const uint32_t *write_addr_inputs,
+	uint32_t write_addr_count,
+	const uint32_t *data_inputs,
+	uint32_t data_input_count,
+	uint32_t write_enable_net,
+	char **data_tokens,
+	uint32_t data_token_count)
+	{
+	lxs_source_ram ram;
+	uint64_t values[64];
+	uint64_t masks[64];
+
+	if (output_count == 0U || output_count > 64U)
+		{
+		return 0;
+		}
+	if (read_addr_count != write_addr_count || output_count != data_input_count)
+		{
+		return 0;
+		}
+	if (data_token_count != (1U << read_addr_count))
+		{
+		return 0;
+		}
+
+	memset(&ram, 0, sizeof(ram));
+	ram.addr_width = read_addr_count;
+	ram.data_width = output_count;
+	ram.depth = data_token_count;
+	ram.read_addr_start = nl->source_ram_read_addr_count;
+	ram.write_addr_start = nl->source_ram_write_addr_count;
+	ram.data_input_start = nl->source_ram_data_input_count;
+	ram.output_start = nl->source_ram_output_count;
+	ram.data_start = nl->source_ram_init_count;
+	ram.write_enable_net = write_enable_net;
+
+	for (uint32_t i = 0; i < read_addr_count; ++i)
+		{
+		if (!lxs_push_u32(
+				&nl->source_ram_read_addr_net_ids,
+				&nl->source_ram_read_addr_count,
+				&nl->source_ram_read_addr_cap,
+				read_addr_inputs[i]) ||
+			!lxs_push_u32(
+				&nl->source_ram_write_addr_net_ids,
+				&nl->source_ram_write_addr_count,
+				&nl->source_ram_write_addr_cap,
+				write_addr_inputs[i]))
+			{
+			return 0;
+			}
+		}
+
+	for (uint32_t i = 0; i < data_input_count; ++i)
+		{
+		if (!lxs_push_u32(
+				&nl->source_ram_data_input_net_ids,
+				&nl->source_ram_data_input_count,
+				&nl->source_ram_data_input_cap,
+				data_inputs[i]) ||
+			!lxs_push_u32(
+				&nl->source_ram_output_net_ids,
+				&nl->source_ram_output_count,
+				&nl->source_ram_output_cap,
+				outputs[i]))
+			{
+			return 0;
+			}
+		}
+
+	for (uint32_t word = 0; word < data_token_count; ++word)
+		{
+		if (!lxs_parse_literal_bits(data_tokens[word], output_count, values, masks))
+			{
+			return 0;
+			}
+		for (uint32_t bit = 0; bit < output_count; ++bit)
+			{
+			if (!lxs_push_u64(
+					&nl->source_ram_init_value,
+					&nl->source_ram_init_count,
+					&nl->source_ram_init_cap,
+					values[bit]) ||
+				!lxs_push_u64(
+					&nl->source_ram_init_mask,
+					&nl->source_ram_mask_count,
+					&nl->source_ram_mask_cap,
+					masks[bit]))
+				{
+				return 0;
+				}
+			}
+		}
+
+	return lxs_push_source_ram(nl, &ram);
 	}
 
 static int lxs_emit_half_adder_macro(
@@ -381,6 +837,149 @@ static int lxs_emit_half_adder_macro(
 	if (!lxs_emit_gate_record(nl, LXS_GATE_XOR, outputs[0], gate_inputs, 2U, &macro.gate_indices[0]) ||
 		!lxs_emit_gate_record(nl, LXS_GATE_AND, outputs[1], gate_inputs, 2U, &macro.gate_indices[1]) ||
 		!lxs_push_source_multi_macro(nl, &macro))
+		{
+		return 0;
+		}
+
+	return 1;
+	}
+
+static int lxs_emit_parity4_macro(
+	lxs_netlist *nl,
+	uint32_t output,
+	const uint32_t *inputs,
+	uint32_t serial)
+	{
+	lxs_source_macro macro;
+	uint32_t gate_inputs[2];
+	uint32_t xor_ab;
+	uint32_t xor_cd;
+
+	memset(&macro, 0, sizeof(macro));
+	macro.type = LXS_SOURCE_MACRO_PARITY4;
+	macro.input_count = 4U;
+	macro.gate_count = 3U;
+	for (uint32_t i = 0; i < 4U; ++i)
+		{
+		macro.inputs[i] = inputs[i];
+		}
+	macro.output = output;
+
+	xor_ab = lxs_intern_temp_net(nl, "p4", serial, "xor_ab");
+	xor_cd = lxs_intern_temp_net(nl, "p4", serial, "xor_cd");
+	if (xor_ab == UINT32_MAX || xor_cd == UINT32_MAX)
+		{
+		return 0;
+		}
+
+	gate_inputs[0] = inputs[0];
+	gate_inputs[1] = inputs[1];
+	if (!lxs_emit_gate_record(nl, LXS_GATE_XOR, xor_ab, gate_inputs, 2U, &macro.gate_indices[0]))
+		{
+		return 0;
+		}
+
+	gate_inputs[0] = inputs[2];
+	gate_inputs[1] = inputs[3];
+	if (!lxs_emit_gate_record(nl, LXS_GATE_XOR, xor_cd, gate_inputs, 2U, &macro.gate_indices[1]))
+		{
+		return 0;
+		}
+
+	gate_inputs[0] = xor_ab;
+	gate_inputs[1] = xor_cd;
+	if (!lxs_emit_gate_record(nl, LXS_GATE_XOR, output, gate_inputs, 2U, &macro.gate_indices[2]) ||
+		!lxs_push_source_macro(nl, &macro))
+		{
+		return 0;
+		}
+
+	return 1;
+	}
+
+static int lxs_emit_parity8_macro(
+	lxs_netlist *nl,
+	uint32_t output,
+	const uint32_t *inputs,
+	uint32_t serial)
+	{
+	lxs_source_macro macro;
+	uint32_t gate_inputs[2];
+	uint32_t xor01;
+	uint32_t xor23;
+	uint32_t xor45;
+	uint32_t xor67;
+	uint32_t xor0123;
+	uint32_t xor4567;
+
+	memset(&macro, 0, sizeof(macro));
+	macro.type = LXS_SOURCE_MACRO_PARITY8;
+	macro.input_count = 8U;
+	macro.gate_count = 7U;
+	for (uint32_t i = 0; i < 8U; ++i)
+		{
+		macro.inputs[i] = inputs[i];
+		}
+	macro.output = output;
+
+	xor01 = lxs_intern_temp_net(nl, "p8", serial, "xor01");
+	xor23 = lxs_intern_temp_net(nl, "p8", serial, "xor23");
+	xor45 = lxs_intern_temp_net(nl, "p8", serial, "xor45");
+	xor67 = lxs_intern_temp_net(nl, "p8", serial, "xor67");
+	xor0123 = lxs_intern_temp_net(nl, "p8", serial, "xor0123");
+	xor4567 = lxs_intern_temp_net(nl, "p8", serial, "xor4567");
+	if (xor01 == UINT32_MAX || xor23 == UINT32_MAX || xor45 == UINT32_MAX || xor67 == UINT32_MAX ||
+		xor0123 == UINT32_MAX || xor4567 == UINT32_MAX)
+		{
+		return 0;
+		}
+
+	gate_inputs[0] = inputs[0];
+	gate_inputs[1] = inputs[1];
+	if (!lxs_emit_gate_record(nl, LXS_GATE_XOR, xor01, gate_inputs, 2U, &macro.gate_indices[0]))
+		{
+		return 0;
+		}
+
+	gate_inputs[0] = inputs[2];
+	gate_inputs[1] = inputs[3];
+	if (!lxs_emit_gate_record(nl, LXS_GATE_XOR, xor23, gate_inputs, 2U, &macro.gate_indices[1]))
+		{
+		return 0;
+		}
+
+	gate_inputs[0] = inputs[4];
+	gate_inputs[1] = inputs[5];
+	if (!lxs_emit_gate_record(nl, LXS_GATE_XOR, xor45, gate_inputs, 2U, &macro.gate_indices[2]))
+		{
+		return 0;
+		}
+
+	gate_inputs[0] = inputs[6];
+	gate_inputs[1] = inputs[7];
+	if (!lxs_emit_gate_record(nl, LXS_GATE_XOR, xor67, gate_inputs, 2U, &macro.gate_indices[3]))
+		{
+		return 0;
+		}
+
+	gate_inputs[0] = xor01;
+	gate_inputs[1] = xor23;
+	if (!lxs_emit_gate_record(nl, LXS_GATE_XOR, xor0123, gate_inputs, 2U, &macro.gate_indices[4]))
+		{
+		return 0;
+		}
+
+	gate_inputs[0] = xor45;
+	gate_inputs[1] = xor67;
+	if (!lxs_emit_gate_record(nl, LXS_GATE_XOR, xor4567, gate_inputs, 2U, &macro.gate_indices[5]))
+		{
+		return 0;
+		}
+
+	gate_inputs[0] = xor0123;
+	gate_inputs[1] = xor4567;
+	if (!lxs_emit_gate_record(nl, LXS_GATE_XOR, output, gate_inputs, 2U, &macro.gate_indices[6]) ||
+		!lxs_push_source_macro(nl, &macro))
 		{
 		return 0;
 		}
@@ -539,6 +1138,237 @@ static int lxs_emit_ripple_slice2_macro(
 	return 1;
 	}
 
+static int lxs_emit_xor_fan8_macro(
+	lxs_netlist *nl,
+	const uint32_t *outputs,
+	const uint32_t *inputs)
+	{
+	lxs_source_multi_macro macro;
+	uint32_t gate_inputs[2];
+
+	memset(&macro, 0, sizeof(macro));
+	macro.type = LXS_SOURCE_MULTI_MACRO_XOR_FAN8;
+	macro.input_count = 9U;
+	macro.output_count = 8U;
+	macro.gate_count = 8U;
+	for (uint32_t i = 0; i < macro.input_count; ++i)
+		{
+		macro.inputs[i] = inputs[i];
+		}
+	for (uint32_t i = 0; i < macro.output_count; ++i)
+		{
+		macro.outputs[i] = outputs[i];
+		gate_inputs[0] = inputs[0];
+		gate_inputs[1] = inputs[i + 1U];
+		if (!lxs_emit_gate_record(nl, LXS_GATE_XOR, outputs[i], gate_inputs, 2U, &macro.gate_indices[i]))
+			{
+			return 0;
+			}
+		}
+
+	if (!lxs_push_source_multi_macro(nl, &macro))
+		{
+		return 0;
+		}
+
+	return 1;
+	}
+
+static int lxs_emit_and_fan8_macro(
+	lxs_netlist *nl,
+	const uint32_t *outputs,
+	const uint32_t *inputs)
+	{
+	lxs_source_multi_macro macro;
+	uint32_t gate_inputs[2];
+
+	memset(&macro, 0, sizeof(macro));
+	macro.type = LXS_SOURCE_MULTI_MACRO_AND_FAN8;
+	macro.input_count = 9U;
+	macro.output_count = 8U;
+	macro.gate_count = 8U;
+	for (uint32_t i = 0; i < macro.input_count; ++i)
+		{
+		macro.inputs[i] = inputs[i];
+		}
+	for (uint32_t i = 0; i < macro.output_count; ++i)
+		{
+		macro.outputs[i] = outputs[i];
+		gate_inputs[0] = inputs[0];
+		gate_inputs[1] = inputs[i + 1U];
+		if (!lxs_emit_gate_record(nl, LXS_GATE_AND, outputs[i], gate_inputs, 2U, &macro.gate_indices[i]))
+			{
+			return 0;
+			}
+		}
+
+	if (!lxs_push_source_multi_macro(nl, &macro))
+		{
+		return 0;
+		}
+
+	return 1;
+	}
+
+static int lxs_emit_xnor_bank4_macro(
+	lxs_netlist *nl,
+	const uint32_t *outputs,
+	const uint32_t *inputs)
+	{
+	lxs_source_multi_macro macro;
+	uint32_t gate_inputs[2];
+	uint32_t xor_out;
+
+	memset(&macro, 0, sizeof(macro));
+	macro.type = LXS_SOURCE_MULTI_MACRO_XNOR_BANK4;
+	macro.input_count = 8U;
+	macro.output_count = 4U;
+	macro.gate_count = 8U;
+	for (uint32_t i = 0; i < macro.input_count; ++i)
+		{
+		macro.inputs[i] = inputs[i];
+		}
+	for (uint32_t i = 0; i < macro.output_count; ++i)
+		{
+		macro.outputs[i] = outputs[i];
+		xor_out = lxs_intern_temp_net(nl, "xnb4", outputs[i], "xor");
+		if (xor_out == UINT32_MAX)
+			{
+			return 0;
+			}
+
+		gate_inputs[0] = inputs[i * 2U];
+		gate_inputs[1] = inputs[i * 2U + 1U];
+		if (!lxs_emit_gate_record(nl, LXS_GATE_XOR, xor_out, gate_inputs, 2U, &macro.gate_indices[i * 2U]))
+			{
+			return 0;
+			}
+
+		gate_inputs[0] = xor_out;
+		if (!lxs_emit_gate_record(nl, LXS_GATE_NOT, outputs[i], gate_inputs, 1U, &macro.gate_indices[i * 2U + 1U]))
+			{
+			return 0;
+			}
+		}
+
+	if (!lxs_push_source_multi_macro(nl, &macro))
+		{
+		return 0;
+		}
+
+	return 1;
+	}
+
+static int lxs_emit_guard_chain4_macro(
+	lxs_netlist *nl,
+	const uint32_t *outputs,
+	const uint32_t *inputs)
+	{
+	lxs_source_multi_macro macro;
+	uint32_t gate_inputs[2];
+	uint32_t inv1;
+	uint32_t inv2;
+	uint32_t inv3;
+
+	memset(&macro, 0, sizeof(macro));
+	macro.type = LXS_SOURCE_MULTI_MACRO_GUARD_CHAIN4;
+	macro.input_count = 5U;
+	macro.output_count = 5U;
+	macro.gate_count = 8U;
+	for (uint32_t i = 0; i < macro.input_count; ++i)
+		{
+		macro.inputs[i] = inputs[i];
+		}
+	for (uint32_t i = 0; i < macro.output_count; ++i)
+		{
+		macro.outputs[i] = outputs[i];
+		}
+
+	inv1 = lxs_intern_temp_net(nl, "gc4", outputs[0], "inv1");
+	inv2 = lxs_intern_temp_net(nl, "gc4", outputs[1], "inv2");
+	inv3 = lxs_intern_temp_net(nl, "gc4", outputs[2], "inv3");
+	if (inv1 == UINT32_MAX || inv2 == UINT32_MAX || inv3 == UINT32_MAX)
+		{
+		return 0;
+		}
+
+	gate_inputs[0] = inputs[1];
+	gate_inputs[1] = inputs[0];
+	if (!lxs_emit_gate_record(nl, LXS_GATE_AND, outputs[0], gate_inputs, 2U, &macro.gate_indices[0]))
+		{
+		return 0;
+		}
+
+	gate_inputs[0] = outputs[0];
+	if (!lxs_emit_gate_record(nl, LXS_GATE_NOT, inv1, gate_inputs, 1U, &macro.gate_indices[1]))
+		{
+		return 0;
+		}
+
+	gate_inputs[0] = inputs[2];
+	gate_inputs[1] = inv1;
+	if (!lxs_emit_gate_record(nl, LXS_GATE_AND, outputs[1], gate_inputs, 2U, &macro.gate_indices[2]))
+		{
+		return 0;
+		}
+
+	gate_inputs[0] = outputs[1];
+	if (!lxs_emit_gate_record(nl, LXS_GATE_NOT, inv2, gate_inputs, 1U, &macro.gate_indices[3]))
+		{
+		return 0;
+		}
+
+	gate_inputs[0] = inputs[3];
+	gate_inputs[1] = inv2;
+	if (!lxs_emit_gate_record(nl, LXS_GATE_AND, outputs[2], gate_inputs, 2U, &macro.gate_indices[4]))
+		{
+		return 0;
+		}
+
+	gate_inputs[0] = outputs[2];
+	if (!lxs_emit_gate_record(nl, LXS_GATE_NOT, inv3, gate_inputs, 1U, &macro.gate_indices[5]))
+		{
+		return 0;
+		}
+
+	gate_inputs[0] = inputs[4];
+	gate_inputs[1] = inv3;
+	if (!lxs_emit_gate_record(nl, LXS_GATE_AND, outputs[3], gate_inputs, 2U, &macro.gate_indices[6]))
+		{
+		return 0;
+		}
+
+	gate_inputs[0] = outputs[3];
+	if (!lxs_emit_gate_record(nl, LXS_GATE_NOT, outputs[4], gate_inputs, 1U, &macro.gate_indices[7]) ||
+		!lxs_push_source_multi_macro(nl, &macro))
+		{
+		return 0;
+		}
+
+	return 1;
+	}
+
+static uint32_t lxs_gate_equiv_count(const lxs_gate_ir *gate)
+	{
+	switch (gate->type)
+		{
+		case LXS_GATE_AND:
+		case LXS_GATE_OR:
+		case LXS_GATE_XOR:
+			return gate->input_count > 0U ? (gate->input_count - 1U) : 0U;
+		case LXS_GATE_NAND:
+		case LXS_GATE_NOR:
+		case LXS_GATE_XNOR:
+			return gate->input_count;
+		case LXS_GATE_NOT:
+		case LXS_GATE_BUF:
+		case LXS_GATE_TRI:
+			return 1U;
+		default:
+			return 1U;
+		}
+	}
+
 static uint32_t lxs_gate_level(
 	uint32_t gate_index,
 	const lxs_netlist *nl,
@@ -577,76 +1407,301 @@ static uint32_t lxs_gate_level(
 	return max_level;
 	}
 
-static uint8_t lxs_force_source_multi_output_levels(
+static uint32_t lxs_recompute_gate_level(
+	uint32_t gate_index,
+	const lxs_netlist *nl,
+	const int32_t *comb_driver)
+	{
+	const lxs_gate_ir *gate = &nl->gates[gate_index];
+	uint32_t gate_level = 0U;
+
+	for (uint32_t i = 0; i < gate->input_count; ++i)
+		{
+		int32_t driver = comb_driver[gate->inputs[i]];
+		if (driver >= 0)
+			{
+			uint32_t input_level = nl->gates[(uint32_t)driver].level + 1U;
+			if (input_level > gate_level)
+				{
+				gate_level = input_level;
+				}
+			}
+		}
+
+	return gate_level;
+	}
+
+static uint32_t lxs_compute_source_multi_macro_level(
 	const lxs_netlist *nl,
 	const int32_t *comb_driver,
-	uint32_t *forced_levels)
+	const lxs_source_multi_macro *macro)
 	{
-	uint8_t changed = 0U;
+	uint32_t local_levels[16];
+	uint32_t macro_level = 0U;
+
+	for (uint32_t j = 0; j < macro->gate_count; ++j)
+		{
+		const lxs_gate_ir *gate = &nl->gates[macro->gate_indices[j]];
+		uint32_t gate_level = 0U;
+
+		for (uint32_t k = 0; k < gate->input_count; ++k)
+			{
+			int32_t driver = comb_driver[gate->inputs[k]];
+			uint32_t input_level = 0U;
+
+			if (driver >= 0)
+				{
+				uint8_t local_found = 0U;
+				for (uint32_t m = 0; m < j; ++m)
+					{
+					if (macro->gate_indices[m] == (uint32_t)driver)
+						{
+						input_level = local_levels[m];
+						local_found = 1U;
+						break;
+						}
+					}
+				if (!local_found)
+					{
+					input_level = nl->gates[(uint32_t)driver].level;
+					}
+				}
+
+			if ((input_level + 1U) > gate_level)
+				{
+				gate_level = input_level + 1U;
+				}
+			}
+
+		local_levels[j] = gate_level;
+		if (gate_level > macro_level)
+			{
+			macro_level = gate_level;
+			}
+		}
+
+	return macro_level;
+	}
+
+static uint8_t lxs_propagate_source_multi_output_levels(
+	const lxs_netlist *nl,
+	const int32_t *comb_driver)
+	{
+	uint32_t *net_consumer_count;
+	uint32_t *net_consumer_start;
+	uint32_t *net_consumer_fill;
+	uint32_t *net_consumers;
+	uint32_t *gate_macro_count;
+	uint32_t *gate_macro_start;
+	uint32_t *gate_macro_fill;
+	uint32_t *gate_macros;
+	uint32_t *gate_queue;
+	uint32_t *macro_queue;
+	uint8_t *gate_queued;
+	uint8_t *macro_queued;
+	uint32_t gate_head = 0U;
+	uint32_t gate_tail = 0U;
+	uint32_t gate_queue_count = 0U;
+	uint32_t macro_head = 0U;
+	uint32_t macro_tail = 0U;
+	uint32_t macro_queue_count = 0U;
+	uint32_t macro_queue_cap = nl->source_multi_macro_count ? nl->source_multi_macro_count : 1U;
+
+	net_consumer_count = lxs_calloc_aligned(nl->net_count, sizeof(uint32_t));
+	net_consumer_start = lxs_calloc_aligned(nl->net_count + 1U, sizeof(uint32_t));
+	net_consumer_fill = lxs_calloc_aligned(nl->net_count, sizeof(uint32_t));
+	gate_macro_count = lxs_calloc_aligned(nl->gate_count, sizeof(uint32_t));
+	gate_macro_start = lxs_calloc_aligned(nl->gate_count + 1U, sizeof(uint32_t));
+	gate_macro_fill = lxs_calloc_aligned(nl->gate_count, sizeof(uint32_t));
+	gate_queue = lxs_calloc_aligned(nl->gate_count, sizeof(uint32_t));
+	macro_queue = lxs_calloc_aligned(nl->source_multi_macro_count ? nl->source_multi_macro_count : 1U, sizeof(uint32_t));
+	gate_queued = lxs_calloc_aligned(nl->gate_count, sizeof(uint8_t));
+	macro_queued = lxs_calloc_aligned(nl->source_multi_macro_count ? nl->source_multi_macro_count : 1U, sizeof(uint8_t));
+	if (!net_consumer_count || !net_consumer_start || !net_consumer_fill ||
+		!gate_macro_count || !gate_macro_start || !gate_macro_fill ||
+		!gate_queue || !macro_queue || !gate_queued || !macro_queued)
+		{
+		lxs_free_aligned(net_consumer_count);
+		lxs_free_aligned(net_consumer_start);
+		lxs_free_aligned(net_consumer_fill);
+		lxs_free_aligned(gate_macro_count);
+		lxs_free_aligned(gate_macro_start);
+		lxs_free_aligned(gate_macro_fill);
+		lxs_free_aligned(gate_queue);
+		lxs_free_aligned(macro_queue);
+		lxs_free_aligned(gate_queued);
+		lxs_free_aligned(macro_queued);
+		return 0U;
+		}
+
+	for (uint32_t i = 0; i < nl->gate_count; ++i)
+		{
+		for (uint32_t j = 0; j < nl->gates[i].input_count; ++j)
+			{
+			net_consumer_count[nl->gates[i].inputs[j]]++;
+			}
+		}
+
+	for (uint32_t i = 0; i < nl->net_count; ++i)
+		{
+		net_consumer_start[i + 1U] = net_consumer_start[i] + net_consumer_count[i];
+		}
+
+	net_consumers = lxs_calloc_aligned(net_consumer_start[nl->net_count], sizeof(uint32_t));
+	gate_macros = lxs_calloc_aligned(
+		nl->source_multi_macro_count ? (size_t)nl->source_multi_macro_count * 9U : 1U,
+		sizeof(uint32_t));
+	if (!net_consumers || !gate_macros)
+		{
+		lxs_free_aligned(net_consumer_count);
+		lxs_free_aligned(net_consumer_start);
+		lxs_free_aligned(net_consumer_fill);
+		lxs_free_aligned(gate_macro_count);
+		lxs_free_aligned(gate_macro_start);
+		lxs_free_aligned(gate_macro_fill);
+		lxs_free_aligned(gate_queue);
+		lxs_free_aligned(macro_queue);
+		lxs_free_aligned(gate_queued);
+		lxs_free_aligned(macro_queued);
+		lxs_free_aligned(net_consumers);
+		lxs_free_aligned(gate_macros);
+		return 0U;
+		}
+
+	memcpy(net_consumer_fill, net_consumer_start, (size_t)nl->net_count * sizeof(uint32_t));
+	for (uint32_t i = 0; i < nl->gate_count; ++i)
+		{
+		for (uint32_t j = 0; j < nl->gates[i].input_count; ++j)
+			{
+			uint32_t net_id = nl->gates[i].inputs[j];
+			net_consumers[net_consumer_fill[net_id]++] = i;
+			}
+		}
 
 	for (uint32_t i = 0; i < nl->source_multi_macro_count; ++i)
 		{
 		const lxs_source_multi_macro *macro = &nl->source_multi_macros[i];
-		uint32_t local_levels[16];
-		uint32_t macro_level = 0U;
-
-		for (uint32_t j = 0; j < macro->gate_count; ++j)
+		for (uint32_t j = 0; j < macro->input_count; ++j)
 			{
-			const lxs_gate_ir *gate = &nl->gates[macro->gate_indices[j]];
-			uint32_t gate_level = 0U;
-
-			for (uint32_t k = 0; k < gate->input_count; ++k)
+			int32_t driver = comb_driver[macro->inputs[j]];
+			if (driver >= 0)
 				{
-				int32_t driver = comb_driver[gate->inputs[k]];
-				uint32_t input_level = 0U;
-
-				if (driver >= 0)
-					{
-					uint8_t local_found = 0U;
-					for (uint32_t m = 0; m < j; ++m)
-						{
-						if (macro->gate_indices[m] == (uint32_t)driver)
-							{
-							input_level = local_levels[m];
-							local_found = 1U;
-							break;
-							}
-						}
-					if (!local_found)
-						{
-						input_level = nl->gates[(uint32_t)driver].level;
-						}
-					}
-
-				if ((input_level + 1U) > gate_level)
-					{
-					gate_level = input_level + 1U;
-					}
+				gate_macro_count[(uint32_t)driver]++;
 				}
+			}
+		}
 
-			local_levels[j] = gate_level;
-			if (gate_level > macro_level)
+	for (uint32_t i = 0; i < nl->gate_count; ++i)
+		{
+		gate_macro_start[i + 1U] = gate_macro_start[i] + gate_macro_count[i];
+		}
+
+	memcpy(gate_macro_fill, gate_macro_start, (size_t)nl->gate_count * sizeof(uint32_t));
+	for (uint32_t i = 0; i < nl->source_multi_macro_count; ++i)
+		{
+		const lxs_source_multi_macro *macro = &nl->source_multi_macros[i];
+		for (uint32_t j = 0; j < macro->input_count; ++j)
+			{
+			int32_t driver = comb_driver[macro->inputs[j]];
+			if (driver >= 0)
 				{
-				macro_level = gate_level;
+				gate_macros[gate_macro_fill[(uint32_t)driver]++] = i;
+				}
+			}
+		}
+
+	for (uint32_t i = 0; i < nl->source_multi_macro_count; ++i)
+		{
+		macro_queue[macro_tail] = i;
+		macro_tail = (macro_tail + 1U) % macro_queue_cap;
+		macro_queue_count++;
+		macro_queued[i] = 1U;
+		}
+
+	while (macro_queue_count > 0U || gate_queue_count > 0U)
+		{
+		while (macro_queue_count > 0U)
+			{
+			uint32_t macro_index = macro_queue[macro_head];
+			const lxs_source_multi_macro *macro = &nl->source_multi_macros[macro_index];
+			uint32_t macro_level;
+
+			macro_head = (macro_head + 1U) % macro_queue_cap;
+			macro_queue_count--;
+			macro_queued[macro_index] = 0U;
+			macro_level = lxs_compute_source_multi_macro_level(nl, comb_driver, macro);
+			for (uint32_t j = 0; j < macro->output_count; ++j)
+				{
+				int32_t driver = comb_driver[macro->outputs[j]];
+				if (driver >= 0 && nl->gates[(uint32_t)driver].level < macro_level)
+					{
+					uint32_t gate_index = (uint32_t)driver;
+
+					nl->gates[gate_index].level = macro_level;
+					if (!gate_queued[gate_index])
+						{
+						gate_queue[gate_tail] = gate_index;
+						gate_tail = (gate_tail + 1U) % nl->gate_count;
+						gate_queue_count++;
+						gate_queued[gate_index] = 1U;
+						}
+					}
 				}
 			}
 
-		for (uint32_t j = 0; j < macro->output_count; ++j)
+		while (gate_queue_count > 0U)
 			{
-			int32_t driver = comb_driver[macro->outputs[j]];
-			if (driver >= 0)
+			uint32_t gate_index = gate_queue[gate_head];
+			uint32_t net_id = nl->gates[gate_index].output;
+
+			gate_head = (gate_head + 1U) % nl->gate_count;
+			gate_queue_count--;
+			gate_queued[gate_index] = 0U;
+			for (uint32_t i = net_consumer_start[net_id]; i < net_consumer_start[net_id + 1U]; ++i)
 				{
-				if (forced_levels[(uint32_t)driver] == UINT32_MAX ||
-					forced_levels[(uint32_t)driver] < macro_level)
+				uint32_t consumer = net_consumers[i];
+				uint32_t consumer_level = lxs_recompute_gate_level(consumer, nl, comb_driver);
+
+					if (consumer_level > nl->gates[consumer].level)
+						{
+						nl->gates[consumer].level = consumer_level;
+						if (!gate_queued[consumer])
+							{
+							gate_queue[gate_tail] = consumer;
+							gate_tail = (gate_tail + 1U) % nl->gate_count;
+							gate_queue_count++;
+							gate_queued[consumer] = 1U;
+							}
+						}
+				}
+
+			for (uint32_t i = gate_macro_start[gate_index]; i < gate_macro_start[gate_index + 1U]; ++i)
+				{
+				uint32_t macro_index = gate_macros[i];
+				if (!macro_queued[macro_index])
 					{
-					forced_levels[(uint32_t)driver] = macro_level;
-					changed = 1U;
+					macro_queue[macro_tail] = macro_index;
+					macro_tail = (macro_tail + 1U) % macro_queue_cap;
+					macro_queue_count++;
+					macro_queued[macro_index] = 1U;
 					}
 				}
 			}
 		}
 
-	return changed;
+	lxs_free_aligned(net_consumer_count);
+	lxs_free_aligned(net_consumer_start);
+	lxs_free_aligned(net_consumer_fill);
+	lxs_free_aligned(net_consumers);
+	lxs_free_aligned(gate_macro_count);
+	lxs_free_aligned(gate_macro_start);
+	lxs_free_aligned(gate_macro_fill);
+	lxs_free_aligned(gate_macros);
+	lxs_free_aligned(gate_queue);
+	lxs_free_aligned(macro_queue);
+	lxs_free_aligned(gate_queued);
+	lxs_free_aligned(macro_queued);
+	return 1U;
 	}
 
 static uint32_t lxs_count_bucket_gates(const lxs_netlist *nl, uint32_t level, uint32_t type)
@@ -820,6 +1875,89 @@ static void lxs_apply_net_remap_to_source_multi_macros(
 		for (uint32_t j = 0; j < macros[i].output_count; ++j)
 			{
 			macros[i].outputs[j] = remap[macros[i].outputs[j]];
+			}
+		}
+	}
+
+static void lxs_apply_net_remap_to_source_macros(
+	lxs_source_macro *macros,
+	uint32_t count,
+	const uint32_t *remap)
+	{
+	for (uint32_t i = 0; i < count; ++i)
+		{
+		for (uint32_t j = 0; j < macros[i].input_count; ++j)
+			{
+			macros[i].inputs[j] = remap[macros[i].inputs[j]];
+			}
+		macros[i].output = remap[macros[i].output];
+		}
+	}
+
+static void lxs_apply_net_remap_to_source_registers(
+	lxs_netlist *nl,
+	const uint32_t *remap)
+	{
+	lxs_apply_net_remap_to_array(
+		nl->source_register_input_net_ids,
+		nl->source_register_input_count,
+		remap);
+	lxs_apply_net_remap_to_array(
+		nl->source_register_output_net_ids,
+		nl->source_register_output_count,
+		remap);
+	for (uint32_t i = 0; i < nl->source_register_count; ++i)
+		{
+		if (nl->source_registers[i].control_net != UINT32_MAX)
+			{
+			nl->source_registers[i].control_net = remap[nl->source_registers[i].control_net];
+			}
+		if (nl->source_registers[i].aux_control_net != UINT32_MAX)
+			{
+			nl->source_registers[i].aux_control_net = remap[nl->source_registers[i].aux_control_net];
+			}
+		}
+	}
+
+static void lxs_apply_net_remap_to_source_roms(
+	lxs_netlist *nl,
+	const uint32_t *remap)
+	{
+	lxs_apply_net_remap_to_array(
+		nl->source_rom_addr_net_ids,
+		nl->source_rom_addr_count,
+		remap);
+	lxs_apply_net_remap_to_array(
+		nl->source_rom_output_net_ids,
+		nl->source_rom_output_count,
+		remap);
+	}
+
+static void lxs_apply_net_remap_to_source_rams(
+	lxs_netlist *nl,
+	const uint32_t *remap)
+	{
+	lxs_apply_net_remap_to_array(
+		nl->source_ram_read_addr_net_ids,
+		nl->source_ram_read_addr_count,
+		remap);
+	lxs_apply_net_remap_to_array(
+		nl->source_ram_write_addr_net_ids,
+		nl->source_ram_write_addr_count,
+		remap);
+	lxs_apply_net_remap_to_array(
+		nl->source_ram_data_input_net_ids,
+		nl->source_ram_data_input_count,
+		remap);
+	lxs_apply_net_remap_to_array(
+		nl->source_ram_output_net_ids,
+		nl->source_ram_output_count,
+		remap);
+	if (nl->source_ram_count > 0U)
+		{
+		for (uint32_t i = 0; i < nl->source_ram_count; ++i)
+			{
+			nl->source_rams[i].write_enable_net = remap[nl->source_rams[i].write_enable_net];
 			}
 		}
 	}
@@ -1650,6 +2788,43 @@ static uint32_t lxs_collect_macros(
 	return macro_count;
 	}
 
+static uint32_t lxs_collect_source_macros(
+	const lxs_netlist *nl,
+	uint8_t *matched_gates,
+	lxs_macro_plan *macros)
+	{
+	uint32_t macro_count = 0U;
+
+	for (uint32_t i = 0; i < nl->source_macro_count; ++i)
+		{
+		lxs_macro_plan macro;
+		const lxs_source_macro *source = &nl->source_macros[i];
+
+		for (uint32_t j = 0; j < source->gate_count; ++j)
+			{
+			matched_gates[source->gate_indices[j]] = 1U;
+			}
+
+		memset(&macro, 0, sizeof(macro));
+		macro.type = (source->type == LXS_SOURCE_MACRO_PARITY8) ? LXS_MACRO_PARITY8 : LXS_MACRO_PARITY4;
+		macro.level = nl->gates[source->gate_indices[source->gate_count - 1U]].level;
+		macro.output = source->output;
+		for (uint32_t j = 0; j < source->input_count; ++j)
+			{
+			macro.inputs[j] = source->inputs[j];
+			}
+		macro.gate_equiv_count = source->gate_count;
+
+		if (macros)
+			{
+			macros[macro_count] = macro;
+			}
+		macro_count++;
+		}
+
+	return macro_count;
+	}
+
 static int lxs_try_describe_full_adder_cinv(
 	const lxs_netlist *nl,
 	const int32_t *comb_driver,
@@ -1836,6 +3011,26 @@ static uint32_t lxs_collect_source_multi_macros(
 			{
 			macro.type = LXS_MULTI_MACRO_FULL_ADDER;
 			macro.gate_equiv_count = 5U;
+			}
+		else if (source->type == LXS_SOURCE_MULTI_MACRO_XOR_FAN8)
+			{
+			macro.type = LXS_MULTI_MACRO_XOR_FAN8;
+			macro.gate_equiv_count = 8U;
+			}
+		else if (source->type == LXS_SOURCE_MULTI_MACRO_AND_FAN8)
+			{
+			macro.type = LXS_MULTI_MACRO_AND_FAN8;
+			macro.gate_equiv_count = 8U;
+			}
+		else if (source->type == LXS_SOURCE_MULTI_MACRO_XNOR_BANK4)
+			{
+			macro.type = LXS_MULTI_MACRO_XNOR_BANK4;
+			macro.gate_equiv_count = 8U;
+			}
+		else if (source->type == LXS_SOURCE_MULTI_MACRO_GUARD_CHAIN4)
+			{
+			macro.type = LXS_MULTI_MACRO_GUARD_CHAIN4;
+			macro.gate_equiv_count = 8U;
 			}
 		else
 			{
@@ -2056,15 +3251,14 @@ static lxs_netlist* lxs_load_bench(const char *path)
 		char *open_paren = strchr(gate_part, '(');
 		char *close_paren;
 		char *output_ctx = NULL;
-		char *input_ctx = NULL;
 		char *output_token;
-		char *input_token;
-		char *output_names[3];
-		uint32_t output_ids[3];
-		uint32_t input_ids[5];
+		char *output_names[64];
+		uint32_t output_ids[64];
+		uint32_t input_ids[64];
 		uint32_t output_count = 0U;
 		uint32_t input_count = 0U;
-		uint32_t is_multi_macro = 0U;
+		uint32_t is_special_macro = 0U;
+		char *gate_name;
 		lxs_gate_ir gate;
 
 		if (!open_paren)
@@ -2081,25 +3275,10 @@ static lxs_netlist* lxs_load_bench(const char *path)
 
 		*close_paren = '\0';
 		output_token = strtok_s(out_name, ",", &output_ctx);
-		while (output_token && output_count < 3U)
+		while (output_token && output_count < 64U)
 			{
 			output_names[output_count++] = lxs_trim(output_token);
 			output_token = strtok_s(NULL, ",", &output_ctx);
-			}
-
-		input_token = strtok_s(open_paren + 1, ",", &input_ctx);
-		while (input_token && input_count < 5U)
-			{
-			input_ids[input_count] = lxs_intern_net(nl, lxs_trim(input_token));
-			if (input_ids[input_count] == UINT32_MAX)
-				{
-				lxs_free_netlist(nl);
-				fclose(stream);
-				return NULL;
-				}
-
-			input_count++;
-			input_token = strtok_s(NULL, ",", &input_ctx);
 			}
 
 		for (uint32_t i = 0; i < output_count; ++i)
@@ -2113,7 +3292,426 @@ static lxs_netlist* lxs_load_bench(const char *path)
 				}
 			}
 
-		if (strcmp(lxs_trim(gate_part), "HALF_ADDER") == 0)
+		gate_name = lxs_trim(gate_part);
+
+		if (strcmp(gate_name, "REGISTER") == 0)
+			{
+			char *input_ctx = NULL;
+			char *input_token = strtok_s(open_paren + 1, ",", &input_ctx);
+
+			while (input_token && input_count < 64U)
+				{
+				input_ids[input_count] = lxs_intern_net(nl, lxs_trim(input_token));
+				if (input_ids[input_count] == UINT32_MAX)
+					{
+					lxs_free_netlist(nl);
+					fclose(stream);
+					return NULL;
+					}
+				input_count++;
+				input_token = strtok_s(NULL, ",", &input_ctx);
+				}
+
+			if (output_count == 0U || output_count != input_count ||
+				!lxs_emit_register_descriptor(nl, output_ids, input_ids, output_count, UINT32_MAX, 0U))
+				{
+				lxs_free_netlist(nl);
+				fclose(stream);
+				return NULL;
+				}
+			is_special_macro = 1U;
+			}
+		else if (strcmp(gate_name, "REGISTER_EN") == 0 || strcmp(gate_name, "REGISTER_HOLD") == 0)
+			{
+			char *section_ctx = NULL;
+			char *sections[2];
+			uint32_t section_count = 0U;
+			char *section = strtok_s(open_paren + 1, ";", &section_ctx);
+			char *input_ctx = NULL;
+			char *input_token;
+			uint32_t control_net;
+			uint8_t control_invert = strcmp(gate_name, "REGISTER_HOLD") == 0 ? 1U : 0U;
+
+			while (section && section_count < 2U)
+				{
+				sections[section_count++] = lxs_trim(section);
+				section = strtok_s(NULL, ";", &section_ctx);
+				}
+
+			if (section_count != 2U)
+				{
+				lxs_free_netlist(nl);
+				fclose(stream);
+				return NULL;
+				}
+
+			input_token = strtok_s(sections[0], ",", &input_ctx);
+			while (input_token && input_count < 64U)
+				{
+				input_ids[input_count] = lxs_intern_net(nl, lxs_trim(input_token));
+				if (input_ids[input_count] == UINT32_MAX)
+					{
+					lxs_free_netlist(nl);
+					fclose(stream);
+					return NULL;
+					}
+				input_count++;
+				input_token = strtok_s(NULL, ",", &input_ctx);
+				}
+
+			control_net = lxs_intern_net(nl, lxs_trim(sections[1]));
+			if (control_net == UINT32_MAX || output_count == 0U || output_count != input_count ||
+				!lxs_emit_register_descriptor(nl, output_ids, input_ids, output_count, control_net, control_invert))
+				{
+				lxs_free_netlist(nl);
+				fclose(stream);
+				return NULL;
+				}
+			is_special_macro = 1U;
+			}
+		else if (strcmp(gate_name, "COUNTER_EN") == 0)
+			{
+			uint32_t enable_net = lxs_intern_net(nl, lxs_trim(open_paren + 1));
+
+			if (enable_net == UINT32_MAX || output_count == 0U ||
+				!lxs_emit_counter_descriptor(nl, output_ids, output_count, enable_net, UINT32_MAX, LXS_REGISTER_MODE_COUNTER_EN))
+				{
+				lxs_free_netlist(nl);
+				fclose(stream);
+				return NULL;
+				}
+			is_special_macro = 1U;
+			}
+		else if (strcmp(gate_name, "COUNTER_UPDOWN") == 0)
+			{
+			char *section_ctx = NULL;
+			char *sections[2];
+			uint32_t section_count = 0U;
+			char *section = strtok_s(open_paren + 1, ";", &section_ctx);
+			uint32_t enable_net;
+			uint32_t down_net;
+
+			while (section && section_count < 2U)
+				{
+				sections[section_count++] = lxs_trim(section);
+				section = strtok_s(NULL, ";", &section_ctx);
+				}
+
+			if (section_count != 2U)
+				{
+				lxs_free_netlist(nl);
+				fclose(stream);
+				return NULL;
+				}
+
+			enable_net = lxs_intern_net(nl, sections[0]);
+			down_net = lxs_intern_net(nl, sections[1]);
+			if (enable_net == UINT32_MAX || down_net == UINT32_MAX || output_count == 0U ||
+				!lxs_emit_counter_descriptor(nl, output_ids, output_count, enable_net, down_net, LXS_REGISTER_MODE_COUNTER_UPDOWN))
+				{
+				lxs_free_netlist(nl);
+				fclose(stream);
+				return NULL;
+				}
+			is_special_macro = 1U;
+			}
+		else if (strcmp(gate_name, "ROM") == 0)
+			{
+			char *section_ctx = NULL;
+			char *sections[2];
+			uint32_t section_count = 0U;
+			char *section = strtok_s(open_paren + 1, ";", &section_ctx);
+			char *addr_ctx = NULL;
+			char *data_ctx = NULL;
+			char *token;
+			char *data_tokens[256];
+			uint32_t data_token_count = 0U;
+
+			while (section && section_count < 2U)
+				{
+				sections[section_count++] = lxs_trim(section);
+				section = strtok_s(NULL, ";", &section_ctx);
+				}
+
+			if (section_count != 2U)
+				{
+				lxs_free_netlist(nl);
+				fclose(stream);
+				return NULL;
+				}
+
+			token = strtok_s(sections[0], ",", &addr_ctx);
+			while (token && input_count < 16U)
+				{
+				input_ids[input_count] = lxs_intern_net(nl, lxs_trim(token));
+				if (input_ids[input_count] == UINT32_MAX)
+					{
+					lxs_free_netlist(nl);
+					fclose(stream);
+					return NULL;
+					}
+				input_count++;
+				token = strtok_s(NULL, ",", &addr_ctx);
+				}
+
+			token = strtok_s(sections[1], ",", &data_ctx);
+			while (token && data_token_count < 256U)
+				{
+				data_tokens[data_token_count++] = lxs_trim(token);
+				token = strtok_s(NULL, ",", &data_ctx);
+				}
+
+			if (!lxs_emit_rom_descriptor(nl, output_ids, output_count, input_ids, input_count, data_tokens, data_token_count))
+				{
+				lxs_free_netlist(nl);
+				fclose(stream);
+				return NULL;
+				}
+			is_special_macro = 1U;
+			}
+		else if (strcmp(gate_name, "RAM") == 0)
+			{
+			char *section_ctx = NULL;
+			char *sections[5];
+			uint32_t section_count = 0U;
+			char *section = strtok_s(open_paren + 1, ";", &section_ctx);
+			char *read_ctx = NULL;
+			char *write_ctx = NULL;
+			char *data_ctx = NULL;
+			char *init_ctx = NULL;
+			char *token;
+			char *data_tokens[256];
+			uint32_t read_ids[16];
+			uint32_t write_ids[16];
+			uint32_t data_ids[64];
+			uint32_t read_count = 0U;
+			uint32_t write_count = 0U;
+			uint32_t data_count = 0U;
+			uint32_t data_token_count = 0U;
+			uint32_t we_net;
+
+			while (section && section_count < 5U)
+				{
+				sections[section_count++] = lxs_trim(section);
+				section = strtok_s(NULL, ";", &section_ctx);
+				}
+
+			if (section_count != 5U)
+				{
+				lxs_free_netlist(nl);
+				fclose(stream);
+				return NULL;
+				}
+
+			token = strtok_s(sections[0], ",", &read_ctx);
+			while (token && read_count < 16U)
+				{
+				read_ids[read_count] = lxs_intern_net(nl, lxs_trim(token));
+				if (read_ids[read_count] == UINT32_MAX)
+					{
+					lxs_free_netlist(nl);
+					fclose(stream);
+					return NULL;
+					}
+				read_count++;
+				token = strtok_s(NULL, ",", &read_ctx);
+				}
+
+			token = strtok_s(sections[1], ",", &write_ctx);
+			while (token && write_count < 16U)
+				{
+				write_ids[write_count] = lxs_intern_net(nl, lxs_trim(token));
+				if (write_ids[write_count] == UINT32_MAX)
+					{
+					lxs_free_netlist(nl);
+					fclose(stream);
+					return NULL;
+					}
+				write_count++;
+				token = strtok_s(NULL, ",", &write_ctx);
+				}
+
+			token = strtok_s(sections[2], ",", &data_ctx);
+			while (token && data_count < 64U)
+				{
+				data_ids[data_count] = lxs_intern_net(nl, lxs_trim(token));
+				if (data_ids[data_count] == UINT32_MAX)
+					{
+					lxs_free_netlist(nl);
+					fclose(stream);
+					return NULL;
+					}
+				data_count++;
+				token = strtok_s(NULL, ",", &data_ctx);
+				}
+
+			we_net = lxs_intern_net(nl, lxs_trim(sections[3]));
+			if (we_net == UINT32_MAX)
+				{
+				lxs_free_netlist(nl);
+				fclose(stream);
+				return NULL;
+				}
+
+			token = strtok_s(sections[4], ",", &init_ctx);
+			while (token && data_token_count < 256U)
+				{
+				data_tokens[data_token_count++] = lxs_trim(token);
+				token = strtok_s(NULL, ",", &init_ctx);
+				}
+
+			if (!lxs_emit_ram_descriptor(
+					nl,
+					output_ids,
+					output_count,
+					read_ids,
+					read_count,
+					write_ids,
+					write_count,
+					data_ids,
+					data_count,
+					we_net,
+					data_tokens,
+					data_token_count))
+				{
+				lxs_free_netlist(nl);
+				fclose(stream);
+				return NULL;
+				}
+			is_special_macro = 1U;
+			}
+		else if (strcmp(gate_name, "REGFILE2") == 0)
+			{
+			char *section_ctx = NULL;
+			char *sections[5];
+			uint32_t section_count = 0U;
+			char *section = strtok_s(open_paren + 1, ";", &section_ctx);
+			char *read_ctx = NULL;
+			char *write_ctx = NULL;
+			char *data_ctx = NULL;
+			char *init_ctx = NULL;
+			char *token;
+			char *data_tokens[2];
+			uint32_t read_ids[1];
+			uint32_t write_ids[1];
+			uint32_t data_ids[64];
+			uint32_t read_count = 0U;
+			uint32_t write_count = 0U;
+			uint32_t data_count = 0U;
+			uint32_t data_token_count = 0U;
+			uint32_t we_net;
+
+			while (section && section_count < 5U)
+				{
+				sections[section_count++] = lxs_trim(section);
+				section = strtok_s(NULL, ";", &section_ctx);
+				}
+
+			if (section_count != 5U)
+				{
+				lxs_free_netlist(nl);
+				fclose(stream);
+				return NULL;
+				}
+
+			token = strtok_s(sections[0], ",", &read_ctx);
+			while (token && read_count < 1U)
+				{
+				read_ids[read_count] = lxs_intern_net(nl, lxs_trim(token));
+				if (read_ids[read_count] == UINT32_MAX)
+					{
+					lxs_free_netlist(nl);
+					fclose(stream);
+					return NULL;
+					}
+				read_count++;
+				token = strtok_s(NULL, ",", &read_ctx);
+				}
+
+			token = strtok_s(sections[1], ",", &write_ctx);
+			while (token && write_count < 1U)
+				{
+				write_ids[write_count] = lxs_intern_net(nl, lxs_trim(token));
+				if (write_ids[write_count] == UINT32_MAX)
+					{
+					lxs_free_netlist(nl);
+					fclose(stream);
+					return NULL;
+					}
+				write_count++;
+				token = strtok_s(NULL, ",", &write_ctx);
+				}
+
+			token = strtok_s(sections[2], ",", &data_ctx);
+			while (token && data_count < 64U)
+				{
+				data_ids[data_count] = lxs_intern_net(nl, lxs_trim(token));
+				if (data_ids[data_count] == UINT32_MAX)
+					{
+					lxs_free_netlist(nl);
+					fclose(stream);
+					return NULL;
+					}
+				data_count++;
+				token = strtok_s(NULL, ",", &data_ctx);
+				}
+
+			we_net = lxs_intern_net(nl, lxs_trim(sections[3]));
+			if (we_net == UINT32_MAX)
+				{
+				lxs_free_netlist(nl);
+				fclose(stream);
+				return NULL;
+				}
+
+			token = strtok_s(sections[4], ",", &init_ctx);
+			while (token && data_token_count < 2U)
+				{
+				data_tokens[data_token_count++] = lxs_trim(token);
+				token = strtok_s(NULL, ",", &init_ctx);
+				}
+
+			if (!lxs_emit_ram_descriptor(
+					nl,
+					output_ids,
+					output_count,
+					read_ids,
+					read_count,
+					write_ids,
+					write_count,
+					data_ids,
+					data_count,
+					we_net,
+					data_tokens,
+					data_token_count))
+				{
+				lxs_free_netlist(nl);
+				fclose(stream);
+				return NULL;
+				}
+			is_special_macro = 1U;
+			}
+		else
+			{
+			char *input_ctx = NULL;
+			char *input_token = strtok_s(open_paren + 1, ",", &input_ctx);
+
+			while (input_token && input_count < 9U)
+				{
+				input_ids[input_count] = lxs_intern_net(nl, lxs_trim(input_token));
+				if (input_ids[input_count] == UINT32_MAX)
+					{
+					lxs_free_netlist(nl);
+					fclose(stream);
+					return NULL;
+					}
+
+				input_count++;
+				input_token = strtok_s(NULL, ",", &input_ctx);
+				}
+			}
+
+		if (strcmp(gate_name, "HALF_ADDER") == 0)
 			{
 			if (output_count != 2U || input_count != 2U ||
 				!lxs_emit_half_adder_macro(nl, output_ids, input_ids))
@@ -2122,9 +3720,9 @@ static lxs_netlist* lxs_load_bench(const char *path)
 				fclose(stream);
 				return NULL;
 				}
-			is_multi_macro = 1U;
+			is_special_macro = 1U;
 			}
-		else if (strcmp(lxs_trim(gate_part), "FULL_ADDER") == 0)
+		else if (strcmp(gate_name, "FULL_ADDER") == 0)
 			{
 			if (output_count != 2U || input_count != 3U ||
 				!lxs_emit_full_adder_macro(nl, output_ids, input_ids, macro_serial++))
@@ -2133,9 +3731,9 @@ static lxs_netlist* lxs_load_bench(const char *path)
 				fclose(stream);
 				return NULL;
 				}
-			is_multi_macro = 1U;
+			is_special_macro = 1U;
 			}
-		else if (strcmp(lxs_trim(gate_part), "RIPPLE_SLICE2") == 0)
+		else if (strcmp(gate_name, "RIPPLE_SLICE2") == 0)
 			{
 			if (output_count != 3U || input_count != 5U ||
 				!lxs_emit_ripple_slice2_macro(nl, output_ids, input_ids, macro_serial++))
@@ -2144,15 +3742,81 @@ static lxs_netlist* lxs_load_bench(const char *path)
 				fclose(stream);
 				return NULL;
 				}
-			is_multi_macro = 1U;
+			is_special_macro = 1U;
+			}
+		else if (strcmp(gate_name, "XOR_FAN8") == 0)
+			{
+			if (output_count != 8U || input_count != 9U ||
+				!lxs_emit_xor_fan8_macro(nl, output_ids, input_ids))
+				{
+				lxs_free_netlist(nl);
+				fclose(stream);
+				return NULL;
+			}
+			is_special_macro = 1U;
+			}
+		else if (strcmp(gate_name, "AND_FAN8") == 0)
+			{
+			if (output_count != 8U || input_count != 9U ||
+				!lxs_emit_and_fan8_macro(nl, output_ids, input_ids))
+				{
+				lxs_free_netlist(nl);
+				fclose(stream);
+				return NULL;
+				}
+			is_special_macro = 1U;
+			}
+		else if (strcmp(gate_name, "XNOR_BANK4") == 0)
+			{
+			if (output_count != 4U || input_count != 8U ||
+				!lxs_emit_xnor_bank4_macro(nl, output_ids, input_ids))
+				{
+				lxs_free_netlist(nl);
+				fclose(stream);
+				return NULL;
+				}
+			is_special_macro = 1U;
+			}
+		else if (strcmp(gate_name, "GUARD_CHAIN4") == 0)
+			{
+			if (output_count != 5U || input_count != 5U ||
+				!lxs_emit_guard_chain4_macro(nl, output_ids, input_ids))
+				{
+				lxs_free_netlist(nl);
+				fclose(stream);
+				return NULL;
+				}
+			is_special_macro = 1U;
+			}
+		else if (strcmp(gate_name, "PARITY4") == 0)
+			{
+			if (output_count != 1U || input_count != 4U ||
+				!lxs_emit_parity4_macro(nl, output_ids[0], input_ids, macro_serial++))
+				{
+				lxs_free_netlist(nl);
+				fclose(stream);
+				return NULL;
+				}
+			is_special_macro = 1U;
+			}
+		else if (strcmp(gate_name, "PARITY8") == 0)
+			{
+			if (output_count != 1U || input_count != 8U ||
+				!lxs_emit_parity8_macro(nl, output_ids[0], input_ids, macro_serial++))
+				{
+				lxs_free_netlist(nl);
+				fclose(stream);
+				return NULL;
+				}
+			is_special_macro = 1U;
 			}
 
-		if (!is_multi_macro)
+		if (!is_special_macro)
 			{
 			memset(&gate, 0, sizeof(gate));
-			gate.type = lxs_string_to_gate_type(lxs_trim(gate_part));
+			gate.type = lxs_string_to_gate_type(gate_name);
 			gate.output = output_ids[0];
-			gate.input_count = input_count > 2U ? 2U : input_count;
+			gate.input_count = input_count > 8U ? 8U : input_count;
 			for (uint32_t i = 0; i < gate.input_count; ++i)
 				{
 				gate.inputs[i] = input_ids[i];
@@ -2193,7 +3857,23 @@ void lxs_free_netlist(lxs_netlist *nl)
 	lxs_free_aligned(nl->inputs);
 	lxs_free_aligned(nl->outputs);
 	lxs_free_aligned(nl->gates);
+	lxs_free_aligned(nl->source_macros);
 	lxs_free_aligned(nl->source_multi_macros);
+	lxs_free_aligned(nl->source_registers);
+	lxs_free_aligned(nl->source_register_input_net_ids);
+	lxs_free_aligned(nl->source_register_output_net_ids);
+	lxs_free_aligned(nl->source_roms);
+	lxs_free_aligned(nl->source_rom_addr_net_ids);
+	lxs_free_aligned(nl->source_rom_output_net_ids);
+	lxs_free_aligned(nl->source_rom_init_value);
+	lxs_free_aligned(nl->source_rom_init_mask);
+	lxs_free_aligned(nl->source_rams);
+	lxs_free_aligned(nl->source_ram_read_addr_net_ids);
+	lxs_free_aligned(nl->source_ram_write_addr_net_ids);
+	lxs_free_aligned(nl->source_ram_data_input_net_ids);
+	lxs_free_aligned(nl->source_ram_output_net_ids);
+	lxs_free_aligned(nl->source_ram_init_value);
+	lxs_free_aligned(nl->source_ram_init_mask);
 	lxs_free_aligned(nl);
 	}
 
@@ -2202,7 +3882,6 @@ lxs_plan* lxs_compile_to_plan(lxs_netlist *nl)
 	int32_t *comb_driver;
 	uint32_t *level_cache;
 	uint8_t *visiting;
-	uint32_t *forced_levels;
 	uint32_t *net_remap;
 	uint8_t *net_assigned;
 	uint8_t *matched_gates;
@@ -2217,27 +3896,27 @@ lxs_plan* lxs_compile_to_plan(lxs_netlist *nl)
 	uint32_t multi_macro_fill = 0U;
 	uint32_t macro_level_fill = 0U;
 	uint32_t multi_macro_level_fill = 0U;
+	uint32_t gate_alloc_count;
 
 	if (!nl)
 		{
 		return NULL;
 		}
 
-	comb_driver = lxs_calloc_aligned(nl->net_count, sizeof(int32_t));
-	level_cache = lxs_calloc_aligned(nl->gate_count, sizeof(uint32_t));
-	visiting = lxs_calloc_aligned(nl->gate_count, sizeof(uint8_t));
-	forced_levels = lxs_calloc_aligned(nl->gate_count, sizeof(uint32_t));
+	gate_alloc_count = nl->gate_count ? nl->gate_count : 1U;
+	comb_driver = lxs_calloc_aligned(nl->net_count ? nl->net_count : 1U, sizeof(int32_t));
+	level_cache = lxs_calloc_aligned(gate_alloc_count, sizeof(uint32_t));
+	visiting = lxs_calloc_aligned(gate_alloc_count, sizeof(uint8_t));
 	net_remap = lxs_calloc_aligned(nl->net_count, sizeof(uint32_t));
 	net_assigned = lxs_calloc_aligned(nl->net_count, sizeof(uint8_t));
-	matched_gates = lxs_calloc_aligned(nl->gate_count, sizeof(uint8_t));
-	multi_matched_gates = lxs_calloc_aligned(nl->gate_count, sizeof(uint8_t));
-	if (!comb_driver || !level_cache || !visiting || !forced_levels ||
+	matched_gates = lxs_calloc_aligned(gate_alloc_count, sizeof(uint8_t));
+	multi_matched_gates = lxs_calloc_aligned(gate_alloc_count, sizeof(uint8_t));
+	if (!comb_driver || !level_cache || !visiting ||
 		!net_remap || !net_assigned || !matched_gates || !multi_matched_gates)
 		{
 		lxs_free_aligned(comb_driver);
 		lxs_free_aligned(level_cache);
 		lxs_free_aligned(visiting);
-		lxs_free_aligned(forced_levels);
 		lxs_free_aligned(net_remap);
 		lxs_free_aligned(net_assigned);
 		lxs_free_aligned(matched_gates);
@@ -2249,11 +3928,6 @@ lxs_plan* lxs_compile_to_plan(lxs_netlist *nl)
 		{
 		comb_driver[i] = -1;
 		}
-	for (uint32_t i = 0; i < nl->gate_count; ++i)
-		{
-		forced_levels[i] = UINT32_MAX;
-		}
-
 	for (uint32_t i = 0; i < nl->gate_count; ++i)
 		{
 		level_cache[i] = UINT32_MAX;
@@ -2280,39 +3954,24 @@ lxs_plan* lxs_compile_to_plan(lxs_netlist *nl)
 
 	if (nl->source_multi_macro_count > 0U)
 		{
-		for (;;)
+		if (!lxs_propagate_source_multi_output_levels(nl, comb_driver))
 			{
-			uint8_t changed;
+			lxs_free_aligned(comb_driver);
+			lxs_free_aligned(level_cache);
+			lxs_free_aligned(visiting);
+			lxs_free_aligned(net_remap);
+			lxs_free_aligned(net_assigned);
+			lxs_free_aligned(matched_gates);
+			lxs_free_aligned(multi_matched_gates);
+			return NULL;
+			}
 
-			max_level = 0U;
-			for (uint32_t i = 0; i < nl->gate_count; ++i)
+		max_level = 0U;
+		for (uint32_t i = 0; i < nl->gate_count; ++i)
+			{
+			if (nl->gates[i].type != LXS_GATE_DFF && nl->gates[i].level > max_level)
 				{
-				level_cache[i] = UINT32_MAX;
-				if (forced_levels[i] != UINT32_MAX)
-					{
-					level_cache[i] = forced_levels[i];
-					}
-				}
-			memset(visiting, 0, (size_t)nl->gate_count * sizeof(uint8_t));
-			for (uint32_t i = 0; i < nl->gate_count; ++i)
-				{
-				if (nl->gates[i].type == LXS_GATE_DFF)
-					{
-					nl->gates[i].level = UINT32_MAX;
-					continue;
-					}
-
-				nl->gates[i].level = lxs_gate_level(i, nl, comb_driver, level_cache, visiting);
-				if (nl->gates[i].level > max_level)
-					{
-					max_level = nl->gates[i].level;
-					}
-				}
-			changed = lxs_force_source_multi_output_levels(nl, comb_driver, forced_levels);
-
-			if (!changed)
-				{
-				break;
+				max_level = nl->gates[i].level;
 				}
 			}
 		}
@@ -2338,10 +3997,17 @@ lxs_plan* lxs_compile_to_plan(lxs_netlist *nl)
 	lxs_apply_net_remap_to_array(nl->inputs, nl->input_count, net_remap);
 	lxs_apply_net_remap_to_array(nl->outputs, nl->output_count, net_remap);
 	lxs_apply_net_remap_to_gates(nl->gates, nl->gate_count, net_remap);
+	lxs_apply_net_remap_to_source_macros(
+		nl->source_macros,
+		nl->source_macro_count,
+		net_remap);
 	lxs_apply_net_remap_to_source_multi_macros(
 		nl->source_multi_macros,
 		nl->source_multi_macro_count,
 		net_remap);
+	lxs_apply_net_remap_to_source_registers(nl, net_remap);
+	lxs_apply_net_remap_to_source_roms(nl, net_remap);
+	lxs_apply_net_remap_to_source_rams(nl, net_remap);
 	for (uint32_t i = 0; i < nl->net_count; ++i)
 		{
 		comb_driver[i] = -1;
@@ -2360,7 +4026,6 @@ lxs_plan* lxs_compile_to_plan(lxs_netlist *nl)
 		lxs_free_aligned(comb_driver);
 		lxs_free_aligned(level_cache);
 		lxs_free_aligned(visiting);
-		lxs_free_aligned(forced_levels);
 		lxs_free_aligned(net_remap);
 		lxs_free_aligned(net_assigned);
 		lxs_free_aligned(matched_gates);
@@ -2378,7 +4043,6 @@ lxs_plan* lxs_compile_to_plan(lxs_netlist *nl)
 		lxs_free_aligned(comb_driver);
 		lxs_free_aligned(level_cache);
 		lxs_free_aligned(visiting);
-		lxs_free_aligned(forced_levels);
 		lxs_free_aligned(net_remap);
 		lxs_free_aligned(net_assigned);
 		lxs_free_aligned(matched_gates);
@@ -2389,13 +4053,14 @@ lxs_plan* lxs_compile_to_plan(lxs_netlist *nl)
 	plan->multi_macro_count += recognized_multi_count;
 	}
 	memcpy(matched_gates, multi_matched_gates, (size_t)nl->gate_count * sizeof(uint8_t));
-	plan->macro_count = lxs_collect_macros(nl, comb_driver, matched_gates, NULL);
-	if (plan->macro_count == UINT32_MAX)
+	plan->macro_count = lxs_collect_source_macros(nl, matched_gates, NULL);
+	{
+	uint32_t recognized_macro_count = lxs_collect_macros(nl, comb_driver, matched_gates, NULL);
+	if (recognized_macro_count == UINT32_MAX)
 		{
 		lxs_free_aligned(comb_driver);
 		lxs_free_aligned(level_cache);
 		lxs_free_aligned(visiting);
-		lxs_free_aligned(forced_levels);
 		lxs_free_aligned(net_remap);
 		lxs_free_aligned(net_assigned);
 		lxs_free_aligned(matched_gates);
@@ -2403,6 +4068,8 @@ lxs_plan* lxs_compile_to_plan(lxs_netlist *nl)
 		lxs_free_aligned(plan);
 		return NULL;
 		}
+	plan->macro_count += recognized_macro_count;
+	}
 	plan->level_count = 0U;
 	for (uint32_t i = 0; i < nl->gate_count; ++i)
 		{
@@ -2425,6 +4092,23 @@ lxs_plan* lxs_compile_to_plan(lxs_netlist *nl)
 
 	plan->inputs.count = nl->input_count;
 	plan->outputs.count = nl->output_count;
+	plan->register_count = nl->source_register_count;
+	plan->register_bit_count = nl->source_register_output_count;
+	plan->register_input_net_count = nl->source_register_input_count;
+	plan->rom_count = nl->source_rom_count;
+	plan->rom_addr_net_count = nl->source_rom_addr_count;
+	plan->rom_output_net_count = nl->source_rom_output_count;
+	plan->rom_bit_count = nl->source_rom_init_count;
+	plan->ram_count = nl->source_ram_count;
+	plan->ram_storage_bit_count = nl->source_ram_init_count;
+	plan->ram_read_addr_net_count = nl->source_ram_read_addr_count;
+	plan->ram_write_addr_net_count = nl->source_ram_write_addr_count;
+	plan->ram_data_input_net_count = nl->source_ram_data_input_count;
+	plan->ram_output_net_count = nl->source_ram_output_count;
+	for (uint32_t i = 0; i < nl->source_ram_count; ++i)
+		{
+		plan->ram_stage_bit_count += nl->source_rams[i].data_width;
+		}
 	plan->inputs.net_ids = lxs_calloc_aligned(plan->inputs.count, sizeof(uint32_t));
 	plan->outputs.net_ids = lxs_calloc_aligned(plan->outputs.count, sizeof(uint32_t));
 	plan->state.d_inputs = lxs_calloc_aligned(plan->state.count, sizeof(uint32_t));
@@ -2434,6 +4118,23 @@ lxs_plan* lxs_compile_to_plan(lxs_netlist *nl)
 	plan->chunks = lxs_calloc_aligned(plan->comb_gate_count, sizeof(lxs_chunk_plan));
 	plan->macros = lxs_calloc_aligned(plan->macro_count, sizeof(lxs_macro_plan));
 	plan->multi_macros = lxs_calloc_aligned(plan->multi_macro_count, sizeof(lxs_multi_macro_plan));
+	plan->registers = lxs_calloc_aligned(plan->register_count, sizeof(lxs_register_plan));
+	plan->register_input_net_ids = lxs_calloc_aligned(plan->register_input_net_count, sizeof(uint32_t));
+	plan->register_output_net_ids = lxs_calloc_aligned(plan->register_bit_count, sizeof(uint32_t));
+	plan->register_init_value = lxs_calloc_aligned(plan->register_bit_count, sizeof(uint64_t));
+	plan->register_init_mask = lxs_calloc_aligned(plan->register_bit_count, sizeof(uint64_t));
+	plan->roms = lxs_calloc_aligned(plan->rom_count, sizeof(lxs_rom_plan));
+	plan->rom_addr_net_ids = lxs_calloc_aligned(plan->rom_addr_net_count, sizeof(uint32_t));
+	plan->rom_output_net_ids = lxs_calloc_aligned(plan->rom_output_net_count, sizeof(uint32_t));
+	plan->rom_init_value = lxs_calloc_aligned(plan->rom_bit_count, sizeof(uint64_t));
+	plan->rom_init_mask = lxs_calloc_aligned(plan->rom_bit_count, sizeof(uint64_t));
+	plan->rams = lxs_calloc_aligned(plan->ram_count, sizeof(lxs_ram_plan));
+	plan->ram_read_addr_net_ids = lxs_calloc_aligned(plan->ram_read_addr_net_count, sizeof(uint32_t));
+	plan->ram_write_addr_net_ids = lxs_calloc_aligned(plan->ram_write_addr_net_count, sizeof(uint32_t));
+	plan->ram_data_input_net_ids = lxs_calloc_aligned(plan->ram_data_input_net_count, sizeof(uint32_t));
+	plan->ram_output_net_ids = lxs_calloc_aligned(plan->ram_output_net_count, sizeof(uint32_t));
+	plan->ram_init_value = lxs_calloc_aligned(plan->ram_storage_bit_count, sizeof(uint64_t));
+	plan->ram_init_mask = lxs_calloc_aligned(plan->ram_storage_bit_count, sizeof(uint64_t));
 
 	if ((plan->inputs.count && !plan->inputs.net_ids) ||
 		(plan->outputs.count && !plan->outputs.net_ids) ||
@@ -2441,13 +4142,19 @@ lxs_plan* lxs_compile_to_plan(lxs_netlist *nl)
 		(plan->level_count && !plan->levels) ||
 		(plan->comb_gate_count && (!plan->comb_gates || !plan->chunks)) ||
 		(plan->macro_count && !plan->macros) ||
-		(plan->multi_macro_count && !plan->multi_macros))
+		(plan->multi_macro_count && !plan->multi_macros) ||
+		(plan->register_count && (!plan->registers || !plan->register_output_net_ids ||
+			!plan->register_init_value || !plan->register_init_mask)) ||
+		(plan->register_input_net_count && !plan->register_input_net_ids) ||
+		(plan->rom_count && (!plan->roms || !plan->rom_addr_net_ids || !plan->rom_output_net_ids ||
+			!plan->rom_init_value || !plan->rom_init_mask)) ||
+		(plan->ram_count && (!plan->rams || !plan->ram_read_addr_net_ids || !plan->ram_write_addr_net_ids ||
+			!plan->ram_data_input_net_ids || !plan->ram_output_net_ids || !plan->ram_init_value || !plan->ram_init_mask)))
 		{
 		lxs_free_plan(plan);
 		lxs_free_aligned(comb_driver);
 		lxs_free_aligned(level_cache);
 		lxs_free_aligned(visiting);
-		lxs_free_aligned(forced_levels);
 		lxs_free_aligned(net_remap);
 		lxs_free_aligned(net_assigned);
 		lxs_free_aligned(matched_gates);
@@ -2457,10 +4164,62 @@ lxs_plan* lxs_compile_to_plan(lxs_netlist *nl)
 
 	memcpy(plan->inputs.net_ids, nl->inputs, (size_t)plan->inputs.count * sizeof(uint32_t));
 	memcpy(plan->outputs.net_ids, nl->outputs, (size_t)plan->outputs.count * sizeof(uint32_t));
+	memcpy(plan->register_input_net_ids, nl->source_register_input_net_ids, (size_t)plan->register_input_net_count * sizeof(uint32_t));
+	memcpy(plan->register_output_net_ids, nl->source_register_output_net_ids, (size_t)plan->register_bit_count * sizeof(uint32_t));
+	memcpy(plan->rom_addr_net_ids, nl->source_rom_addr_net_ids, (size_t)plan->rom_addr_net_count * sizeof(uint32_t));
+	memcpy(plan->rom_output_net_ids, nl->source_rom_output_net_ids, (size_t)plan->rom_output_net_count * sizeof(uint32_t));
+	memcpy(plan->rom_init_value, nl->source_rom_init_value, (size_t)plan->rom_bit_count * sizeof(uint64_t));
+	memcpy(plan->rom_init_mask, nl->source_rom_init_mask, (size_t)plan->rom_bit_count * sizeof(uint64_t));
+	memcpy(plan->ram_read_addr_net_ids, nl->source_ram_read_addr_net_ids, (size_t)plan->ram_read_addr_net_count * sizeof(uint32_t));
+	memcpy(plan->ram_write_addr_net_ids, nl->source_ram_write_addr_net_ids, (size_t)plan->ram_write_addr_net_count * sizeof(uint32_t));
+	memcpy(plan->ram_data_input_net_ids, nl->source_ram_data_input_net_ids, (size_t)plan->ram_data_input_net_count * sizeof(uint32_t));
+	memcpy(plan->ram_output_net_ids, nl->source_ram_output_net_ids, (size_t)plan->ram_output_net_count * sizeof(uint32_t));
+	memcpy(plan->ram_init_value, nl->source_ram_init_value, (size_t)plan->ram_storage_bit_count * sizeof(uint64_t));
+	memcpy(plan->ram_init_mask, nl->source_ram_init_mask, (size_t)plan->ram_storage_bit_count * sizeof(uint64_t));
 	plan->inputs.is_contiguous =
 		lxs_find_contiguous_range(plan->inputs.net_ids, plan->inputs.count, &plan->inputs.contiguous_base);
 	plan->outputs.is_contiguous =
 		lxs_find_contiguous_range(plan->outputs.net_ids, plan->outputs.count, &plan->outputs.contiguous_base);
+
+	for (uint32_t i = 0; i < plan->register_count; ++i)
+		{
+		plan->registers[i].width_bits = nl->source_registers[i].width_bits;
+		plan->registers[i].input_start = nl->source_registers[i].input_start;
+		plan->registers[i].output_start = nl->source_registers[i].output_start;
+		plan->registers[i].storage_offset = nl->source_registers[i].output_start;
+		plan->registers[i].control_net = nl->source_registers[i].control_net;
+		plan->registers[i].aux_control_net = nl->source_registers[i].aux_control_net;
+		plan->registers[i].mode = nl->source_registers[i].mode;
+		plan->registers[i].control_invert = nl->source_registers[i].control_invert;
+		}
+
+	for (uint32_t i = 0; i < plan->rom_count; ++i)
+		{
+		plan->roms[i].addr_width = nl->source_roms[i].addr_width;
+		plan->roms[i].data_width = nl->source_roms[i].data_width;
+		plan->roms[i].depth = nl->source_roms[i].depth;
+		plan->roms[i].addr_input_start = nl->source_roms[i].addr_start;
+		plan->roms[i].output_start = nl->source_roms[i].output_start;
+		plan->roms[i].data_offset = nl->source_roms[i].data_start;
+		}
+
+	{
+	uint32_t ram_stage_offset = 0U;
+	for (uint32_t i = 0; i < plan->ram_count; ++i)
+		{
+		plan->rams[i].addr_width = nl->source_rams[i].addr_width;
+		plan->rams[i].data_width = nl->source_rams[i].data_width;
+		plan->rams[i].depth = nl->source_rams[i].depth;
+		plan->rams[i].read_addr_start = nl->source_rams[i].read_addr_start;
+		plan->rams[i].write_addr_start = nl->source_rams[i].write_addr_start;
+		plan->rams[i].data_input_start = nl->source_rams[i].data_input_start;
+		plan->rams[i].output_start = nl->source_rams[i].output_start;
+		plan->rams[i].storage_offset = nl->source_rams[i].data_start;
+		plan->rams[i].stage_offset = ram_stage_offset;
+		plan->rams[i].write_enable_net = nl->source_rams[i].write_enable_net;
+		ram_stage_offset += nl->source_rams[i].data_width;
+		}
+	}
 
 	for (uint32_t i = 0; i < nl->gate_count; ++i)
 		{
@@ -2492,7 +4251,6 @@ lxs_plan* lxs_compile_to_plan(lxs_netlist *nl)
 			lxs_free_aligned(comb_driver);
 			lxs_free_aligned(level_cache);
 			lxs_free_aligned(visiting);
-			lxs_free_aligned(forced_levels);
 			lxs_free_aligned(net_remap);
 			lxs_free_aligned(net_assigned);
 			lxs_free_aligned(matched_gates);
@@ -2507,20 +4265,27 @@ lxs_plan* lxs_compile_to_plan(lxs_netlist *nl)
 	memcpy(matched_gates, multi_matched_gates, (size_t)nl->gate_count * sizeof(uint8_t));
 	if (plan->macro_count > 0U)
 		{
-		macro_fill = lxs_collect_macros(nl, comb_driver, matched_gates, plan->macros);
-		if (macro_fill == UINT32_MAX)
+		macro_fill = lxs_collect_source_macros(nl, matched_gates, plan->macros);
+		{
+		uint32_t recognized_macro_fill = lxs_collect_macros(
+			nl,
+			comb_driver,
+			matched_gates,
+			plan->macros + macro_fill);
+		if (recognized_macro_fill == UINT32_MAX)
 			{
 			lxs_free_plan(plan);
 			lxs_free_aligned(comb_driver);
 			lxs_free_aligned(level_cache);
 			lxs_free_aligned(visiting);
-			lxs_free_aligned(forced_levels);
 			lxs_free_aligned(net_remap);
 			lxs_free_aligned(net_assigned);
 			lxs_free_aligned(matched_gates);
 			lxs_free_aligned(multi_matched_gates);
 			return NULL;
 			}
+		macro_fill += recognized_macro_fill;
+		}
 		plan->macro_count = macro_fill;
 		qsort(plan->macros, plan->macro_count, sizeof(lxs_macro_plan), lxs_compare_macros);
 		}
@@ -2547,6 +4312,7 @@ lxs_plan* lxs_compile_to_plan(lxs_netlist *nl)
 			{
 			uint32_t count = lxs_count_bucket_gates(nl, level, type);
 			uint32_t primitive_count = 0U;
+			uint32_t primitive_gate_equiv_count = 0U;
 			if (count == 0U)
 				{
 				continue;
@@ -2557,6 +4323,7 @@ lxs_plan* lxs_compile_to_plan(lxs_netlist *nl)
 				if (nl->gates[i].type == type && nl->gates[i].level == level && !matched_gates[i])
 					{
 					plan->comb_gates[gate_fill + primitive_count] = nl->gates[i];
+					primitive_gate_equiv_count += lxs_gate_equiv_count(&nl->gates[i]);
 					primitive_count++;
 					}
 				}
@@ -2570,6 +4337,7 @@ lxs_plan* lxs_compile_to_plan(lxs_netlist *nl)
 			plan->chunks[chunk_fill].type = type;
 			plan->chunks[chunk_fill].start = gate_fill;
 			plan->chunks[chunk_fill].count = primitive_count;
+			plan->chunks[chunk_fill].gate_equiv_count = primitive_gate_equiv_count;
 			chunk_fill++;
 
 			lxs_sort_bucket_gates(plan->comb_gates + gate_fill, primitive_count, type);
@@ -2604,7 +4372,6 @@ lxs_plan* lxs_compile_to_plan(lxs_netlist *nl)
 	lxs_free_aligned(comb_driver);
 	lxs_free_aligned(level_cache);
 	lxs_free_aligned(visiting);
-	lxs_free_aligned(forced_levels);
 	lxs_free_aligned(net_remap);
 	lxs_free_aligned(net_assigned);
 	lxs_free_aligned(matched_gates);
@@ -2628,5 +4395,22 @@ void lxs_free_plan(lxs_plan *plan)
 	lxs_free_aligned(plan->outputs.net_ids);
 	lxs_free_aligned(plan->state.d_inputs);
 	lxs_free_aligned(plan->state.q_outputs);
+	lxs_free_aligned(plan->registers);
+	lxs_free_aligned(plan->register_input_net_ids);
+	lxs_free_aligned(plan->register_output_net_ids);
+	lxs_free_aligned(plan->register_init_value);
+	lxs_free_aligned(plan->register_init_mask);
+	lxs_free_aligned(plan->roms);
+	lxs_free_aligned(plan->rom_addr_net_ids);
+	lxs_free_aligned(plan->rom_output_net_ids);
+	lxs_free_aligned(plan->rom_init_value);
+	lxs_free_aligned(plan->rom_init_mask);
+	lxs_free_aligned(plan->rams);
+	lxs_free_aligned(plan->ram_read_addr_net_ids);
+	lxs_free_aligned(plan->ram_write_addr_net_ids);
+	lxs_free_aligned(plan->ram_data_input_net_ids);
+	lxs_free_aligned(plan->ram_output_net_ids);
+	lxs_free_aligned(plan->ram_init_value);
+	lxs_free_aligned(plan->ram_init_mask);
 	lxs_free_aligned(plan);
 	}

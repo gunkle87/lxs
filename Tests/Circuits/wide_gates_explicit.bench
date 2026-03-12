@@ -1,0 +1,18 @@
+INPUT(a)
+INPUT(b)
+INPUT(c)
+INPUT(d)
+
+OUTPUT(and4)
+OUTPUT(or4)
+OUTPUT(xor4)
+OUTPUT(nand4)
+OUTPUT(nor4)
+OUTPUT(xnor4)
+
+and4 = AND(a, b, c, d)
+or4 = OR(a, b, c, d)
+xor4 = XOR(a, b, c, d)
+nand4 = NAND(a, b, c, d)
+nor4 = NOR(a, b, c, d)
+xnor4 = XNOR(a, b, c, d)

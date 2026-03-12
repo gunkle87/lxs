@@ -59,6 +59,50 @@ static int lxs_expect_u64(const char *label, uint64_t actual, uint64_t expected)
 	return 1;
 	}
 
+static void lxs_set_scalar_bits(
+	uint64_t *values,
+	uint64_t *masks,
+	uint32_t width,
+	uint64_t scalar)
+	{
+	for (uint32_t bit = 0; bit < width; ++bit)
+		{
+		values[bit] = ((scalar >> bit) & 1ULL) ? ~0ULL : 0ULL;
+		if (masks)
+			{
+			masks[bit] = 0ULL;
+			}
+		}
+	}
+
+static uint64_t lxs_collect_scalar_bits(
+	const uint64_t *values,
+	const uint64_t *masks,
+	uint32_t width)
+	{
+	uint64_t scalar = 0ULL;
+
+	for (uint32_t bit = 0; bit < width; ++bit)
+		{
+		if (masks && masks[bit] != 0ULL)
+			{
+			continue;
+			}
+		if (values[bit] != 0ULL)
+			{
+			scalar |= (1ULL << bit);
+			}
+		}
+
+	return scalar;
+	}
+
+static uint64_t lxs_next_rand(uint64_t *state)
+	{
+	*state = (*state * 6364136223846793005ULL) + 1ULL;
+	return *state;
+	}
+
 static int lxs_test_multi_macro_full_adder_cinv(void)
 	{
 	lxs_plan plan;
@@ -445,6 +489,387 @@ static int lxs_test_xnor2_macro(void)
 	return ok;
 	}
 
+static int lxs_test_parity4_explicit(void)
+	{
+	lxs_loaded_case loaded;
+	uint64_t values[4];
+	uint64_t masks[4];
+	uint64_t out_values[1];
+	uint64_t out_masks[1];
+	int ok = 1;
+
+	if (!lxs_load_case("Tests\\Circuits\\parity4_explicit.bench", &loaded))
+		{
+		fprintf(stderr, "FAIL parity4_explicit: unable to load test circuit\n");
+		return 0;
+		}
+
+	ok &= lxs_expect_u64("parity4_explicit.macro_count", loaded.plan->macro_count, 1ULL);
+	ok &= lxs_expect_u64("parity4_explicit.comb_gate_count", loaded.plan->comb_gate_count, 0ULL);
+
+	for (uint32_t combo = 0; combo < 16U; ++combo)
+		{
+		uint32_t a = (combo >> 3U) & 1U;
+		uint32_t b = (combo >> 2U) & 1U;
+		uint32_t c = (combo >> 1U) & 1U;
+		uint32_t d = combo & 1U;
+		uint32_t y = a ^ b ^ c ^ d;
+		char label[80];
+
+		values[0] = a ? ~0ULL : 0ULL;
+		values[1] = b ? ~0ULL : 0ULL;
+		values[2] = c ? ~0ULL : 0ULL;
+		values[3] = d ? ~0ULL : 0ULL;
+		memset(masks, 0, sizeof(masks));
+
+		lxs_apply_inputs(&loaded.ctx, loaded.plan, values, masks);
+		lxs_execute_plan(&loaded.ctx, loaded.plan);
+		lxs_read_outputs(&loaded.ctx, loaded.plan, out_values, out_masks);
+
+		snprintf(label, sizeof(label), "parity4_explicit.y.%u", combo);
+		ok &= lxs_expect_u64(label, out_values[0], y ? ~0ULL : 0ULL);
+		snprintf(label, sizeof(label), "parity4_explicit.y.mask.%u", combo);
+		ok &= lxs_expect_u64(label, out_masks[0], 0ULL);
+		}
+
+	lxs_unload_case(&loaded);
+	return ok;
+	}
+
+static int lxs_test_parity8_explicit(void)
+	{
+	lxs_loaded_case loaded;
+	uint64_t values[8];
+	uint64_t masks[8];
+	uint64_t out_values[1];
+	uint64_t out_masks[1];
+	int ok = 1;
+
+	if (!lxs_load_case("Tests\\Circuits\\parity8_explicit.bench", &loaded))
+		{
+		fprintf(stderr, "FAIL parity8_explicit: unable to load test circuit\n");
+		return 0;
+		}
+
+	ok &= lxs_expect_u64("parity8_explicit.macro_count", loaded.plan->macro_count, 1ULL);
+	ok &= lxs_expect_u64("parity8_explicit.comb_gate_count", loaded.plan->comb_gate_count, 0ULL);
+
+	for (uint32_t combo = 0; combo < 256U; ++combo)
+		{
+		uint32_t y = 0U;
+		char label[80];
+
+		memset(masks, 0, sizeof(masks));
+		for (uint32_t i = 0; i < 8U; ++i)
+			{
+			uint32_t bit = (combo >> i) & 1U;
+			values[i] = bit ? ~0ULL : 0ULL;
+			y ^= bit;
+			}
+
+		lxs_apply_inputs(&loaded.ctx, loaded.plan, values, masks);
+		lxs_execute_plan(&loaded.ctx, loaded.plan);
+		lxs_read_outputs(&loaded.ctx, loaded.plan, out_values, out_masks);
+
+		snprintf(label, sizeof(label), "parity8_explicit.y.%u", combo);
+		ok &= lxs_expect_u64(label, out_values[0], y ? ~0ULL : 0ULL);
+		snprintf(label, sizeof(label), "parity8_explicit.y.mask.%u", combo);
+		ok &= lxs_expect_u64(label, out_masks[0], 0ULL);
+		}
+
+	lxs_unload_case(&loaded);
+	return ok;
+	}
+
+static int lxs_test_xor_fan8_explicit(void)
+	{
+	lxs_loaded_case loaded;
+	uint64_t values[9];
+	uint64_t masks[9];
+	uint64_t out_values[8];
+	uint64_t out_masks[8];
+	int ok = 1;
+
+	if (!lxs_load_case("Tests\\Circuits\\xor_fan8_explicit.bench", &loaded))
+		{
+		fprintf(stderr, "FAIL xor_fan8_explicit: unable to load test circuit\n");
+		return 0;
+		}
+
+	ok &= lxs_expect_u64("xor_fan8_explicit.macro_count", loaded.plan->macro_count, 0ULL);
+	ok &= lxs_expect_u64("xor_fan8_explicit.multi_macro_count", loaded.plan->multi_macro_count, 1ULL);
+	ok &= lxs_expect_u64("xor_fan8_explicit.comb_gate_count", loaded.plan->comb_gate_count, 0ULL);
+
+	for (uint32_t combo = 0; combo < 512U; ++combo)
+		{
+		uint32_t s = (combo >> 8U) & 1U;
+		char label[96];
+
+		values[0] = s ? ~0ULL : 0ULL;
+		masks[0] = 0ULL;
+		for (uint32_t i = 0; i < 8U; ++i)
+			{
+			uint32_t bit = (combo >> i) & 1U;
+			values[i + 1U] = bit ? ~0ULL : 0ULL;
+			masks[i + 1U] = 0ULL;
+			}
+
+		lxs_apply_inputs(&loaded.ctx, loaded.plan, values, masks);
+		lxs_execute_plan(&loaded.ctx, loaded.plan);
+		lxs_read_outputs(&loaded.ctx, loaded.plan, out_values, out_masks);
+
+		for (uint32_t i = 0; i < 8U; ++i)
+			{
+			uint32_t y = s ^ ((combo >> i) & 1U);
+			snprintf(label, sizeof(label), "xor_fan8_explicit.y%u.%u", i, combo);
+			ok &= lxs_expect_u64(label, out_values[i], y ? ~0ULL : 0ULL);
+			snprintf(label, sizeof(label), "xor_fan8_explicit.y%u.mask.%u", i, combo);
+			ok &= lxs_expect_u64(label, out_masks[i], 0ULL);
+			}
+		}
+
+	lxs_unload_case(&loaded);
+	return ok;
+	}
+
+static int lxs_test_and_fan8_explicit(void)
+	{
+	lxs_loaded_case loaded;
+	uint64_t values[9];
+	uint64_t masks[9];
+	uint64_t out_values[8];
+	uint64_t out_masks[8];
+	int ok = 1;
+
+	if (!lxs_load_case("Tests\\Circuits\\and_fan8_explicit.bench", &loaded))
+		{
+		fprintf(stderr, "FAIL and_fan8_explicit: unable to load test circuit\n");
+		return 0;
+		}
+
+	ok &= lxs_expect_u64("and_fan8_explicit.macro_count", loaded.plan->macro_count, 0ULL);
+	ok &= lxs_expect_u64("and_fan8_explicit.multi_macro_count", loaded.plan->multi_macro_count, 1ULL);
+	ok &= lxs_expect_u64("and_fan8_explicit.comb_gate_count", loaded.plan->comb_gate_count, 0ULL);
+
+	for (uint32_t combo = 0; combo < 512U; ++combo)
+		{
+		uint32_t s = (combo >> 8U) & 1U;
+		char label[96];
+
+		values[0] = s ? ~0ULL : 0ULL;
+		masks[0] = 0ULL;
+		for (uint32_t i = 0; i < 8U; ++i)
+			{
+			uint32_t bit = (combo >> i) & 1U;
+			values[i + 1U] = bit ? ~0ULL : 0ULL;
+			masks[i + 1U] = 0ULL;
+			}
+
+		lxs_apply_inputs(&loaded.ctx, loaded.plan, values, masks);
+		lxs_execute_plan(&loaded.ctx, loaded.plan);
+		lxs_read_outputs(&loaded.ctx, loaded.plan, out_values, out_masks);
+
+		for (uint32_t i = 0; i < 8U; ++i)
+			{
+			uint32_t y = s & ((combo >> i) & 1U);
+			snprintf(label, sizeof(label), "and_fan8_explicit.y%u.%u", i, combo);
+			ok &= lxs_expect_u64(label, out_values[i], y ? ~0ULL : 0ULL);
+			snprintf(label, sizeof(label), "and_fan8_explicit.y%u.mask.%u", i, combo);
+			ok &= lxs_expect_u64(label, out_masks[i], 0ULL);
+			}
+		}
+
+	lxs_unload_case(&loaded);
+	return ok;
+	}
+
+static int lxs_test_guard_chain4_explicit(void)
+	{
+	lxs_loaded_case loaded;
+	uint64_t values[5];
+	uint64_t masks[5];
+	uint64_t out_values[5];
+	uint64_t out_masks[5];
+	int ok = 1;
+
+	if (!lxs_load_case("Tests\\Circuits\\guard_chain4_explicit.bench", &loaded))
+		{
+		fprintf(stderr, "FAIL guard_chain4_explicit: unable to load test circuit\n");
+		return 0;
+		}
+
+	ok &= lxs_expect_u64("guard_chain4_explicit.macro_count", loaded.plan->macro_count, 0ULL);
+	ok &= lxs_expect_u64("guard_chain4_explicit.multi_macro_count", loaded.plan->multi_macro_count, 1ULL);
+	ok &= lxs_expect_u64("guard_chain4_explicit.comb_gate_count", loaded.plan->comb_gate_count, 0ULL);
+
+	for (uint32_t combo = 0; combo < 32U; ++combo)
+		{
+		uint32_t inv_in = (combo >> 0U) & 1U;
+		uint32_t x0 = (combo >> 1U) & 1U;
+		uint32_t x1 = (combo >> 2U) & 1U;
+		uint32_t x2 = (combo >> 3U) & 1U;
+		uint32_t x3 = (combo >> 4U) & 1U;
+		uint32_t y0;
+		uint32_t y1;
+		uint32_t y2;
+		uint32_t y3;
+		uint32_t inv_out;
+		char label[96];
+
+		for (uint32_t i = 0; i < 5U; ++i)
+			{
+			uint32_t bit = (combo >> i) & 1U;
+			values[i] = bit ? ~0ULL : 0ULL;
+			masks[i] = 0ULL;
+			}
+
+		y0 = x0 & inv_in;
+		y1 = x1 & (y0 ? 0U : 1U);
+		y2 = x2 & (y1 ? 0U : 1U);
+		y3 = x3 & (y2 ? 0U : 1U);
+		inv_out = y3 ? 0U : 1U;
+
+		lxs_apply_inputs(&loaded.ctx, loaded.plan, values, masks);
+		lxs_execute_plan(&loaded.ctx, loaded.plan);
+		lxs_read_outputs(&loaded.ctx, loaded.plan, out_values, out_masks);
+
+		snprintf(label, sizeof(label), "guard_chain4_explicit.y0.%u", combo);
+		ok &= lxs_expect_u64(label, out_values[0], y0 ? ~0ULL : 0ULL);
+		snprintf(label, sizeof(label), "guard_chain4_explicit.y1.%u", combo);
+		ok &= lxs_expect_u64(label, out_values[1], y1 ? ~0ULL : 0ULL);
+		snprintf(label, sizeof(label), "guard_chain4_explicit.y2.%u", combo);
+		ok &= lxs_expect_u64(label, out_values[2], y2 ? ~0ULL : 0ULL);
+		snprintf(label, sizeof(label), "guard_chain4_explicit.y3.%u", combo);
+		ok &= lxs_expect_u64(label, out_values[3], y3 ? ~0ULL : 0ULL);
+		snprintf(label, sizeof(label), "guard_chain4_explicit.inv_out.%u", combo);
+		ok &= lxs_expect_u64(label, out_values[4], inv_out ? ~0ULL : 0ULL);
+
+		for (uint32_t i = 0; i < 5U; ++i)
+			{
+			snprintf(label, sizeof(label), "guard_chain4_explicit.mask%u.%u", i, combo);
+			ok &= lxs_expect_u64(label, out_masks[i], 0ULL);
+			}
+		}
+
+	lxs_unload_case(&loaded);
+	return ok;
+	}
+
+static int lxs_test_xnor_bank4_explicit(void)
+	{
+	lxs_loaded_case loaded;
+	uint64_t values[8];
+	uint64_t masks[8];
+	uint64_t out_values[4];
+	uint64_t out_masks[4];
+	int ok = 1;
+
+	if (!lxs_load_case("Tests\\Circuits\\xnor_bank4_explicit.bench", &loaded))
+		{
+		fprintf(stderr, "FAIL xnor_bank4_explicit: unable to load test circuit\n");
+		return 0;
+		}
+
+	ok &= lxs_expect_u64("xnor_bank4_explicit.macro_count", loaded.plan->macro_count, 0ULL);
+	ok &= lxs_expect_u64("xnor_bank4_explicit.multi_macro_count", loaded.plan->multi_macro_count, 1ULL);
+	ok &= lxs_expect_u64("xnor_bank4_explicit.comb_gate_count", loaded.plan->comb_gate_count, 0ULL);
+
+	for (uint32_t combo = 0; combo < 256U; ++combo)
+		{
+		char label[96];
+
+		for (uint32_t i = 0; i < 8U; ++i)
+			{
+			uint32_t bit = (combo >> i) & 1U;
+			values[i] = bit ? ~0ULL : 0ULL;
+			masks[i] = 0ULL;
+			}
+
+		lxs_apply_inputs(&loaded.ctx, loaded.plan, values, masks);
+		lxs_execute_plan(&loaded.ctx, loaded.plan);
+		lxs_read_outputs(&loaded.ctx, loaded.plan, out_values, out_masks);
+
+		for (uint32_t i = 0; i < 4U; ++i)
+			{
+			uint32_t lhs = (combo >> (i * 2U)) & 1U;
+			uint32_t rhs = (combo >> (i * 2U + 1U)) & 1U;
+			uint32_t eq = lhs == rhs ? 1U : 0U;
+
+			snprintf(label, sizeof(label), "xnor_bank4_explicit.eq%u.%u", i, combo);
+			ok &= lxs_expect_u64(label, out_values[i], eq ? ~0ULL : 0ULL);
+			snprintf(label, sizeof(label), "xnor_bank4_explicit.mask%u.%u", i, combo);
+			ok &= lxs_expect_u64(label, out_masks[i], 0ULL);
+			}
+		}
+
+	lxs_unload_case(&loaded);
+	return ok;
+	}
+
+static int lxs_test_wide_gates_explicit(void)
+	{
+	lxs_loaded_case loaded;
+	uint64_t values[4];
+	uint64_t masks[4];
+	uint64_t out_values[6];
+	uint64_t out_masks[6];
+	int ok = 1;
+
+	if (!lxs_load_case("Tests\\Circuits\\wide_gates_explicit.bench", &loaded))
+		{
+		fprintf(stderr, "FAIL wide_gates_explicit: unable to load test circuit\n");
+		return 0;
+		}
+
+	ok &= lxs_expect_u64("wide_gates_explicit.macro_count", loaded.plan->macro_count, 0ULL);
+	ok &= lxs_expect_u64("wide_gates_explicit.multi_macro_count", loaded.plan->multi_macro_count, 0ULL);
+	ok &= lxs_expect_u64("wide_gates_explicit.comb_gate_count", loaded.plan->comb_gate_count, 6ULL);
+
+	for (uint32_t combo = 0; combo < 16U; ++combo)
+		{
+		uint32_t a = (combo >> 3U) & 1U;
+		uint32_t b = (combo >> 2U) & 1U;
+		uint32_t c = (combo >> 1U) & 1U;
+		uint32_t d = combo & 1U;
+		uint32_t and_y = a & b & c & d;
+		uint32_t or_y = a | b | c | d;
+		uint32_t xor_y = a ^ b ^ c ^ d;
+		char label[96];
+
+		values[0] = a ? ~0ULL : 0ULL;
+		values[1] = b ? ~0ULL : 0ULL;
+		values[2] = c ? ~0ULL : 0ULL;
+		values[3] = d ? ~0ULL : 0ULL;
+		memset(masks, 0, sizeof(masks));
+
+		lxs_apply_inputs(&loaded.ctx, loaded.plan, values, masks);
+		lxs_execute_plan(&loaded.ctx, loaded.plan);
+		lxs_read_outputs(&loaded.ctx, loaded.plan, out_values, out_masks);
+
+		snprintf(label, sizeof(label), "wide_gates_explicit.and4.%u", combo);
+		ok &= lxs_expect_u64(label, out_values[0], and_y ? ~0ULL : 0ULL);
+		snprintf(label, sizeof(label), "wide_gates_explicit.or4.%u", combo);
+		ok &= lxs_expect_u64(label, out_values[1], or_y ? ~0ULL : 0ULL);
+		snprintf(label, sizeof(label), "wide_gates_explicit.xor4.%u", combo);
+		ok &= lxs_expect_u64(label, out_values[2], xor_y ? ~0ULL : 0ULL);
+		snprintf(label, sizeof(label), "wide_gates_explicit.nand4.%u", combo);
+		ok &= lxs_expect_u64(label, out_values[3], and_y ? 0ULL : ~0ULL);
+		snprintf(label, sizeof(label), "wide_gates_explicit.nor4.%u", combo);
+		ok &= lxs_expect_u64(label, out_values[4], or_y ? 0ULL : ~0ULL);
+		snprintf(label, sizeof(label), "wide_gates_explicit.xnor4.%u", combo);
+		ok &= lxs_expect_u64(label, out_values[5], xor_y ? 0ULL : ~0ULL);
+
+		for (uint32_t i = 0; i < 6U; ++i)
+			{
+			snprintf(label, sizeof(label), "wide_gates_explicit.mask%u.%u", i, combo);
+			ok &= lxs_expect_u64(label, out_masks[i], 0ULL);
+			}
+		}
+
+	lxs_unload_case(&loaded);
+	return ok;
+	}
+
 static int lxs_test_carry_inv2_macro(void)
 	{
 	lxs_loaded_case loaded;
@@ -822,6 +1247,1000 @@ static int lxs_test_dff_not(void)
 	return ok;
 	}
 
+static int lxs_test_register_descriptor(void)
+	{
+	lxs_plan plan;
+	lxs_register_plan reg;
+	lxs_engine_ctx ctx;
+	uint64_t values[8];
+	uint64_t masks[8];
+	uint64_t out_values[8];
+	uint64_t out_masks[8];
+	int ok = 1;
+
+	memset(&plan, 0, sizeof(plan));
+	memset(&reg, 0, sizeof(reg));
+	memset(&ctx, 0, sizeof(ctx));
+
+	plan.net_count = 16U;
+	plan.inputs.count = 8U;
+	plan.outputs.count = 8U;
+	plan.register_count = 1U;
+	plan.register_bit_count = 8U;
+	plan.inputs.net_ids = (uint32_t*)calloc(8U, sizeof(uint32_t));
+	plan.outputs.net_ids = (uint32_t*)calloc(8U, sizeof(uint32_t));
+	plan.registers = (lxs_register_plan*)calloc(1U, sizeof(lxs_register_plan));
+	plan.register_input_net_ids = (uint32_t*)calloc(8U, sizeof(uint32_t));
+	plan.register_output_net_ids = (uint32_t*)calloc(8U, sizeof(uint32_t));
+	plan.register_init_value = (uint64_t*)calloc(8U, sizeof(uint64_t));
+	plan.register_init_mask = (uint64_t*)calloc(8U, sizeof(uint64_t));
+	if (!plan.inputs.net_ids || !plan.outputs.net_ids || !plan.registers ||
+		!plan.register_input_net_ids || !plan.register_output_net_ids ||
+		!plan.register_init_value || !plan.register_init_mask)
+		{
+		fprintf(stderr, "FAIL register_descriptor: allocation failure\n");
+		ok = 0;
+		goto cleanup;
+		}
+
+	for (uint32_t bit = 0; bit < 8U; ++bit)
+		{
+		plan.inputs.net_ids[bit] = bit;
+		plan.outputs.net_ids[bit] = 8U + bit;
+		plan.register_input_net_ids[bit] = bit;
+		plan.register_output_net_ids[bit] = 8U + bit;
+		plan.register_init_value[bit] = ((0xA5U >> bit) & 1U) ? ~0ULL : 0ULL;
+		plan.register_init_mask[bit] = 0ULL;
+		}
+
+	reg.width_bits = 8U;
+	reg.input_start = 0U;
+	reg.output_start = 0U;
+	reg.storage_offset = 0U;
+	reg.control_net = UINT32_MAX;
+	plan.registers[0] = reg;
+
+	if (!lxs_init_engine(&ctx, &plan))
+		{
+		fprintf(stderr, "FAIL register_descriptor: engine init failure\n");
+		ok = 0;
+		goto cleanup;
+		}
+
+	lxs_capture_outputs(&ctx, &plan);
+	lxs_read_outputs(&ctx, &plan, out_values, out_masks);
+	ok &= lxs_expect_u64(
+		"register_descriptor.initial",
+		lxs_collect_scalar_bits(out_values, out_masks, 8U),
+		0xA5U);
+
+	lxs_set_scalar_bits(values, masks, 8U, 0x3CU);
+	lxs_apply_inputs(&ctx, &plan, values, masks);
+	lxs_execute_plan(&ctx, &plan);
+	lxs_read_outputs(&ctx, &plan, out_values, out_masks);
+	ok &= lxs_expect_u64(
+		"register_descriptor.cycle1.output",
+		lxs_collect_scalar_bits(out_values, out_masks, 8U),
+		0xA5U);
+	ok &= lxs_expect_u64(
+		"register_descriptor.cycle1.committed",
+		lxs_collect_scalar_bits(ctx.net_value + 8U, ctx.net_mask + 8U, 8U),
+		0x3CU);
+
+	lxs_execute_plan(&ctx, &plan);
+	lxs_read_outputs(&ctx, &plan, out_values, out_masks);
+	ok &= lxs_expect_u64(
+		"register_descriptor.cycle2.output",
+		lxs_collect_scalar_bits(out_values, out_masks, 8U),
+		0x3CU);
+	ok &= lxs_expect_u64("register_descriptor.tick_count", ctx.probes.tick_count, 2ULL);
+	ok &= lxs_expect_u64("register_descriptor.state_commit_count", ctx.probes.state_commit_count, 16ULL);
+
+cleanup:
+	lxs_free_engine(&ctx);
+	free(plan.inputs.net_ids);
+	free(plan.outputs.net_ids);
+	free(plan.registers);
+	free(plan.register_input_net_ids);
+	free(plan.register_output_net_ids);
+	free(plan.register_init_value);
+	free(plan.register_init_mask);
+	return ok;
+	}
+
+static int lxs_test_rom_descriptor(void)
+	{
+	lxs_plan plan;
+	lxs_rom_plan rom;
+	lxs_engine_ctx ctx;
+	uint64_t values[2];
+	uint64_t masks[2];
+	uint64_t out_values[8];
+	uint64_t out_masks[8];
+	const uint8_t contents[4] = { 0x12U, 0x34U, 0x56U, 0x78U };
+	int ok = 1;
+
+	memset(&plan, 0, sizeof(plan));
+	memset(&rom, 0, sizeof(rom));
+	memset(&ctx, 0, sizeof(ctx));
+
+	plan.net_count = 10U;
+	plan.inputs.count = 2U;
+	plan.outputs.count = 8U;
+	plan.rom_count = 1U;
+	plan.rom_addr_net_count = 2U;
+	plan.rom_output_net_count = 8U;
+	plan.rom_bit_count = 32U;
+	plan.inputs.net_ids = (uint32_t*)calloc(2U, sizeof(uint32_t));
+	plan.outputs.net_ids = (uint32_t*)calloc(8U, sizeof(uint32_t));
+	plan.roms = (lxs_rom_plan*)calloc(1U, sizeof(lxs_rom_plan));
+	plan.rom_addr_net_ids = (uint32_t*)calloc(2U, sizeof(uint32_t));
+	plan.rom_output_net_ids = (uint32_t*)calloc(8U, sizeof(uint32_t));
+	plan.rom_init_value = (uint64_t*)calloc(32U, sizeof(uint64_t));
+	plan.rom_init_mask = (uint64_t*)calloc(32U, sizeof(uint64_t));
+	if (!plan.inputs.net_ids || !plan.outputs.net_ids || !plan.roms ||
+		!plan.rom_addr_net_ids || !plan.rom_output_net_ids ||
+		!plan.rom_init_value || !plan.rom_init_mask)
+		{
+		fprintf(stderr, "FAIL rom_descriptor: allocation failure\n");
+		ok = 0;
+		goto cleanup;
+		}
+
+	for (uint32_t bit = 0; bit < 2U; ++bit)
+		{
+		plan.inputs.net_ids[bit] = bit;
+		plan.rom_addr_net_ids[bit] = bit;
+		}
+	for (uint32_t bit = 0; bit < 8U; ++bit)
+		{
+		plan.outputs.net_ids[bit] = 2U + bit;
+		plan.rom_output_net_ids[bit] = 2U + bit;
+		}
+	for (uint32_t addr = 0; addr < 4U; ++addr)
+		{
+		for (uint32_t bit = 0; bit < 8U; ++bit)
+			{
+			uint32_t index = (addr * 8U) + bit;
+			plan.rom_init_value[index] = ((contents[addr] >> bit) & 1U) ? ~0ULL : 0ULL;
+			plan.rom_init_mask[index] = 0ULL;
+			}
+		}
+
+	rom.addr_width = 2U;
+	rom.data_width = 8U;
+	rom.depth = 4U;
+	rom.addr_input_start = 0U;
+	rom.output_start = 0U;
+	rom.data_offset = 0U;
+	plan.roms[0] = rom;
+
+	if (!lxs_init_engine(&ctx, &plan))
+		{
+		fprintf(stderr, "FAIL rom_descriptor: engine init failure\n");
+		ok = 0;
+		goto cleanup;
+		}
+
+	for (uint32_t addr = 0; addr < 4U; ++addr)
+		{
+		char label[64];
+
+		lxs_set_scalar_bits(values, masks, 2U, addr);
+		lxs_apply_inputs(&ctx, &plan, values, masks);
+		lxs_execute_plan(&ctx, &plan);
+		lxs_read_outputs(&ctx, &plan, out_values, out_masks);
+		snprintf(label, sizeof(label), "rom_descriptor.addr_%u", addr);
+		ok &= lxs_expect_u64(
+			label,
+			lxs_collect_scalar_bits(out_values, out_masks, 8U),
+			contents[addr]);
+		}
+
+	values[0] = 0ULL;
+	values[1] = ~0ULL;
+	masks[0] = ~0ULL;
+	masks[1] = 0ULL;
+	lxs_apply_inputs(&ctx, &plan, values, masks);
+	lxs_execute_plan(&ctx, &plan);
+	lxs_read_outputs(&ctx, &plan, out_values, out_masks);
+	ok &= lxs_expect_u64("rom_descriptor.unknown.mask", out_masks[0], ~0ULL);
+	ok &= lxs_expect_u64("rom_descriptor.state_commit_count", ctx.probes.state_commit_count, 0ULL);
+
+cleanup:
+	lxs_free_engine(&ctx);
+	free(plan.inputs.net_ids);
+	free(plan.outputs.net_ids);
+	free(plan.roms);
+	free(plan.rom_addr_net_ids);
+	free(plan.rom_output_net_ids);
+	free(plan.rom_init_value);
+	free(plan.rom_init_mask);
+	return ok;
+	}
+
+static int lxs_test_ram_descriptor(void)
+	{
+	lxs_plan plan;
+	lxs_ram_plan ram;
+	lxs_engine_ctx ctx;
+	uint64_t values[13];
+	uint64_t masks[13];
+	uint64_t out_values[8];
+	uint64_t out_masks[8];
+	int ok = 1;
+
+	memset(&plan, 0, sizeof(plan));
+	memset(&ram, 0, sizeof(ram));
+	memset(&ctx, 0, sizeof(ctx));
+
+	plan.net_count = 21U;
+	plan.inputs.count = 13U;
+	plan.outputs.count = 8U;
+	plan.ram_count = 1U;
+	plan.ram_storage_bit_count = 32U;
+	plan.ram_stage_bit_count = 8U;
+	plan.ram_read_addr_net_count = 2U;
+	plan.ram_write_addr_net_count = 2U;
+	plan.ram_data_input_net_count = 8U;
+	plan.ram_output_net_count = 8U;
+	plan.inputs.net_ids = (uint32_t*)calloc(13U, sizeof(uint32_t));
+	plan.outputs.net_ids = (uint32_t*)calloc(8U, sizeof(uint32_t));
+	plan.rams = (lxs_ram_plan*)calloc(1U, sizeof(lxs_ram_plan));
+	plan.ram_read_addr_net_ids = (uint32_t*)calloc(2U, sizeof(uint32_t));
+	plan.ram_write_addr_net_ids = (uint32_t*)calloc(2U, sizeof(uint32_t));
+	plan.ram_data_input_net_ids = (uint32_t*)calloc(8U, sizeof(uint32_t));
+	plan.ram_output_net_ids = (uint32_t*)calloc(8U, sizeof(uint32_t));
+	plan.ram_init_value = (uint64_t*)calloc(32U, sizeof(uint64_t));
+	plan.ram_init_mask = (uint64_t*)calloc(32U, sizeof(uint64_t));
+	if (!plan.inputs.net_ids || !plan.outputs.net_ids || !plan.rams ||
+		!plan.ram_read_addr_net_ids || !plan.ram_write_addr_net_ids ||
+		!plan.ram_data_input_net_ids || !plan.ram_output_net_ids ||
+		!plan.ram_init_value || !plan.ram_init_mask)
+		{
+		fprintf(stderr, "FAIL ram_descriptor: allocation failure\n");
+		ok = 0;
+		goto cleanup;
+		}
+
+	for (uint32_t net = 0; net < 13U; ++net)
+		{
+		plan.inputs.net_ids[net] = net;
+		}
+	for (uint32_t bit = 0; bit < 2U; ++bit)
+		{
+		plan.ram_read_addr_net_ids[bit] = bit;
+		plan.ram_write_addr_net_ids[bit] = 2U + bit;
+		}
+	for (uint32_t bit = 0; bit < 8U; ++bit)
+		{
+		plan.ram_data_input_net_ids[bit] = 4U + bit;
+		plan.outputs.net_ids[bit] = 13U + bit;
+		plan.ram_output_net_ids[bit] = 13U + bit;
+		plan.ram_init_value[bit] = ((0x12U >> bit) & 1U) ? ~0ULL : 0ULL;
+		plan.ram_init_mask[bit] = 0ULL;
+		plan.ram_init_value[8U + bit] = ((0x34U >> bit) & 1U) ? ~0ULL : 0ULL;
+		plan.ram_init_mask[8U + bit] = 0ULL;
+		}
+
+	ram.addr_width = 2U;
+	ram.data_width = 8U;
+	ram.depth = 4U;
+	ram.read_addr_start = 0U;
+	ram.write_addr_start = 0U;
+	ram.data_input_start = 0U;
+	ram.output_start = 0U;
+	ram.storage_offset = 0U;
+	ram.stage_offset = 0U;
+	ram.write_enable_net = 12U;
+	plan.rams[0] = ram;
+
+	if (!lxs_init_engine(&ctx, &plan))
+		{
+		fprintf(stderr, "FAIL ram_descriptor: engine init failure\n");
+		ok = 0;
+		goto cleanup;
+		}
+
+	memset(values, 0, sizeof(values));
+	memset(masks, 0, sizeof(masks));
+	lxs_set_scalar_bits(values + 0U, masks + 0U, 2U, 0U);
+	lxs_set_scalar_bits(values + 2U, masks + 2U, 2U, 1U);
+	lxs_set_scalar_bits(values + 4U, masks + 4U, 8U, 0xA5U);
+	values[12] = ~0ULL;
+	masks[12] = 0ULL;
+	lxs_apply_inputs(&ctx, &plan, values, masks);
+	lxs_execute_plan(&ctx, &plan);
+	lxs_read_outputs(&ctx, &plan, out_values, out_masks);
+	ok &= lxs_expect_u64(
+		"ram_descriptor.cycle1.read_old",
+		lxs_collect_scalar_bits(out_values, out_masks, 8U),
+		0x12U);
+	ok &= lxs_expect_u64(
+		"ram_descriptor.cycle1.committed_loc1",
+		lxs_collect_scalar_bits(ctx.ram_value + 8U, ctx.ram_mask + 8U, 8U),
+		0xA5U);
+
+	memset(values, 0, sizeof(values));
+	memset(masks, 0, sizeof(masks));
+	lxs_set_scalar_bits(values + 0U, masks + 0U, 2U, 1U);
+	values[12] = 0ULL;
+	masks[12] = 0ULL;
+	lxs_apply_inputs(&ctx, &plan, values, masks);
+	lxs_execute_plan(&ctx, &plan);
+	lxs_read_outputs(&ctx, &plan, out_values, out_masks);
+	ok &= lxs_expect_u64(
+		"ram_descriptor.cycle2.read_new",
+		lxs_collect_scalar_bits(out_values, out_masks, 8U),
+		0xA5U);
+
+	memset(values, 0, sizeof(values));
+	memset(masks, 0, sizeof(masks));
+	values[0] = 0ULL;
+	values[1] = ~0ULL;
+	masks[0] = ~0ULL;
+	masks[1] = 0ULL;
+	values[12] = 0ULL;
+	masks[12] = 0ULL;
+	lxs_apply_inputs(&ctx, &plan, values, masks);
+	lxs_execute_plan(&ctx, &plan);
+	lxs_read_outputs(&ctx, &plan, out_values, out_masks);
+	ok &= lxs_expect_u64("ram_descriptor.unknown.mask", out_masks[0], ~0ULL);
+	ok &= lxs_expect_u64("ram_descriptor.tick_count", ctx.probes.tick_count, 3ULL);
+	ok &= lxs_expect_u64("ram_descriptor.state_commit_count", ctx.probes.state_commit_count, 8ULL);
+
+cleanup:
+	lxs_free_engine(&ctx);
+	free(plan.inputs.net_ids);
+	free(plan.outputs.net_ids);
+	free(plan.rams);
+	free(plan.ram_read_addr_net_ids);
+	free(plan.ram_write_addr_net_ids);
+	free(plan.ram_data_input_net_ids);
+	free(plan.ram_output_net_ids);
+	free(plan.ram_init_value);
+	free(plan.ram_init_mask);
+	return ok;
+	}
+
+static int lxs_test_register_explicit(void)
+	{
+	lxs_loaded_case loaded;
+	uint64_t values[8];
+	uint64_t masks[8];
+	uint64_t out_values[8];
+	uint64_t out_masks[8];
+	int ok = 1;
+
+	if (!lxs_load_case("Tests\\Circuits\\register_explicit.bench", &loaded))
+		{
+		fprintf(stderr, "FAIL register_explicit: unable to load test circuit\n");
+		return 0;
+		}
+
+	lxs_set_scalar_bits(values, masks, 8U, 0x5AU);
+	lxs_apply_inputs(&loaded.ctx, loaded.plan, values, masks);
+	lxs_execute_plan(&loaded.ctx, loaded.plan);
+	lxs_read_outputs(&loaded.ctx, loaded.plan, out_values, out_masks);
+	ok &= lxs_expect_u64("register_explicit.cycle1", lxs_collect_scalar_bits(out_values, out_masks, 8U), 0x00U);
+
+	lxs_execute_plan(&loaded.ctx, loaded.plan);
+	lxs_read_outputs(&loaded.ctx, loaded.plan, out_values, out_masks);
+	ok &= lxs_expect_u64("register_explicit.cycle2", lxs_collect_scalar_bits(out_values, out_masks, 8U), 0x5AU);
+
+	lxs_unload_case(&loaded);
+	return ok;
+	}
+
+static int lxs_test_rom_explicit(void)
+	{
+	lxs_loaded_case loaded;
+	uint64_t values[2];
+	uint64_t masks[2];
+	uint64_t out_values[8];
+	uint64_t out_masks[8];
+	const uint8_t expected[4] = { 0x12U, 0x34U, 0x56U, 0x78U };
+	int ok = 1;
+
+	if (!lxs_load_case("Tests\\Circuits\\rom_explicit.bench", &loaded))
+		{
+		fprintf(stderr, "FAIL rom_explicit: unable to load test circuit\n");
+		return 0;
+		}
+
+	for (uint32_t addr = 0; addr < 4U; ++addr)
+		{
+		char label[64];
+
+		lxs_set_scalar_bits(values, masks, 2U, addr);
+		lxs_apply_inputs(&loaded.ctx, loaded.plan, values, masks);
+		lxs_execute_plan(&loaded.ctx, loaded.plan);
+		lxs_read_outputs(&loaded.ctx, loaded.plan, out_values, out_masks);
+		snprintf(label, sizeof(label), "rom_explicit.addr_%u", addr);
+		ok &= lxs_expect_u64(label, lxs_collect_scalar_bits(out_values, out_masks, 8U), expected[addr]);
+		}
+
+	lxs_unload_case(&loaded);
+	return ok;
+	}
+
+static int lxs_test_ram_explicit(void)
+	{
+	lxs_loaded_case loaded;
+	uint64_t values[13];
+	uint64_t masks[13];
+	uint64_t out_values[8];
+	uint64_t out_masks[8];
+	int ok = 1;
+
+	if (!lxs_load_case("Tests\\Circuits\\ram_explicit.bench", &loaded))
+		{
+		fprintf(stderr, "FAIL ram_explicit: unable to load test circuit\n");
+		return 0;
+		}
+
+	memset(values, 0, sizeof(values));
+	memset(masks, 0, sizeof(masks));
+	lxs_set_scalar_bits(values + 0U, masks + 0U, 2U, 0U);
+	lxs_set_scalar_bits(values + 2U, masks + 2U, 2U, 1U);
+	lxs_set_scalar_bits(values + 4U, masks + 4U, 8U, 0xA5U);
+	values[12] = ~0ULL;
+	lxs_apply_inputs(&loaded.ctx, loaded.plan, values, masks);
+	lxs_execute_plan(&loaded.ctx, loaded.plan);
+	lxs_read_outputs(&loaded.ctx, loaded.plan, out_values, out_masks);
+	ok &= lxs_expect_u64("ram_explicit.cycle1", lxs_collect_scalar_bits(out_values, out_masks, 8U), 0x12U);
+
+	memset(values, 0, sizeof(values));
+	memset(masks, 0, sizeof(masks));
+	lxs_set_scalar_bits(values + 0U, masks + 0U, 2U, 1U);
+	lxs_apply_inputs(&loaded.ctx, loaded.plan, values, masks);
+	lxs_execute_plan(&loaded.ctx, loaded.plan);
+	lxs_read_outputs(&loaded.ctx, loaded.plan, out_values, out_masks);
+	ok &= lxs_expect_u64("ram_explicit.cycle2", lxs_collect_scalar_bits(out_values, out_masks, 8U), 0xA5U);
+
+	lxs_unload_case(&loaded);
+	return ok;
+	}
+
+static int lxs_test_register_mixed(void)
+	{
+	lxs_loaded_case loaded;
+	uint64_t values[4];
+	uint64_t masks[4];
+	uint64_t out_values[6];
+	uint64_t out_masks[6];
+	int ok = 1;
+
+	if (!lxs_load_case("Tests\\Circuits\\register_mixed.bench", &loaded))
+		{
+		fprintf(stderr, "FAIL register_mixed: unable to load test circuit\n");
+		return 0;
+		}
+
+	lxs_set_scalar_bits(values, masks, 4U, 0xAU);
+	lxs_apply_inputs(&loaded.ctx, loaded.plan, values, masks);
+	lxs_execute_plan(&loaded.ctx, loaded.plan);
+	lxs_read_outputs(&loaded.ctx, loaded.plan, out_values, out_masks);
+	ok &= lxs_expect_u64("register_mixed.cycle1.q", lxs_collect_scalar_bits(out_values, out_masks, 4U), 0x0U);
+	ok &= lxs_expect_u64("register_mixed.cycle1.parity", out_values[4], 0ULL);
+	ok &= lxs_expect_u64("register_mixed.cycle1.nor", out_values[5], ~0ULL);
+
+	lxs_execute_plan(&loaded.ctx, loaded.plan);
+	lxs_read_outputs(&loaded.ctx, loaded.plan, out_values, out_masks);
+	ok &= lxs_expect_u64("register_mixed.cycle2.q", lxs_collect_scalar_bits(out_values, out_masks, 4U), 0xAU);
+	ok &= lxs_expect_u64("register_mixed.cycle2.parity", out_values[4], 0ULL);
+	ok &= lxs_expect_u64("register_mixed.cycle2.nor", out_values[5], 0ULL);
+
+	lxs_unload_case(&loaded);
+	return ok;
+	}
+
+static int lxs_test_register_en_explicit(void)
+	{
+	lxs_loaded_case loaded;
+	uint64_t values[5];
+	uint64_t masks[5];
+	uint64_t out_values[4];
+	uint64_t out_masks[4];
+	int ok = 1;
+
+	if (!lxs_load_case("Tests\\Circuits\\register_en_explicit.bench", &loaded))
+		{
+		fprintf(stderr, "FAIL register_en_explicit: unable to load test circuit\n");
+		return 0;
+		}
+
+	memset(values, 0, sizeof(values));
+	memset(masks, 0, sizeof(masks));
+	lxs_set_scalar_bits(values, masks, 4U, 0x6U);
+	values[4] = ~0ULL;
+	lxs_apply_inputs(&loaded.ctx, loaded.plan, values, masks);
+	lxs_execute_plan(&loaded.ctx, loaded.plan);
+	lxs_read_outputs(&loaded.ctx, loaded.plan, out_values, out_masks);
+	ok &= lxs_expect_u64("register_en_explicit.cycle1", lxs_collect_scalar_bits(out_values, out_masks, 4U), 0x0U);
+
+	lxs_execute_plan(&loaded.ctx, loaded.plan);
+	lxs_read_outputs(&loaded.ctx, loaded.plan, out_values, out_masks);
+	ok &= lxs_expect_u64("register_en_explicit.cycle2", lxs_collect_scalar_bits(out_values, out_masks, 4U), 0x6U);
+
+	memset(values, 0, sizeof(values));
+	memset(masks, 0, sizeof(masks));
+	lxs_set_scalar_bits(values, masks, 4U, 0x9U);
+	values[4] = 0ULL;
+	lxs_apply_inputs(&loaded.ctx, loaded.plan, values, masks);
+	lxs_execute_plan(&loaded.ctx, loaded.plan);
+	lxs_execute_plan(&loaded.ctx, loaded.plan);
+	lxs_read_outputs(&loaded.ctx, loaded.plan, out_values, out_masks);
+	ok &= lxs_expect_u64("register_en_explicit.hold", lxs_collect_scalar_bits(out_values, out_masks, 4U), 0x6U);
+
+	lxs_unload_case(&loaded);
+	return ok;
+	}
+
+static int lxs_test_register_hold_explicit(void)
+	{
+	lxs_loaded_case loaded;
+	uint64_t values[5];
+	uint64_t masks[5];
+	uint64_t out_values[4];
+	uint64_t out_masks[4];
+	int ok = 1;
+
+	if (!lxs_load_case("Tests\\Circuits\\register_hold_explicit.bench", &loaded))
+		{
+		fprintf(stderr, "FAIL register_hold_explicit: unable to load test circuit\n");
+		return 0;
+		}
+
+	memset(values, 0, sizeof(values));
+	memset(masks, 0, sizeof(masks));
+	lxs_set_scalar_bits(values, masks, 4U, 0x5U);
+	values[4] = 0ULL;
+	lxs_apply_inputs(&loaded.ctx, loaded.plan, values, masks);
+	lxs_execute_plan(&loaded.ctx, loaded.plan);
+	lxs_execute_plan(&loaded.ctx, loaded.plan);
+	lxs_read_outputs(&loaded.ctx, loaded.plan, out_values, out_masks);
+	ok &= lxs_expect_u64("register_hold_explicit.loaded", lxs_collect_scalar_bits(out_values, out_masks, 4U), 0x5U);
+
+	memset(values, 0, sizeof(values));
+	memset(masks, 0, sizeof(masks));
+	lxs_set_scalar_bits(values, masks, 4U, 0xCU);
+	values[4] = ~0ULL;
+	lxs_apply_inputs(&loaded.ctx, loaded.plan, values, masks);
+	lxs_execute_plan(&loaded.ctx, loaded.plan);
+	lxs_execute_plan(&loaded.ctx, loaded.plan);
+	lxs_read_outputs(&loaded.ctx, loaded.plan, out_values, out_masks);
+	ok &= lxs_expect_u64("register_hold_explicit.held", lxs_collect_scalar_bits(out_values, out_masks, 4U), 0x5U);
+
+	lxs_unload_case(&loaded);
+	return ok;
+	}
+
+static int lxs_test_counter_en_explicit(void)
+	{
+	lxs_loaded_case loaded;
+	uint64_t values[1];
+	uint64_t masks[1];
+	uint64_t out_values[6];
+	uint64_t out_masks[6];
+	int ok = 1;
+
+	if (!lxs_load_case("Tests\\Circuits\\counter_en_explicit.bench", &loaded))
+		{
+		fprintf(stderr, "FAIL counter_en_explicit: unable to load test circuit\n");
+		return 0;
+		}
+
+	values[0] = 0ULL;
+	masks[0] = 0ULL;
+	lxs_apply_inputs(&loaded.ctx, loaded.plan, values, masks);
+	lxs_execute_plan(&loaded.ctx, loaded.plan);
+	lxs_read_outputs(&loaded.ctx, loaded.plan, out_values, out_masks);
+	ok &= lxs_expect_u64("counter_en_explicit.cycle1", lxs_collect_scalar_bits(out_values, out_masks, 4U), 0x0U);
+
+	values[0] = ~0ULL;
+	lxs_apply_inputs(&loaded.ctx, loaded.plan, values, masks);
+	lxs_execute_plan(&loaded.ctx, loaded.plan);
+	lxs_read_outputs(&loaded.ctx, loaded.plan, out_values, out_masks);
+	ok &= lxs_expect_u64("counter_en_explicit.step_hidden", lxs_collect_scalar_bits(out_values, out_masks, 4U), 0x0U);
+
+	values[0] = 0ULL;
+	lxs_apply_inputs(&loaded.ctx, loaded.plan, values, masks);
+	lxs_execute_plan(&loaded.ctx, loaded.plan);
+	lxs_read_outputs(&loaded.ctx, loaded.plan, out_values, out_masks);
+	ok &= lxs_expect_u64("counter_en_explicit.cycle2", lxs_collect_scalar_bits(out_values, out_masks, 4U), 0x1U);
+	ok &= lxs_expect_u64("counter_en_explicit.parity", out_values[4], ~0ULL);
+	ok &= lxs_expect_u64("counter_en_explicit.nor", out_values[5], 0ULL);
+
+	lxs_unload_case(&loaded);
+	return ok;
+	}
+
+static int lxs_test_counter_updown_explicit(void)
+	{
+	lxs_loaded_case loaded;
+	uint64_t values[2];
+	uint64_t masks[2];
+	uint64_t out_values[6];
+	uint64_t out_masks[6];
+	int ok = 1;
+
+	if (!lxs_load_case("Tests\\Circuits\\counter_updown_explicit.bench", &loaded))
+		{
+		fprintf(stderr, "FAIL counter_updown_explicit: unable to load test circuit\n");
+		return 0;
+		}
+
+	memset(masks, 0, sizeof(masks));
+	values[0] = ~0ULL;
+	values[1] = 0ULL;
+	lxs_apply_inputs(&loaded.ctx, loaded.plan, values, masks);
+	lxs_execute_plan(&loaded.ctx, loaded.plan);
+	values[0] = 0ULL;
+	values[1] = 0ULL;
+	lxs_apply_inputs(&loaded.ctx, loaded.plan, values, masks);
+	lxs_execute_plan(&loaded.ctx, loaded.plan);
+	lxs_read_outputs(&loaded.ctx, loaded.plan, out_values, out_masks);
+	ok &= lxs_expect_u64("counter_updown_explicit.inc1", lxs_collect_scalar_bits(out_values, out_masks, 4U), 0x1U);
+
+	values[0] = ~0ULL;
+	values[1] = 0ULL;
+	lxs_apply_inputs(&loaded.ctx, loaded.plan, values, masks);
+	lxs_execute_plan(&loaded.ctx, loaded.plan);
+	values[0] = 0ULL;
+	values[1] = 0ULL;
+	lxs_apply_inputs(&loaded.ctx, loaded.plan, values, masks);
+	lxs_execute_plan(&loaded.ctx, loaded.plan);
+	lxs_read_outputs(&loaded.ctx, loaded.plan, out_values, out_masks);
+	ok &= lxs_expect_u64("counter_updown_explicit.inc2", lxs_collect_scalar_bits(out_values, out_masks, 4U), 0x2U);
+
+	values[0] = ~0ULL;
+	values[1] = ~0ULL;
+	lxs_apply_inputs(&loaded.ctx, loaded.plan, values, masks);
+	lxs_execute_plan(&loaded.ctx, loaded.plan);
+	values[0] = 0ULL;
+	values[1] = 0ULL;
+	lxs_apply_inputs(&loaded.ctx, loaded.plan, values, masks);
+	lxs_execute_plan(&loaded.ctx, loaded.plan);
+	lxs_read_outputs(&loaded.ctx, loaded.plan, out_values, out_masks);
+	ok &= lxs_expect_u64("counter_updown_explicit.dec1", lxs_collect_scalar_bits(out_values, out_masks, 4U), 0x1U);
+
+	lxs_unload_case(&loaded);
+	return ok;
+	}
+
+static int lxs_test_rom_mixed(void)
+	{
+	lxs_loaded_case loaded;
+	uint64_t values[2];
+	uint64_t masks[2];
+	uint64_t out_values[6];
+	uint64_t out_masks[6];
+	const uint8_t expected_words[4] = { 0x0U, 0x1U, 0x3U, 0x7U };
+	const uint8_t expected_parity[4] = { 0U, 1U, 0U, 1U };
+	const uint8_t expected_nor[4] = { 1U, 0U, 0U, 0U };
+	int ok = 1;
+
+	if (!lxs_load_case("Tests\\Circuits\\rom_mixed.bench", &loaded))
+		{
+		fprintf(stderr, "FAIL rom_mixed: unable to load test circuit\n");
+		return 0;
+		}
+
+	for (uint32_t addr = 0; addr < 4U; ++addr)
+		{
+		char label[64];
+
+		lxs_set_scalar_bits(values, masks, 2U, addr);
+		lxs_apply_inputs(&loaded.ctx, loaded.plan, values, masks);
+		lxs_execute_plan(&loaded.ctx, loaded.plan);
+		lxs_read_outputs(&loaded.ctx, loaded.plan, out_values, out_masks);
+
+		snprintf(label, sizeof(label), "rom_mixed.word_%u", addr);
+		ok &= lxs_expect_u64(label, lxs_collect_scalar_bits(out_values, out_masks, 4U), expected_words[addr]);
+		snprintf(label, sizeof(label), "rom_mixed.parity_%u", addr);
+		ok &= lxs_expect_u64(label, out_values[4], expected_parity[addr] ? ~0ULL : 0ULL);
+		snprintf(label, sizeof(label), "rom_mixed.nor_%u", addr);
+		ok &= lxs_expect_u64(label, out_values[5], expected_nor[addr] ? ~0ULL : 0ULL);
+		}
+
+	lxs_unload_case(&loaded);
+	return ok;
+	}
+
+static int lxs_test_ram_mixed(void)
+	{
+	lxs_loaded_case loaded;
+	uint64_t values[9];
+	uint64_t masks[9];
+	uint64_t out_values[6];
+	uint64_t out_masks[6];
+	int ok = 1;
+
+	if (!lxs_load_case("Tests\\Circuits\\ram_mixed.bench", &loaded))
+		{
+		fprintf(stderr, "FAIL ram_mixed: unable to load test circuit\n");
+		return 0;
+		}
+
+	memset(values, 0, sizeof(values));
+	memset(masks, 0, sizeof(masks));
+	lxs_set_scalar_bits(values + 0U, masks + 0U, 2U, 0U);
+	lxs_set_scalar_bits(values + 2U, masks + 2U, 2U, 1U);
+	lxs_set_scalar_bits(values + 4U, masks + 4U, 4U, 0xAU);
+	values[8] = ~0ULL;
+	lxs_apply_inputs(&loaded.ctx, loaded.plan, values, masks);
+	lxs_execute_plan(&loaded.ctx, loaded.plan);
+	lxs_read_outputs(&loaded.ctx, loaded.plan, out_values, out_masks);
+	ok &= lxs_expect_u64("ram_mixed.cycle1.word", lxs_collect_scalar_bits(out_values, out_masks, 4U), 0x1U);
+	ok &= lxs_expect_u64("ram_mixed.cycle1.parity", out_values[4], ~0ULL);
+	ok &= lxs_expect_u64("ram_mixed.cycle1.nor", out_values[5], 0ULL);
+
+	memset(values, 0, sizeof(values));
+	memset(masks, 0, sizeof(masks));
+	lxs_set_scalar_bits(values + 0U, masks + 0U, 2U, 1U);
+	values[8] = 0ULL;
+	lxs_apply_inputs(&loaded.ctx, loaded.plan, values, masks);
+	lxs_execute_plan(&loaded.ctx, loaded.plan);
+	lxs_read_outputs(&loaded.ctx, loaded.plan, out_values, out_masks);
+	ok &= lxs_expect_u64("ram_mixed.cycle2.word", lxs_collect_scalar_bits(out_values, out_masks, 4U), 0xAU);
+	ok &= lxs_expect_u64("ram_mixed.cycle2.parity", out_values[4], 0ULL);
+	ok &= lxs_expect_u64("ram_mixed.cycle2.nor", out_values[5], 0ULL);
+
+	lxs_unload_case(&loaded);
+	return ok;
+	}
+
+static int lxs_test_regfile2_explicit(void)
+	{
+	lxs_loaded_case loaded;
+	uint64_t values[7];
+	uint64_t masks[7];
+	uint64_t out_values[6];
+	uint64_t out_masks[6];
+	int ok = 1;
+
+	if (!lxs_load_case("Tests\\Circuits\\regfile2_explicit.bench", &loaded))
+		{
+		fprintf(stderr, "FAIL regfile2_explicit: unable to load test circuit\n");
+		return 0;
+		}
+
+	memset(values, 0, sizeof(values));
+	memset(masks, 0, sizeof(masks));
+	values[0] = 0ULL;
+	values[1] = ~0ULL;
+	lxs_set_scalar_bits(values + 2U, masks + 2U, 4U, 0xAU);
+	values[6] = ~0ULL;
+	lxs_apply_inputs(&loaded.ctx, loaded.plan, values, masks);
+	lxs_execute_plan(&loaded.ctx, loaded.plan);
+	lxs_read_outputs(&loaded.ctx, loaded.plan, out_values, out_masks);
+	ok &= lxs_expect_u64("regfile2_explicit.cycle1.word", lxs_collect_scalar_bits(out_values, out_masks, 4U), 0x0U);
+
+	memset(values, 0, sizeof(values));
+	memset(masks, 0, sizeof(masks));
+	values[0] = ~0ULL;
+	values[6] = 0ULL;
+	lxs_apply_inputs(&loaded.ctx, loaded.plan, values, masks);
+	lxs_execute_plan(&loaded.ctx, loaded.plan);
+	lxs_read_outputs(&loaded.ctx, loaded.plan, out_values, out_masks);
+	ok &= lxs_expect_u64("regfile2_explicit.cycle2.word", lxs_collect_scalar_bits(out_values, out_masks, 4U), 0xAU);
+	ok &= lxs_expect_u64("regfile2_explicit.parity", out_values[4], 0ULL);
+	ok &= lxs_expect_u64("regfile2_explicit.nor", out_values[5], 0ULL);
+
+	lxs_unload_case(&loaded);
+	return ok;
+	}
+
+static int lxs_test_ram_rmw_xor_explicit(void)
+	{
+	lxs_loaded_case loaded;
+	uint64_t values[9];
+	uint64_t masks[9];
+	uint64_t out_values[10];
+	uint64_t out_masks[10];
+	int ok = 1;
+
+	if (!lxs_load_case("Tests\\Circuits\\ram_rmw_xor_explicit.bench", &loaded))
+		{
+		fprintf(stderr, "FAIL ram_rmw_xor_explicit: unable to load test circuit\n");
+		return 0;
+		}
+
+	memset(values, 0, sizeof(values));
+	memset(masks, 0, sizeof(masks));
+	lxs_set_scalar_bits(values + 0U, masks + 0U, 2U, 0U);
+	lxs_set_scalar_bits(values + 2U, masks + 2U, 2U, 2U);
+	lxs_set_scalar_bits(values + 4U, masks + 4U, 4U, 0x5U);
+	values[8] = ~0ULL;
+	lxs_apply_inputs(&loaded.ctx, loaded.plan, values, masks);
+	lxs_execute_plan(&loaded.ctx, loaded.plan);
+	lxs_read_outputs(&loaded.ctx, loaded.plan, out_values, out_masks);
+	ok &= lxs_expect_u64("ram_rmw_xor_explicit.cycle1.mem", lxs_collect_scalar_bits(out_values, out_masks, 4U), 0x1U);
+	ok &= lxs_expect_u64("ram_rmw_xor_explicit.cycle1.write_data", lxs_collect_scalar_bits(out_values + 4U, out_masks + 4U, 4U), 0x4U);
+	ok &= lxs_expect_u64("ram_rmw_xor_explicit.cycle1.parity", out_values[8], ~0ULL);
+	ok &= lxs_expect_u64("ram_rmw_xor_explicit.cycle1.nor", out_values[9], 0ULL);
+
+	memset(values, 0, sizeof(values));
+	memset(masks, 0, sizeof(masks));
+	lxs_set_scalar_bits(values + 0U, masks + 0U, 2U, 2U);
+	values[8] = 0ULL;
+	lxs_apply_inputs(&loaded.ctx, loaded.plan, values, masks);
+	lxs_execute_plan(&loaded.ctx, loaded.plan);
+	lxs_read_outputs(&loaded.ctx, loaded.plan, out_values, out_masks);
+	ok &= lxs_expect_u64("ram_rmw_xor_explicit.cycle2.mem", lxs_collect_scalar_bits(out_values, out_masks, 4U), 0x4U);
+	ok &= lxs_expect_u64("ram_rmw_xor_explicit.cycle2.write_data", lxs_collect_scalar_bits(out_values + 4U, out_masks + 4U, 4U), 0x4U);
+	ok &= lxs_expect_u64("ram_rmw_xor_explicit.cycle2.parity", out_values[8], ~0ULL);
+	ok &= lxs_expect_u64("ram_rmw_xor_explicit.cycle2.nor", out_values[9], 0ULL);
+
+	lxs_unload_case(&loaded);
+	return ok;
+	}
+
+static int lxs_test_rom_lookup_rewrite(void)
+	{
+	lxs_loaded_case lhs;
+	lxs_loaded_case rhs;
+	uint64_t values[2];
+	uint64_t masks[2];
+	uint64_t lhs_out_values[6];
+	uint64_t lhs_out_masks[6];
+	uint64_t rhs_out_values[6];
+	uint64_t rhs_out_masks[6];
+	int ok = 1;
+
+	if (!lxs_load_case("Tests\\Circuits\\rom_lookup_primitive.bench", &lhs))
+		{
+		fprintf(stderr, "FAIL rom_lookup_rewrite: unable to load primitive circuit\n");
+		return 0;
+		}
+
+	if (!lxs_load_case("Tests\\Circuits\\rom_lookup_rewritten.bench", &rhs))
+		{
+		fprintf(stderr, "FAIL rom_lookup_rewrite: unable to load rewritten circuit\n");
+		lxs_unload_case(&lhs);
+		return 0;
+		}
+
+	for (uint32_t addr = 0; addr < 4U; ++addr)
+		{
+		char label[64];
+
+		lxs_set_scalar_bits(values, masks, 2U, addr);
+		lxs_apply_inputs(&lhs.ctx, lhs.plan, values, masks);
+		lxs_execute_plan(&lhs.ctx, lhs.plan);
+		lxs_read_outputs(&lhs.ctx, lhs.plan, lhs_out_values, lhs_out_masks);
+
+		lxs_apply_inputs(&rhs.ctx, rhs.plan, values, masks);
+		lxs_execute_plan(&rhs.ctx, rhs.plan);
+		lxs_read_outputs(&rhs.ctx, rhs.plan, rhs_out_values, rhs_out_masks);
+
+		for (uint32_t out = 0; out < 6U; ++out)
+			{
+			snprintf(label, sizeof(label), "rom_lookup_rewrite.addr_%u.out_%u.value", addr, out);
+			ok &= lxs_expect_u64(label, rhs_out_values[out], lhs_out_values[out]);
+			snprintf(label, sizeof(label), "rom_lookup_rewrite.addr_%u.out_%u.mask", addr, out);
+			ok &= lxs_expect_u64(label, rhs_out_masks[out], lhs_out_masks[out]);
+			}
+		}
+
+	lxs_unload_case(&lhs);
+	lxs_unload_case(&rhs);
+	return ok;
+	}
+
+static int lxs_test_counter_en_rewrite(void)
+	{
+	lxs_loaded_case lhs;
+	lxs_loaded_case rhs;
+	uint64_t values[1];
+	uint64_t masks[1];
+	uint64_t lhs_out_values[6];
+	uint64_t lhs_out_masks[6];
+	uint64_t rhs_out_values[6];
+	uint64_t rhs_out_masks[6];
+	uint64_t rng = 0x3141592653589793ULL;
+	int ok = 1;
+
+	if (!lxs_load_case("Tests\\Circuits\\counter_en_primitive.bench", &lhs))
+		{
+		fprintf(stderr, "FAIL counter_en_rewrite: unable to load primitive circuit\n");
+		return 0;
+		}
+
+	if (!lxs_load_case("Benchmarks\\Generated\\counter_en_rewritten.bench", &rhs))
+		{
+		fprintf(stderr, "FAIL counter_en_rewrite: unable to load rewritten circuit\n");
+		lxs_unload_case(&lhs);
+		return 0;
+		}
+
+	memset(masks, 0, sizeof(masks));
+	for (uint32_t t = 0; t < 512U; ++t)
+		{
+		char label[80];
+
+		values[0] = (lxs_next_rand(&rng) >> 63U) ? ~0ULL : 0ULL;
+		lxs_apply_inputs(&lhs.ctx, lhs.plan, values, masks);
+		lxs_execute_plan(&lhs.ctx, lhs.plan);
+		lxs_read_outputs(&lhs.ctx, lhs.plan, lhs_out_values, lhs_out_masks);
+
+		lxs_apply_inputs(&rhs.ctx, rhs.plan, values, masks);
+		lxs_execute_plan(&rhs.ctx, rhs.plan);
+		lxs_read_outputs(&rhs.ctx, rhs.plan, rhs_out_values, rhs_out_masks);
+
+		for (uint32_t out = 0; out < 6U; ++out)
+			{
+			snprintf(label, sizeof(label), "counter_en_rewrite.tick_%u.out_%u.value", t, out);
+			ok &= lxs_expect_u64(label, rhs_out_values[out], lhs_out_values[out]);
+			snprintf(label, sizeof(label), "counter_en_rewrite.tick_%u.out_%u.mask", t, out);
+			ok &= lxs_expect_u64(label, rhs_out_masks[out], lhs_out_masks[out]);
+			}
+		}
+
+	lxs_unload_case(&lhs);
+	lxs_unload_case(&rhs);
+	return ok;
+	}
+
+static int lxs_test_regfile2_rewrite(void)
+	{
+	lxs_loaded_case lhs;
+	lxs_loaded_case rhs;
+	uint64_t values[7];
+	uint64_t masks[7];
+	uint64_t lhs_out_values[6];
+	uint64_t lhs_out_masks[6];
+	uint64_t rhs_out_values[6];
+	uint64_t rhs_out_masks[6];
+	uint64_t rng = 0x2718281828459045ULL;
+	int ok = 1;
+
+	if (!lxs_load_case("Tests\\Circuits\\regfile2_primitive.bench", &lhs))
+		{
+		fprintf(stderr, "FAIL regfile2_rewrite: unable to load primitive circuit\n");
+		return 0;
+		}
+
+	if (!lxs_load_case("Benchmarks\\Generated\\regfile2_rewritten.bench", &rhs))
+		{
+		fprintf(stderr, "FAIL regfile2_rewrite: unable to load rewritten circuit\n");
+		lxs_unload_case(&lhs);
+		return 0;
+		}
+
+	memset(masks, 0, sizeof(masks));
+	for (uint32_t t = 0; t < 512U; ++t)
+		{
+		char label[80];
+
+		for (uint32_t i = 0; i < 7U; ++i)
+			{
+			values[i] = (lxs_next_rand(&rng) >> 63U) ? ~0ULL : 0ULL;
+			}
+
+		lxs_apply_inputs(&lhs.ctx, lhs.plan, values, masks);
+		lxs_execute_plan(&lhs.ctx, lhs.plan);
+		lxs_read_outputs(&lhs.ctx, lhs.plan, lhs_out_values, lhs_out_masks);
+
+		lxs_apply_inputs(&rhs.ctx, rhs.plan, values, masks);
+		lxs_execute_plan(&rhs.ctx, rhs.plan);
+		lxs_read_outputs(&rhs.ctx, rhs.plan, rhs_out_values, rhs_out_masks);
+
+		for (uint32_t out = 0; out < 6U; ++out)
+			{
+			snprintf(label, sizeof(label), "regfile2_rewrite.tick_%u.out_%u.value", t, out);
+			ok &= lxs_expect_u64(label, rhs_out_values[out], lhs_out_values[out]);
+			snprintf(label, sizeof(label), "regfile2_rewrite.tick_%u.out_%u.mask", t, out);
+			ok &= lxs_expect_u64(label, rhs_out_masks[out], lhs_out_masks[out]);
+			}
+		}
+
+	lxs_unload_case(&lhs);
+	lxs_unload_case(&rhs);
+	return ok;
+	}
+
 int main(void)
 	{
 	int ok = 1;
@@ -834,6 +2253,13 @@ int main(void)
 	ok &= lxs_test_xor2_macro();
 	ok &= lxs_test_xor2_nor_macro();
 	ok &= lxs_test_xnor2_macro();
+	ok &= lxs_test_parity4_explicit();
+	ok &= lxs_test_parity8_explicit();
+	ok &= lxs_test_xor_fan8_explicit();
+	ok &= lxs_test_and_fan8_explicit();
+	ok &= lxs_test_guard_chain4_explicit();
+	ok &= lxs_test_xnor_bank4_explicit();
+	ok &= lxs_test_wide_gates_explicit();
 	ok &= lxs_test_carry_inv2_macro();
 	ok &= lxs_test_sum_cinv2_macro();
 	ok &= lxs_test_ripple_slice2_macro();
@@ -841,6 +2267,24 @@ int main(void)
 	ok &= lxs_test_full_adder_explicit();
 	ok &= lxs_test_ripple_slice2_explicit();
 	ok &= lxs_test_dff_not();
+	ok &= lxs_test_register_descriptor();
+	ok &= lxs_test_rom_descriptor();
+	ok &= lxs_test_ram_descriptor();
+	ok &= lxs_test_register_explicit();
+	ok &= lxs_test_rom_explicit();
+	ok &= lxs_test_ram_explicit();
+	ok &= lxs_test_register_mixed();
+	ok &= lxs_test_register_en_explicit();
+	ok &= lxs_test_register_hold_explicit();
+	ok &= lxs_test_counter_en_explicit();
+	ok &= lxs_test_counter_updown_explicit();
+	ok &= lxs_test_rom_mixed();
+	ok &= lxs_test_rom_lookup_rewrite();
+	ok &= lxs_test_ram_mixed();
+	ok &= lxs_test_ram_rmw_xor_explicit();
+	ok &= lxs_test_regfile2_explicit();
+	ok &= lxs_test_counter_en_rewrite();
+	ok &= lxs_test_regfile2_rewrite();
 
 	if (!ok)
 		{

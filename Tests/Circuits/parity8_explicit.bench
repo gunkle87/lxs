@@ -1,0 +1,12 @@
+INPUT(a0)
+INPUT(a1)
+INPUT(a2)
+INPUT(a3)
+INPUT(a4)
+INPUT(a5)
+INPUT(a6)
+INPUT(a7)
+
+OUTPUT(y)
+
+y = PARITY8(a0, a1, a2, a3, a4, a5, a6, a7)

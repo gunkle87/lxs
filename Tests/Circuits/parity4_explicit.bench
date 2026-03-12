@@ -1,0 +1,8 @@
+INPUT(a)
+INPUT(b)
+INPUT(c)
+INPUT(d)
+
+OUTPUT(y)
+
+y = PARITY4(a, b, c, d)
