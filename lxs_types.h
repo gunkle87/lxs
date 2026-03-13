@@ -343,6 +343,49 @@ struct lxs_multi_macro_plan
 	uint32_t param0;
 	};
 
+typedef enum lxs_functional_region_exec_kind
+	{
+	LXS_FUNCTIONAL_REGION_EXEC_EXPR = 0,
+	LXS_FUNCTIONAL_REGION_EXEC_MICROPROGRAM
+	} lxs_functional_region_exec_kind;
+
+typedef enum lxs_functional_region_op_type
+	{
+	LXS_FUNCTIONAL_REGION_OP_BUF = 0,
+	LXS_FUNCTIONAL_REGION_OP_NOT,
+	LXS_FUNCTIONAL_REGION_OP_AND,
+	LXS_FUNCTIONAL_REGION_OP_OR,
+	LXS_FUNCTIONAL_REGION_OP_XOR,
+	LXS_FUNCTIONAL_REGION_OP_NAND,
+	LXS_FUNCTIONAL_REGION_OP_NOR,
+	LXS_FUNCTIONAL_REGION_OP_XNOR
+	} lxs_functional_region_op_type;
+
+typedef struct lxs_functional_region_op lxs_functional_region_op;
+struct lxs_functional_region_op
+	{
+	uint8_t type;
+	uint8_t dst;
+	uint8_t src0;
+	uint8_t src1;
+	};
+
+typedef struct lxs_functional_region_plan lxs_functional_region_plan;
+struct lxs_functional_region_plan
+	{
+	uint32_t level;
+	uint32_t exec_kind;
+	uint32_t input_count;
+	uint32_t gate_equiv_count;
+	uint32_t output;
+	uint32_t inputs[5];
+	uint8_t temp_count;
+	uint8_t op_count;
+	uint8_t node_budget;
+	uint8_t max_depth;
+	lxs_functional_region_op ops[8];
+	};
+
 typedef struct lxs_io_plan lxs_io_plan;
 struct lxs_io_plan
 	{
@@ -414,6 +457,7 @@ struct lxs_plan
 	uint32_t max_span_count;
 	uint32_t macro_count;
 	uint32_t multi_macro_count;
+	uint32_t functional_region_count;
 	uint32_t recognition_mask;
 	uint32_t recognition_mode;
 	uint32_t recognition_match_count[LXS_RECOGNITION_FAMILY_COUNT];
@@ -428,6 +472,7 @@ struct lxs_plan
 	lxs_chunk_plan *chunks;
 	lxs_macro_plan *macros;
 	lxs_multi_macro_plan *multi_macros;
+	lxs_functional_region_plan *functional_regions;
 	lxs_level_plan *levels;
 
 	lxs_io_plan inputs;
