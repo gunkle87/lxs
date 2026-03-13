@@ -1913,6 +1913,62 @@ static int lxs_test_carry_save_row4_explicit(void)
 	return ok;
 	}
 
+static int lxs_test_reduce_propagate4_explicit(void)
+	{
+	lxs_loaded_case loaded;
+	uint64_t values[12];
+	uint64_t masks[12];
+	uint64_t out_values[6];
+	uint64_t out_masks[6];
+	int ok = 1;
+
+	if (!lxs_load_case("Tests\\Circuits\\reduce_propagate4_explicit.bench", &loaded))
+		{
+		fprintf(stderr, "FAIL reduce_propagate4_explicit: unable to load test circuit\n");
+		return 0;
+		}
+
+	ok &= lxs_expect_u64("reduce_propagate4_explicit.multi_macro_count", loaded.plan->multi_macro_count, 1ULL);
+	ok &= lxs_expect_u64("reduce_propagate4_explicit.comb_gate_count", loaded.plan->comb_gate_count, 0ULL);
+
+	for (uint32_t combo = 0; combo < 4096U; ++combo)
+		{
+		uint32_t total = 0U;
+		char label[128];
+
+		for (uint32_t i = 0; i < 12U; ++i)
+			{
+			uint32_t bit = (combo >> i) & 1U;
+			values[i] = bit ? ~0ULL : 0ULL;
+			masks[i] = 0ULL;
+			}
+
+		for (uint32_t column = 0; column < 4U; ++column)
+			{
+			uint32_t x = (combo >> (column * 3U + 0U)) & 1U;
+			uint32_t y = (combo >> (column * 3U + 1U)) & 1U;
+			uint32_t z = (combo >> (column * 3U + 2U)) & 1U;
+			total += (x + y + z) << column;
+			}
+
+		lxs_apply_inputs(&loaded.ctx, loaded.plan, values, masks);
+		lxs_execute_plan(&loaded.ctx, loaded.plan);
+		lxs_read_outputs(&loaded.ctx, loaded.plan, out_values, out_masks);
+
+		for (uint32_t i = 0; i < 6U; ++i)
+			{
+			uint32_t bit = (total >> i) & 1U;
+			snprintf(label, sizeof(label), "reduce_propagate4_explicit.out%u.%u", i, combo);
+			ok &= lxs_expect_u64(label, out_values[i], bit ? ~0ULL : 0ULL);
+			snprintf(label, sizeof(label), "reduce_propagate4_explicit.mask%u.%u", i, combo);
+			ok &= lxs_expect_u64(label, out_masks[i], 0ULL);
+			}
+		}
+
+	lxs_unload_case(&loaded);
+	return ok;
+	}
+
 static int lxs_test_dff_not(void)
 	{
 	lxs_loaded_case loaded;
@@ -3000,6 +3056,7 @@ int main(void)
 	ok &= lxs_test_ripple_slice2_explicit();
 	ok &= lxs_test_ripple_add4_explicit();
 	ok &= lxs_test_carry_save_row4_explicit();
+	ok &= lxs_test_reduce_propagate4_explicit();
 	ok &= lxs_test_dff_not();
 	ok &= lxs_test_register_descriptor();
 	ok &= lxs_test_rom_descriptor();

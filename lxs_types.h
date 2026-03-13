@@ -41,6 +41,7 @@ typedef enum lxs_multi_macro_type
 	LXS_MULTI_MACRO_RIPPLE_SLICE2,
 	LXS_MULTI_MACRO_RIPPLE_ADD4,
 	LXS_MULTI_MACRO_CARRY_SAVE_ROW4,
+	LXS_MULTI_MACRO_REDUCE_PROPAGATE4,
 	LXS_MULTI_MACRO_XOR_FAN8,
 	LXS_MULTI_MACRO_AND_FAN8,
 	LXS_MULTI_MACRO_COMPARE_AND4,
@@ -59,6 +60,7 @@ typedef enum lxs_source_multi_macro_type
 	LXS_SOURCE_MULTI_MACRO_RIPPLE_SLICE2,
 	LXS_SOURCE_MULTI_MACRO_RIPPLE_ADD4,
 	LXS_SOURCE_MULTI_MACRO_CARRY_SAVE_ROW4,
+	LXS_SOURCE_MULTI_MACRO_REDUCE_PROPAGATE4,
 	LXS_SOURCE_MULTI_MACRO_XOR_FAN8,
 	LXS_SOURCE_MULTI_MACRO_AND_FAN8,
 	LXS_SOURCE_MULTI_MACRO_XNOR_BANK4,
@@ -257,7 +259,7 @@ struct lxs_source_multi_macro
 	uint32_t type;
 	uint32_t inputs[12];
 	uint32_t outputs[8];
-	uint32_t gate_indices[20];
+	uint32_t gate_indices[40];
 	uint32_t input_count;
 	uint32_t output_count;
 	uint32_t gate_count;

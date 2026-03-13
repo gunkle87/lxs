@@ -1319,6 +1319,210 @@ static void lxs_execute_multi_macros(
 			net_value[macro->outputs[7]] = carry3_value;
 			net_mask[macro->outputs[7]] = carry3_mask;
 			}
+		else if (macro->type == LXS_MULTI_MACRO_REDUCE_PROPAGATE4)
+			{
+			uint64_t rp_xor0_value;
+			uint64_t rp_xor0_mask;
+			uint64_t rp_xor1_value;
+			uint64_t rp_xor1_mask;
+			uint64_t rp_xor2_value;
+			uint64_t rp_xor2_mask;
+			uint64_t rp_xor3_value;
+			uint64_t rp_xor3_mask;
+			uint64_t rp_and0a_value;
+			uint64_t rp_and0a_mask;
+			uint64_t rp_and0b_value;
+			uint64_t rp_and0b_mask;
+			uint64_t rp_and1a_value;
+			uint64_t rp_and1a_mask;
+			uint64_t rp_and1b_value;
+			uint64_t rp_and1b_mask;
+			uint64_t rp_and2a_value;
+			uint64_t rp_and2a_mask;
+			uint64_t rp_and2b_value;
+			uint64_t rp_and2b_mask;
+			uint64_t rp_and3a_value;
+			uint64_t rp_and3a_mask;
+			uint64_t rp_and3b_value;
+			uint64_t rp_and3b_mask;
+			uint64_t rp_sum0_value;
+			uint64_t rp_sum0_mask;
+			uint64_t rp_sum1_value;
+			uint64_t rp_sum1_mask;
+			uint64_t rp_sum2_value;
+			uint64_t rp_sum2_mask;
+			uint64_t rp_sum3_value;
+			uint64_t rp_sum3_mask;
+			uint64_t rp_carry1_value;
+			uint64_t rp_carry1_mask;
+			uint64_t rp_carry2_value;
+			uint64_t rp_carry2_mask;
+			uint64_t rp_carry3_value;
+			uint64_t rp_carry3_mask;
+			uint64_t rp_carry4_value;
+			uint64_t rp_carry4_mask;
+			uint64_t rp_carry01_value;
+			uint64_t rp_carry01_mask;
+			uint64_t rp_bit2_value;
+			uint64_t rp_bit2_mask;
+			uint64_t rp_carry12a_value;
+			uint64_t rp_carry12a_mask;
+			uint64_t rp_carry12b_value;
+			uint64_t rp_carry12b_mask;
+			uint64_t rp_carry12_value;
+			uint64_t rp_carry12_mask;
+			uint64_t rp_bit3_value;
+			uint64_t rp_bit3_mask;
+			uint64_t rp_carry23a_value;
+			uint64_t rp_carry23a_mask;
+			uint64_t rp_carry23b_value;
+			uint64_t rp_carry23b_mask;
+			uint64_t rp_spill0a_value;
+			uint64_t rp_spill0a_mask;
+
+			LXS_EVAL_XOR(
+				net_value[macro->inputs[0]],
+				net_mask[macro->inputs[0]],
+				net_value[macro->inputs[1]],
+				net_mask[macro->inputs[1]],
+				rp_xor0_value,
+				rp_xor0_mask);
+			LXS_EVAL_XOR(
+				rp_xor0_value,
+				rp_xor0_mask,
+				net_value[macro->inputs[2]],
+				net_mask[macro->inputs[2]],
+				rp_sum0_value,
+				rp_sum0_mask);
+			LXS_EVAL_AND(
+				net_value[macro->inputs[0]],
+				net_mask[macro->inputs[0]],
+				net_value[macro->inputs[1]],
+				net_mask[macro->inputs[1]],
+				rp_and0a_value,
+				rp_and0a_mask);
+			LXS_EVAL_AND(
+				rp_xor0_value,
+				rp_xor0_mask,
+				net_value[macro->inputs[2]],
+				net_mask[macro->inputs[2]],
+				rp_and0b_value,
+				rp_and0b_mask);
+			LXS_EVAL_OR(rp_and0a_value, rp_and0a_mask, rp_and0b_value, rp_and0b_mask, rp_carry1_value, rp_carry1_mask);
+
+			LXS_EVAL_XOR(
+				net_value[macro->inputs[3]],
+				net_mask[macro->inputs[3]],
+				net_value[macro->inputs[4]],
+				net_mask[macro->inputs[4]],
+				rp_xor1_value,
+				rp_xor1_mask);
+			LXS_EVAL_XOR(
+				rp_xor1_value,
+				rp_xor1_mask,
+				net_value[macro->inputs[5]],
+				net_mask[macro->inputs[5]],
+				rp_sum1_value,
+				rp_sum1_mask);
+			LXS_EVAL_AND(
+				net_value[macro->inputs[3]],
+				net_mask[macro->inputs[3]],
+				net_value[macro->inputs[4]],
+				net_mask[macro->inputs[4]],
+				rp_and1a_value,
+				rp_and1a_mask);
+			LXS_EVAL_AND(
+				rp_xor1_value,
+				rp_xor1_mask,
+				net_value[macro->inputs[5]],
+				net_mask[macro->inputs[5]],
+				rp_and1b_value,
+				rp_and1b_mask);
+			LXS_EVAL_OR(rp_and1a_value, rp_and1a_mask, rp_and1b_value, rp_and1b_mask, rp_carry2_value, rp_carry2_mask);
+
+			LXS_EVAL_XOR(
+				net_value[macro->inputs[6]],
+				net_mask[macro->inputs[6]],
+				net_value[macro->inputs[7]],
+				net_mask[macro->inputs[7]],
+				rp_xor2_value,
+				rp_xor2_mask);
+			LXS_EVAL_XOR(
+				rp_xor2_value,
+				rp_xor2_mask,
+				net_value[macro->inputs[8]],
+				net_mask[macro->inputs[8]],
+				rp_sum2_value,
+				rp_sum2_mask);
+			LXS_EVAL_AND(
+				net_value[macro->inputs[6]],
+				net_mask[macro->inputs[6]],
+				net_value[macro->inputs[7]],
+				net_mask[macro->inputs[7]],
+				rp_and2a_value,
+				rp_and2a_mask);
+			LXS_EVAL_AND(
+				rp_xor2_value,
+				rp_xor2_mask,
+				net_value[macro->inputs[8]],
+				net_mask[macro->inputs[8]],
+				rp_and2b_value,
+				rp_and2b_mask);
+			LXS_EVAL_OR(rp_and2a_value, rp_and2a_mask, rp_and2b_value, rp_and2b_mask, rp_carry3_value, rp_carry3_mask);
+
+			LXS_EVAL_XOR(
+				net_value[macro->inputs[9]],
+				net_mask[macro->inputs[9]],
+				net_value[macro->inputs[10]],
+				net_mask[macro->inputs[10]],
+				rp_xor3_value,
+				rp_xor3_mask);
+			LXS_EVAL_XOR(
+				rp_xor3_value,
+				rp_xor3_mask,
+				net_value[macro->inputs[11]],
+				net_mask[macro->inputs[11]],
+				rp_sum3_value,
+				rp_sum3_mask);
+			LXS_EVAL_AND(
+				net_value[macro->inputs[9]],
+				net_mask[macro->inputs[9]],
+				net_value[macro->inputs[10]],
+				net_mask[macro->inputs[10]],
+				rp_and3a_value,
+				rp_and3a_mask);
+			LXS_EVAL_AND(
+				rp_xor3_value,
+				rp_xor3_mask,
+				net_value[macro->inputs[11]],
+				net_mask[macro->inputs[11]],
+				rp_and3b_value,
+				rp_and3b_mask);
+			LXS_EVAL_OR(rp_and3a_value, rp_and3a_mask, rp_and3b_value, rp_and3b_mask, rp_carry4_value, rp_carry4_mask);
+
+			LXS_EVAL_XOR(rp_sum1_value, rp_sum1_mask, rp_carry1_value, rp_carry1_mask, sum_value, sum_mask);
+			net_value[macro->outputs[1]] = sum_value;
+			net_mask[macro->outputs[1]] = sum_mask;
+			LXS_EVAL_AND(rp_sum1_value, rp_sum1_mask, rp_carry1_value, rp_carry1_mask, rp_carry01_value, rp_carry01_mask);
+
+			LXS_EVAL_XOR(rp_sum2_value, rp_sum2_mask, rp_carry2_value, rp_carry2_mask, rp_bit2_value, rp_bit2_mask);
+			LXS_EVAL_AND(rp_sum2_value, rp_sum2_mask, rp_carry2_value, rp_carry2_mask, rp_carry12a_value, rp_carry12a_mask);
+			LXS_EVAL_XOR(rp_bit2_value, rp_bit2_mask, rp_carry01_value, rp_carry01_mask, net_value[macro->outputs[2]], net_mask[macro->outputs[2]]);
+			LXS_EVAL_AND(rp_bit2_value, rp_bit2_mask, rp_carry01_value, rp_carry01_mask, rp_carry12b_value, rp_carry12b_mask);
+			LXS_EVAL_OR(rp_carry12a_value, rp_carry12a_mask, rp_carry12b_value, rp_carry12b_mask, rp_carry12_value, rp_carry12_mask);
+
+			LXS_EVAL_XOR(rp_sum3_value, rp_sum3_mask, rp_carry3_value, rp_carry3_mask, rp_bit3_value, rp_bit3_mask);
+			LXS_EVAL_AND(rp_sum3_value, rp_sum3_mask, rp_carry3_value, rp_carry3_mask, rp_carry23a_value, rp_carry23a_mask);
+			LXS_EVAL_XOR(rp_bit3_value, rp_bit3_mask, rp_carry12_value, rp_carry12_mask, net_value[macro->outputs[3]], net_mask[macro->outputs[3]]);
+			LXS_EVAL_AND(rp_bit3_value, rp_bit3_mask, rp_carry12_value, rp_carry12_mask, rp_carry23b_value, rp_carry23b_mask);
+			LXS_EVAL_OR(rp_carry23a_value, rp_carry23a_mask, rp_carry23b_value, rp_carry23b_mask, rp_spill0a_value, rp_spill0a_mask);
+
+			LXS_EVAL_XOR(rp_carry4_value, rp_carry4_mask, rp_spill0a_value, rp_spill0a_mask, net_value[macro->outputs[4]], net_mask[macro->outputs[4]]);
+			LXS_EVAL_AND(rp_carry4_value, rp_carry4_mask, rp_spill0a_value, rp_spill0a_mask, net_value[macro->outputs[5]], net_mask[macro->outputs[5]]);
+
+			net_value[macro->outputs[0]] = rp_sum0_value;
+			net_mask[macro->outputs[0]] = rp_sum0_mask;
+			}
 		else if (macro->type == LXS_MULTI_MACRO_XOR_FAN8)
 			{
 			for (uint32_t j = 0; j < 8U; ++j)

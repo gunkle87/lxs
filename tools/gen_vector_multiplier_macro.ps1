@@ -1,13 +1,14 @@
 $ErrorActionPreference = "Stop"
 
-$inputPath = if ($args.Length -gt 0) { $args[0] } else { throw "usage: gen_vector_multiplier_macro.ps1 <input.bench> <output.bench> [anchor|packed|neighborhood]" }
-$outputPath = if ($args.Length -gt 1) { $args[1] } else { throw "usage: gen_vector_multiplier_macro.ps1 <input.bench> <output.bench> [anchor|packed|neighborhood]" }
+$inputPath = if ($args.Length -gt 0) { $args[0] } else { throw "usage: gen_vector_multiplier_macro.ps1 <input.bench> <output.bench> [anchor|packed|neighborhood|neighborhood2]" }
+$outputPath = if ($args.Length -gt 1) { $args[1] } else { throw "usage: gen_vector_multiplier_macro.ps1 <input.bench> <output.bench> [anchor|packed|neighborhood|neighborhood2]" }
 $mode = if ($args.Length -gt 2) { $args[2].ToLowerInvariant() } else { "packed" }
 $useSlices = $mode -eq "packed"
 $useNeighborhood = $mode -eq "neighborhood"
+$useNeighborhood2 = $mode -eq "neighborhood2"
 $toolDir = Split-Path -Parent $MyInvocation.MyCommand.Path
 . (Join-Path $toolDir "LxsRewriteLib.ps1")
-$usage = "usage: gen_vector_multiplier_macro.ps1 <input.bench> <output.bench> [anchor|packed|neighborhood]"
+$usage = "usage: gen_vector_multiplier_macro.ps1 <input.bench> <output.bench> [anchor|packed|neighborhood|neighborhood2]"
 
 Initialize-LxsRewrite $mode $outputPath $usage
 $io = Get-BenchIo $inputPath
@@ -47,7 +48,7 @@ for ($i = 0; $i -lt $aWidth; ++$i)
 
 $lines.Add("")
 
-if ($useNeighborhood)
+if ($useNeighborhood -or $useNeighborhood2)
 	{
 	$columnCount = $productWidth + 4
 	$columns = New-Object object[] $columnCount
@@ -112,66 +113,172 @@ if ($useNeighborhood)
 		$bit += 1
 		}
 
-	for ($bit = 0; $bit -lt ($columnCount - 1); ++$bit)
+	if ($useNeighborhood2)
 		{
-		while ($columns[$bit].Count -gt 2)
+		for ($bit = 0; $bit -lt ($columnCount - 1); ++$bit)
 			{
-			$a = $columns[$bit][0]
-			$b = $columns[$bit][1]
-			$c = $columns[$bit][2]
-			$columns[$bit].RemoveRange(0, 3)
-			$sum = "csa_reduce_${serial}_s"
-			$carryOut = "csa_reduce_${serial}_c"
-			$lines.Add("$sum, $carryOut = FULL_ADDER($a, $b, $c)")
-			$columns[$bit].Add($sum)
-			$columns[$bit + 1].Add($carryOut)
-			$serial += 1
+			while ($columns[$bit].Count -gt 3)
+				{
+				$a = $columns[$bit][0]
+				$b = $columns[$bit][1]
+				$c = $columns[$bit][2]
+				$columns[$bit].RemoveRange(0, 3)
+				$sum = "rp4_reduce_${serial}_s"
+				$carryOut = "rp4_reduce_${serial}_c"
+				$lines.Add("$sum, $carryOut = FULL_ADDER($a, $b, $c)")
+				$columns[$bit].Add($sum)
+				$columns[$bit + 1].Add($carryOut)
+				$serial += 1
+				}
+			}
+
+		$bit = 0
+		while ($bit -lt $productWidth)
+			{
+			if ($bit -le ($productWidth - 4) -and
+				$columns[$bit].Count -eq 3 -and
+				$columns[$bit + 1].Count -eq 3 -and
+				$columns[$bit + 2].Count -eq 3 -and
+				$columns[$bit + 3].Count -eq 3)
+				{
+				$rpInputs = New-Object System.Collections.Generic.List[string]
+				for ($column = 0; $column -lt 4; ++$column)
+					{
+					for ($k = 0; $k -lt 3; ++$k)
+						{
+						$rpInputs.Add($columns[$bit + $column][$k])
+						}
+					$columns[$bit + $column].RemoveRange(0, 3)
+					}
+
+				$spill0 = "rp4_${serial}_spill0"
+				$spill1 = "rp4_${serial}_spill1"
+				$lines.Add(
+					"$($productOutputs[$bit]), $($productOutputs[$bit + 1]), $($productOutputs[$bit + 2]), $($productOutputs[$bit + 3]), $spill0, $spill1 = REDUCE_PROPAGATE4($($rpInputs[0]), $($rpInputs[1]), $($rpInputs[2]), $($rpInputs[3]), $($rpInputs[4]), $($rpInputs[5]), $($rpInputs[6]), $($rpInputs[7]), $($rpInputs[8]), $($rpInputs[9]), $($rpInputs[10]), $($rpInputs[11]))")
+				$columns[$bit + 4].Add($spill0)
+				if (($bit + 5) -lt $columnCount)
+					{
+					$columns[$bit + 5].Add($spill1)
+					}
+				$serial += 1
+				$bit += 4
+				continue
+				}
+
+			while ($columns[$bit].Count -gt 3)
+				{
+				$a = $columns[$bit][0]
+				$b = $columns[$bit][1]
+				$c = $columns[$bit][2]
+				$columns[$bit].RemoveRange(0, 3)
+				$sum = "rp4_local_${serial}_s"
+				$carryOut = "rp4_local_${serial}_c"
+				$lines.Add("$sum, $carryOut = FULL_ADDER($a, $b, $c)")
+				$columns[$bit].Add($sum)
+				$columns[$bit + 1].Add($carryOut)
+				$serial += 1
+				}
+
+			$inputsAtBit = New-Object System.Collections.Generic.List[string]
+			for ($k = 0; $k -lt $columns[$bit].Count; ++$k)
+				{
+				$inputsAtBit.Add([string]$columns[$bit][$k])
+				}
+
+			switch ($inputsAtBit.Count)
+				{
+				0
+					{
+					$lines.Add("$($productOutputs[$bit]) = BUF($zero)")
+					}
+				1
+					{
+					$lines.Add("$($productOutputs[$bit]) = BUF($($inputsAtBit[0]))")
+					}
+				2
+					{
+					$carryOut = "rp4_carry_${serial}_${bit}"
+					$lines.Add("$($productOutputs[$bit]), $carryOut = HALF_ADDER($($inputsAtBit[0]), $($inputsAtBit[1]))")
+					$columns[$bit + 1].Add($carryOut)
+					}
+				3
+					{
+					$carryOut = "rp4_carry_${serial}_${bit}"
+					$lines.Add("$($productOutputs[$bit]), $carryOut = FULL_ADDER($($inputsAtBit[0]), $($inputsAtBit[1]), $($inputsAtBit[2]))")
+					$columns[$bit + 1].Add($carryOut)
+					}
+				default
+					{
+					throw "unexpected unresolved column width $($inputsAtBit.Count) at bit $bit in neighborhood2 mode"
+					}
+				}
+
+			$bit += 1
 			}
 		}
-
-	$lhs = New-Object object[] $productWidth
-	$rhs = New-Object object[] $productWidth
-	for ($bit = 0; $bit -lt $productWidth; ++$bit)
+	else
 		{
-		$lhs[$bit] = if ($columns[$bit].Count -gt 0) { $columns[$bit][0] } else { $zero }
-		$rhs[$bit] = if ($columns[$bit].Count -gt 1) { $columns[$bit][1] } else { $zero }
-		}
-
-	$carry = $zero
-	$bit = 0
-	while ($bit -lt $productWidth)
-		{
-		if ($bit -le ($productWidth - 4))
+		for ($bit = 0; $bit -lt ($columnCount - 1); ++$bit)
 			{
-			$carryOutName = if (($bit + 3) -eq ($productWidth - 1)) { "carry_final_$($bit + 3)" } else { "carry_final_$($bit + 3)" }
-			$lines.Add(
-				"$($productOutputs[$bit]), $($productOutputs[$bit + 1]), $($productOutputs[$bit + 2]), $($productOutputs[$bit + 3]), $carryOutName = RIPPLE_ADD4($($lhs[$bit]), $($rhs[$bit]), $($lhs[$bit + 1]), $($rhs[$bit + 1]), $($lhs[$bit + 2]), $($rhs[$bit + 2]), $($lhs[$bit + 3]), $($rhs[$bit + 3]), $carry)")
+			while ($columns[$bit].Count -gt 2)
+				{
+				$a = $columns[$bit][0]
+				$b = $columns[$bit][1]
+				$c = $columns[$bit][2]
+				$columns[$bit].RemoveRange(0, 3)
+				$sum = "csa_reduce_${serial}_s"
+				$carryOut = "csa_reduce_${serial}_c"
+				$lines.Add("$sum, $carryOut = FULL_ADDER($a, $b, $c)")
+				$columns[$bit].Add($sum)
+				$columns[$bit + 1].Add($carryOut)
+				$serial += 1
+				}
+			}
+
+		$lhs = New-Object object[] $productWidth
+		$rhs = New-Object object[] $productWidth
+		for ($bit = 0; $bit -lt $productWidth; ++$bit)
+			{
+			$lhs[$bit] = if ($columns[$bit].Count -gt 0) { $columns[$bit][0] } else { $zero }
+			$rhs[$bit] = if ($columns[$bit].Count -gt 1) { $columns[$bit][1] } else { $zero }
+			}
+
+		$carry = $zero
+		$bit = 0
+		while ($bit -lt $productWidth)
+			{
+			if ($bit -le ($productWidth - 4))
+				{
+				$carryOutName = "carry_final_$($bit + 3)"
+				$lines.Add(
+					"$($productOutputs[$bit]), $($productOutputs[$bit + 1]), $($productOutputs[$bit + 2]), $($productOutputs[$bit + 3]), $carryOutName = RIPPLE_ADD4($($lhs[$bit]), $($rhs[$bit]), $($lhs[$bit + 1]), $($rhs[$bit + 1]), $($lhs[$bit + 2]), $($rhs[$bit + 2]), $($lhs[$bit + 3]), $($rhs[$bit + 3]), $carry)")
+				$carry = $carryOutName
+				$bit += 4
+				continue
+				}
+
+			if ($bit -le ($productWidth - 2))
+				{
+				$carryOutName = "carry_final_$($bit + 1)"
+				$lines.Add(
+					"$($productOutputs[$bit]), $($productOutputs[$bit + 1]), $carryOutName = RIPPLE_SLICE2($($lhs[$bit]), $($rhs[$bit]), $($lhs[$bit + 1]), $($rhs[$bit + 1]), $carry)")
+				$carry = $carryOutName
+				$bit += 2
+				continue
+				}
+
+			$carryOutName = "carry_final_$bit"
+			if ($carry -eq $zero)
+				{
+				$lines.Add("$($productOutputs[$bit]), $carryOutName = HALF_ADDER($($lhs[$bit]), $($rhs[$bit]))")
+				}
+			else
+				{
+				$lines.Add("$($productOutputs[$bit]), $carryOutName = FULL_ADDER($($lhs[$bit]), $($rhs[$bit]), $carry)")
+				}
 			$carry = $carryOutName
-			$bit += 4
-			continue
+			$bit += 1
 			}
-
-		if ($bit -le ($productWidth - 2))
-			{
-			$carryOutName = "carry_final_$($bit + 1)"
-			$lines.Add(
-				"$($productOutputs[$bit]), $($productOutputs[$bit + 1]), $carryOutName = RIPPLE_SLICE2($($lhs[$bit]), $($rhs[$bit]), $($lhs[$bit + 1]), $($rhs[$bit + 1]), $carry)")
-			$carry = $carryOutName
-			$bit += 2
-			continue
-			}
-
-		$carryOutName = "carry_final_$bit"
-		if ($carry -eq $zero)
-			{
-			$lines.Add("$($productOutputs[$bit]), $carryOutName = HALF_ADDER($($lhs[$bit]), $($rhs[$bit]))")
-			}
-		else
-			{
-			$lines.Add("$($productOutputs[$bit]), $carryOutName = FULL_ADDER($($lhs[$bit]), $($rhs[$bit]), $carry)")
-			}
-		$carry = $carryOutName
-		$bit += 1
 		}
 	}
 else

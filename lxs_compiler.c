@@ -1391,6 +1391,208 @@ static int lxs_emit_carry_save_row4_macro(
 	return 1;
 	}
 
+static int lxs_emit_reduce_propagate4_macro(
+	lxs_netlist *nl,
+	const uint32_t *outputs,
+	const uint32_t *inputs,
+	uint32_t serial)
+	{
+	lxs_source_multi_macro macro;
+	uint32_t gate_inputs[2];
+	uint32_t sum0;
+	uint32_t sum1;
+	uint32_t sum2;
+	uint32_t sum3;
+	uint32_t carry1;
+	uint32_t carry2;
+	uint32_t carry3;
+	uint32_t carry4;
+	uint32_t carry01;
+	uint32_t bit2;
+	uint32_t carry12a;
+	uint32_t carry12b;
+	uint32_t carry12;
+	uint32_t bit3;
+	uint32_t carry23a;
+	uint32_t carry23b;
+	uint32_t spill0a;
+	uint32_t xor0;
+	uint32_t xor1;
+	uint32_t xor2;
+	uint32_t xor3;
+	uint32_t and0a;
+	uint32_t and0b;
+	uint32_t and1a;
+	uint32_t and1b;
+	uint32_t and2a;
+	uint32_t and2b;
+	uint32_t and3a;
+	uint32_t and3b;
+
+	memset(&macro, 0, sizeof(macro));
+	macro.type = LXS_SOURCE_MULTI_MACRO_REDUCE_PROPAGATE4;
+	macro.input_count = 12U;
+	macro.output_count = 6U;
+	macro.gate_count = 35U;
+	for (uint32_t i = 0; i < macro.input_count; ++i)
+		{
+		macro.inputs[i] = inputs[i];
+		}
+	for (uint32_t i = 0; i < macro.output_count; ++i)
+		{
+		macro.outputs[i] = outputs[i];
+		}
+
+	sum0 = lxs_intern_temp_net(nl, "rp4", serial, "sum0");
+	sum1 = lxs_intern_temp_net(nl, "rp4", serial, "sum1");
+	sum2 = lxs_intern_temp_net(nl, "rp4", serial, "sum2");
+	sum3 = lxs_intern_temp_net(nl, "rp4", serial, "sum3");
+	carry1 = lxs_intern_temp_net(nl, "rp4", serial, "carry1");
+	carry2 = lxs_intern_temp_net(nl, "rp4", serial, "carry2");
+	carry3 = lxs_intern_temp_net(nl, "rp4", serial, "carry3");
+	carry4 = lxs_intern_temp_net(nl, "rp4", serial, "carry4");
+	carry01 = lxs_intern_temp_net(nl, "rp4", serial, "carry01");
+	bit2 = lxs_intern_temp_net(nl, "rp4", serial, "bit2");
+	carry12a = lxs_intern_temp_net(nl, "rp4", serial, "carry12a");
+	carry12b = lxs_intern_temp_net(nl, "rp4", serial, "carry12b");
+	carry12 = lxs_intern_temp_net(nl, "rp4", serial, "carry12");
+	bit3 = lxs_intern_temp_net(nl, "rp4", serial, "bit3");
+	carry23a = lxs_intern_temp_net(nl, "rp4", serial, "carry23a");
+	carry23b = lxs_intern_temp_net(nl, "rp4", serial, "carry23b");
+	spill0a = lxs_intern_temp_net(nl, "rp4", serial, "spill0a");
+	xor0 = lxs_intern_temp_net(nl, "rp4", serial, "xor0");
+	xor1 = lxs_intern_temp_net(nl, "rp4", serial, "xor1");
+	xor2 = lxs_intern_temp_net(nl, "rp4", serial, "xor2");
+	xor3 = lxs_intern_temp_net(nl, "rp4", serial, "xor3");
+	and0a = lxs_intern_temp_net(nl, "rp4", serial, "and0a");
+	and0b = lxs_intern_temp_net(nl, "rp4", serial, "and0b");
+	and1a = lxs_intern_temp_net(nl, "rp4", serial, "and1a");
+	and1b = lxs_intern_temp_net(nl, "rp4", serial, "and1b");
+	and2a = lxs_intern_temp_net(nl, "rp4", serial, "and2a");
+	and2b = lxs_intern_temp_net(nl, "rp4", serial, "and2b");
+	and3a = lxs_intern_temp_net(nl, "rp4", serial, "and3a");
+	and3b = lxs_intern_temp_net(nl, "rp4", serial, "and3b");
+	if (sum0 == UINT32_MAX || sum1 == UINT32_MAX || sum2 == UINT32_MAX || sum3 == UINT32_MAX ||
+		carry1 == UINT32_MAX || carry2 == UINT32_MAX || carry3 == UINT32_MAX || carry4 == UINT32_MAX ||
+		carry01 == UINT32_MAX || bit2 == UINT32_MAX || carry12a == UINT32_MAX || carry12b == UINT32_MAX ||
+		carry12 == UINT32_MAX || bit3 == UINT32_MAX || carry23a == UINT32_MAX || carry23b == UINT32_MAX ||
+		spill0a == UINT32_MAX || xor0 == UINT32_MAX || xor1 == UINT32_MAX || xor2 == UINT32_MAX ||
+		xor3 == UINT32_MAX || and0a == UINT32_MAX || and0b == UINT32_MAX || and1a == UINT32_MAX ||
+		and1b == UINT32_MAX || and2a == UINT32_MAX || and2b == UINT32_MAX || and3a == UINT32_MAX ||
+		and3b == UINT32_MAX)
+		{
+		return 0;
+		}
+
+	for (uint32_t column = 0; column < 4U; ++column)
+		{
+		uint32_t input_base = column * 3U;
+		uint32_t gate_base = column * 5U;
+		uint32_t xor_net = (column == 0U) ? xor0 : (column == 1U) ? xor1 : (column == 2U) ? xor2 : xor3;
+		uint32_t and_a = (column == 0U) ? and0a : (column == 1U) ? and1a : (column == 2U) ? and2a : and3a;
+		uint32_t and_b = (column == 0U) ? and0b : (column == 1U) ? and1b : (column == 2U) ? and2b : and3b;
+		uint32_t sum_out = (column == 0U) ? sum0 : (column == 1U) ? sum1 : (column == 2U) ? sum2 : sum3;
+		uint32_t carry_out = (column == 0U) ? carry1 : (column == 1U) ? carry2 : (column == 2U) ? carry3 : carry4;
+
+		gate_inputs[0] = inputs[input_base + 0U];
+		gate_inputs[1] = inputs[input_base + 1U];
+		if (!lxs_emit_gate_record(nl, LXS_GATE_XOR, xor_net, gate_inputs, 2U, &macro.gate_indices[gate_base + 0U]) ||
+			!lxs_emit_gate_record(nl, LXS_GATE_AND, and_a, gate_inputs, 2U, &macro.gate_indices[gate_base + 2U]))
+			{
+			return 0;
+			}
+
+		gate_inputs[0] = xor_net;
+		gate_inputs[1] = inputs[input_base + 2U];
+		if (!lxs_emit_gate_record(nl, LXS_GATE_XOR, sum_out, gate_inputs, 2U, &macro.gate_indices[gate_base + 1U]) ||
+			!lxs_emit_gate_record(nl, LXS_GATE_AND, and_b, gate_inputs, 2U, &macro.gate_indices[gate_base + 3U]))
+			{
+			return 0;
+			}
+
+		gate_inputs[0] = and_a;
+		gate_inputs[1] = and_b;
+		if (!lxs_emit_gate_record(nl, LXS_GATE_OR, carry_out, gate_inputs, 2U, &macro.gate_indices[gate_base + 4U]))
+			{
+			return 0;
+			}
+		}
+
+	gate_inputs[0] = sum0;
+	if (!lxs_emit_gate_record(nl, LXS_GATE_BUF, outputs[0], gate_inputs, 1U, &macro.gate_indices[20]))
+		{
+		return 0;
+		}
+
+	gate_inputs[0] = sum1;
+	gate_inputs[1] = carry1;
+	if (!lxs_emit_gate_record(nl, LXS_GATE_XOR, outputs[1], gate_inputs, 2U, &macro.gate_indices[21]))
+		{
+		return 0;
+		}
+	if (!lxs_emit_gate_record(nl, LXS_GATE_AND, carry01, gate_inputs, 2U, &macro.gate_indices[22]))
+		{
+		return 0;
+		}
+
+	gate_inputs[0] = sum2;
+	gate_inputs[1] = carry2;
+	if (!lxs_emit_gate_record(nl, LXS_GATE_XOR, bit2, gate_inputs, 2U, &macro.gate_indices[23]) ||
+		!lxs_emit_gate_record(nl, LXS_GATE_AND, carry12a, gate_inputs, 2U, &macro.gate_indices[24]))
+		{
+		return 0;
+		}
+	gate_inputs[0] = bit2;
+	gate_inputs[1] = carry01;
+	if (!lxs_emit_gate_record(nl, LXS_GATE_XOR, outputs[2], gate_inputs, 2U, &macro.gate_indices[25]) ||
+		!lxs_emit_gate_record(nl, LXS_GATE_AND, carry12b, gate_inputs, 2U, &macro.gate_indices[26]))
+		{
+		return 0;
+		}
+	gate_inputs[0] = carry12a;
+	gate_inputs[1] = carry12b;
+	if (!lxs_emit_gate_record(nl, LXS_GATE_OR, carry12, gate_inputs, 2U, &macro.gate_indices[27]))
+		{
+		return 0;
+		}
+
+	gate_inputs[0] = sum3;
+	gate_inputs[1] = carry3;
+	if (!lxs_emit_gate_record(nl, LXS_GATE_XOR, bit3, gate_inputs, 2U, &macro.gate_indices[28]) ||
+		!lxs_emit_gate_record(nl, LXS_GATE_AND, carry23a, gate_inputs, 2U, &macro.gate_indices[29]))
+		{
+		return 0;
+		}
+	gate_inputs[0] = bit3;
+	gate_inputs[1] = carry12;
+	if (!lxs_emit_gate_record(nl, LXS_GATE_XOR, outputs[3], gate_inputs, 2U, &macro.gate_indices[30]) ||
+		!lxs_emit_gate_record(nl, LXS_GATE_AND, carry23b, gate_inputs, 2U, &macro.gate_indices[31]))
+		{
+		return 0;
+		}
+	gate_inputs[0] = carry23a;
+	gate_inputs[1] = carry23b;
+	if (!lxs_emit_gate_record(nl, LXS_GATE_OR, spill0a, gate_inputs, 2U, &macro.gate_indices[32]))
+		{
+		return 0;
+		}
+
+	gate_inputs[0] = carry4;
+	gate_inputs[1] = spill0a;
+	if (!lxs_emit_gate_record(nl, LXS_GATE_XOR, outputs[4], gate_inputs, 2U, &macro.gate_indices[33]) ||
+		!lxs_emit_gate_record(nl, LXS_GATE_AND, outputs[5], gate_inputs, 2U, &macro.gate_indices[34]))
+		{
+		return 0;
+		}
+
+	if (!lxs_push_source_multi_macro(nl, &macro))
+		{
+		return 0;
+		}
+
+	return 1;
+	}
+
 static int lxs_emit_xor_fan8_macro(
 	lxs_netlist *nl,
 	const uint32_t *outputs,
@@ -3669,6 +3871,11 @@ static uint32_t lxs_collect_source_multi_macros(
 			macro.type = LXS_MULTI_MACRO_CARRY_SAVE_ROW4;
 			macro.gate_equiv_count = 20U;
 			}
+		else if (source->type == LXS_SOURCE_MULTI_MACRO_REDUCE_PROPAGATE4)
+			{
+			macro.type = LXS_MULTI_MACRO_REDUCE_PROPAGATE4;
+			macro.gate_equiv_count = 35U;
+			}
 		else if (source->type == LXS_SOURCE_MULTI_MACRO_AND_FAN8)
 			{
 			macro.type = LXS_MULTI_MACRO_AND_FAN8;
@@ -5462,6 +5669,17 @@ static lxs_netlist* lxs_load_bench(const char *path)
 			{
 			if (output_count != 8U || input_count != 12U ||
 				!lxs_emit_carry_save_row4_macro(nl, output_ids, input_ids, macro_serial++))
+				{
+				lxs_free_netlist(nl);
+				fclose(stream);
+				return NULL;
+			}
+			is_special_macro = 1U;
+			}
+		else if (strcmp(gate_name, "REDUCE_PROPAGATE4") == 0)
+			{
+			if (output_count != 6U || input_count != 12U ||
+				!lxs_emit_reduce_propagate4_macro(nl, output_ids, input_ids, macro_serial++))
 				{
 				lxs_free_netlist(nl);
 				fclose(stream);
