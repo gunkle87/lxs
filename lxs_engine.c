@@ -1159,6 +1159,166 @@ static void lxs_execute_multi_macros(
 			net_value[macro->outputs[4]] = carry3_value;
 			net_mask[macro->outputs[4]] = carry3_mask;
 			}
+		else if (macro->type == LXS_MULTI_MACRO_CARRY_SAVE_ROW4)
+			{
+			uint64_t xor2_value;
+			uint64_t xor2_mask;
+			uint64_t and2_value;
+			uint64_t and2_mask;
+			uint64_t inner2_value;
+			uint64_t inner2_mask;
+			uint64_t sum2_value;
+			uint64_t sum2_mask;
+			uint64_t carry2_value;
+			uint64_t carry2_mask;
+			uint64_t xor3_value;
+			uint64_t xor3_mask;
+			uint64_t and3_value;
+			uint64_t and3_mask;
+			uint64_t inner3_value;
+			uint64_t inner3_mask;
+			uint64_t sum3_value;
+			uint64_t sum3_mask;
+			uint64_t carry3_value;
+			uint64_t carry3_mask;
+
+			LXS_EVAL_XOR(
+				net_value[macro->inputs[0]],
+				net_mask[macro->inputs[0]],
+				net_value[macro->inputs[1]],
+				net_mask[macro->inputs[1]],
+				xor0_value,
+				xor0_mask);
+			LXS_EVAL_XOR(
+				xor0_value,
+				xor0_mask,
+				net_value[macro->inputs[2]],
+				net_mask[macro->inputs[2]],
+				sum0_value,
+				sum0_mask);
+			LXS_EVAL_AND(
+				net_value[macro->inputs[0]],
+				net_mask[macro->inputs[0]],
+				net_value[macro->inputs[1]],
+				net_mask[macro->inputs[1]],
+				and0_value,
+				and0_mask);
+			LXS_EVAL_AND(
+				xor0_value,
+				xor0_mask,
+				net_value[macro->inputs[2]],
+				net_mask[macro->inputs[2]],
+				inner0_value,
+				inner0_mask);
+			LXS_EVAL_OR(and0_value, and0_mask, inner0_value, inner0_mask, carry0_value, carry0_mask);
+
+			LXS_EVAL_XOR(
+				net_value[macro->inputs[3]],
+				net_mask[macro->inputs[3]],
+				net_value[macro->inputs[4]],
+				net_mask[macro->inputs[4]],
+				xor1_value,
+				xor1_mask);
+			LXS_EVAL_XOR(
+				xor1_value,
+				xor1_mask,
+				net_value[macro->inputs[5]],
+				net_mask[macro->inputs[5]],
+				sum1_value,
+				sum1_mask);
+			LXS_EVAL_AND(
+				net_value[macro->inputs[3]],
+				net_mask[macro->inputs[3]],
+				net_value[macro->inputs[4]],
+				net_mask[macro->inputs[4]],
+				and1_value,
+				and1_mask);
+			LXS_EVAL_AND(
+				xor1_value,
+				xor1_mask,
+				net_value[macro->inputs[5]],
+				net_mask[macro->inputs[5]],
+				inner1_value,
+				inner1_mask);
+			LXS_EVAL_OR(and1_value, and1_mask, inner1_value, inner1_mask, carry1_value, carry1_mask);
+
+			LXS_EVAL_XOR(
+				net_value[macro->inputs[6]],
+				net_mask[macro->inputs[6]],
+				net_value[macro->inputs[7]],
+				net_mask[macro->inputs[7]],
+				xor2_value,
+				xor2_mask);
+			LXS_EVAL_XOR(
+				xor2_value,
+				xor2_mask,
+				net_value[macro->inputs[8]],
+				net_mask[macro->inputs[8]],
+				sum2_value,
+				sum2_mask);
+			LXS_EVAL_AND(
+				net_value[macro->inputs[6]],
+				net_mask[macro->inputs[6]],
+				net_value[macro->inputs[7]],
+				net_mask[macro->inputs[7]],
+				and2_value,
+				and2_mask);
+			LXS_EVAL_AND(
+				xor2_value,
+				xor2_mask,
+				net_value[macro->inputs[8]],
+				net_mask[macro->inputs[8]],
+				inner2_value,
+				inner2_mask);
+			LXS_EVAL_OR(and2_value, and2_mask, inner2_value, inner2_mask, carry2_value, carry2_mask);
+
+			LXS_EVAL_XOR(
+				net_value[macro->inputs[9]],
+				net_mask[macro->inputs[9]],
+				net_value[macro->inputs[10]],
+				net_mask[macro->inputs[10]],
+				xor3_value,
+				xor3_mask);
+			LXS_EVAL_XOR(
+				xor3_value,
+				xor3_mask,
+				net_value[macro->inputs[11]],
+				net_mask[macro->inputs[11]],
+				sum3_value,
+				sum3_mask);
+			LXS_EVAL_AND(
+				net_value[macro->inputs[9]],
+				net_mask[macro->inputs[9]],
+				net_value[macro->inputs[10]],
+				net_mask[macro->inputs[10]],
+				and3_value,
+				and3_mask);
+			LXS_EVAL_AND(
+				xor3_value,
+				xor3_mask,
+				net_value[macro->inputs[11]],
+				net_mask[macro->inputs[11]],
+				inner3_value,
+				inner3_mask);
+			LXS_EVAL_OR(and3_value, and3_mask, inner3_value, inner3_mask, carry3_value, carry3_mask);
+
+			net_value[macro->outputs[0]] = sum0_value;
+			net_mask[macro->outputs[0]] = sum0_mask;
+			net_value[macro->outputs[1]] = sum1_value;
+			net_mask[macro->outputs[1]] = sum1_mask;
+			net_value[macro->outputs[2]] = sum2_value;
+			net_mask[macro->outputs[2]] = sum2_mask;
+			net_value[macro->outputs[3]] = sum3_value;
+			net_mask[macro->outputs[3]] = sum3_mask;
+			net_value[macro->outputs[4]] = carry0_value;
+			net_mask[macro->outputs[4]] = carry0_mask;
+			net_value[macro->outputs[5]] = carry1_value;
+			net_mask[macro->outputs[5]] = carry1_mask;
+			net_value[macro->outputs[6]] = carry2_value;
+			net_mask[macro->outputs[6]] = carry2_mask;
+			net_value[macro->outputs[7]] = carry3_value;
+			net_mask[macro->outputs[7]] = carry3_mask;
+			}
 		else if (macro->type == LXS_MULTI_MACRO_XOR_FAN8)
 			{
 			for (uint32_t j = 0; j < 8U; ++j)

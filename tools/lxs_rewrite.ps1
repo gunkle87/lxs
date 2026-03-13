@@ -2,7 +2,7 @@ $ErrorActionPreference = "Stop"
 
 if ($args.Length -lt 4)
 	{
-	throw "usage: lxs_rewrite.ps1 <kind> <input.bench> <output.bench> <anchor|packed>"
+	throw "usage: lxs_rewrite.ps1 <kind> <input.bench> <output.bench> <anchor|packed|neighborhood>"
 	}
 
 $kind = $args[0].ToLowerInvariant()
