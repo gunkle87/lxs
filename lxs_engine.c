@@ -1841,6 +1841,146 @@ static void lxs_execute_multi_macros(
 		}
 	}
 
+static void lxs_eval_functional_op(
+	uint8_t type,
+	uint64_t src0_value,
+	uint64_t src0_mask,
+	uint64_t src1_value,
+	uint64_t src1_mask,
+	uint64_t *out_value,
+	uint64_t *out_mask)
+	{
+	switch (type)
+		{
+		case LXS_FUNCTIONAL_REGION_OP_BUF:
+			LXS_EVAL_BUF(src0_value, src0_mask, *out_value, *out_mask);
+			break;
+		case LXS_FUNCTIONAL_REGION_OP_NOT:
+			LXS_EVAL_NOT(src0_value, src0_mask, *out_value, *out_mask);
+			break;
+		case LXS_FUNCTIONAL_REGION_OP_AND:
+			LXS_EVAL_AND(src0_value, src0_mask, src1_value, src1_mask, *out_value, *out_mask);
+			break;
+		case LXS_FUNCTIONAL_REGION_OP_OR:
+			LXS_EVAL_OR(src0_value, src0_mask, src1_value, src1_mask, *out_value, *out_mask);
+			break;
+		case LXS_FUNCTIONAL_REGION_OP_XOR:
+			LXS_EVAL_XOR(src0_value, src0_mask, src1_value, src1_mask, *out_value, *out_mask);
+			break;
+		case LXS_FUNCTIONAL_REGION_OP_NAND:
+			LXS_EVAL_AND(src0_value, src0_mask, src1_value, src1_mask, *out_value, *out_mask);
+			LXS_EVAL_NOT(*out_value, *out_mask, *out_value, *out_mask);
+			break;
+		case LXS_FUNCTIONAL_REGION_OP_NOR:
+			LXS_EVAL_OR(src0_value, src0_mask, src1_value, src1_mask, *out_value, *out_mask);
+			LXS_EVAL_NOT(*out_value, *out_mask, *out_value, *out_mask);
+			break;
+		default:
+			LXS_EVAL_XOR(src0_value, src0_mask, src1_value, src1_mask, *out_value, *out_mask);
+			LXS_EVAL_NOT(*out_value, *out_mask, *out_value, *out_mask);
+			break;
+		}
+	}
+
+static void lxs_eval_functional_expr(
+	const lxs_functional_region_plan *region,
+	uint32_t op_index,
+	const uint64_t *net_value,
+	const uint64_t *net_mask,
+	uint64_t *memo_value,
+	uint64_t *memo_mask,
+	uint8_t *memo_valid,
+	uint64_t *out_value,
+	uint64_t *out_mask)
+	{
+	const lxs_functional_region_op *op = &region->ops[op_index];
+	uint64_t src0_value;
+	uint64_t src0_mask;
+	uint64_t src1_value = 0ULL;
+	uint64_t src1_mask = 0ULL;
+
+	if (op->src0 < region->input_count)
+		{
+		uint32_t net_id = region->inputs[op->src0];
+		src0_value = net_value[net_id];
+		src0_mask = net_mask[net_id];
+		}
+	else
+		{
+		uint32_t temp_index = op->src0 - region->input_count;
+		if (!memo_valid[temp_index])
+			{
+			for (uint32_t i = 0; i < region->op_count; ++i)
+				{
+				if (region->ops[i].dst == temp_index)
+					{
+					lxs_eval_functional_expr(
+						region,
+						i,
+						net_value,
+						net_mask,
+						memo_value,
+						memo_mask,
+						memo_valid,
+						&memo_value[temp_index],
+						&memo_mask[temp_index]);
+					memo_valid[temp_index] = 1U;
+					break;
+					}
+				}
+			}
+		src0_value = memo_value[temp_index];
+		src0_mask = memo_mask[temp_index];
+		}
+
+	if (op->type != LXS_FUNCTIONAL_REGION_OP_BUF &&
+		op->type != LXS_FUNCTIONAL_REGION_OP_NOT)
+		{
+		if (op->src1 < region->input_count)
+			{
+			uint32_t net_id = region->inputs[op->src1];
+			src1_value = net_value[net_id];
+			src1_mask = net_mask[net_id];
+			}
+		else
+			{
+			uint32_t temp_index = op->src1 - region->input_count;
+			if (!memo_valid[temp_index])
+				{
+				for (uint32_t i = 0; i < region->op_count; ++i)
+					{
+					if (region->ops[i].dst == temp_index)
+						{
+						lxs_eval_functional_expr(
+							region,
+							i,
+							net_value,
+							net_mask,
+							memo_value,
+							memo_mask,
+							memo_valid,
+							&memo_value[temp_index],
+							&memo_mask[temp_index]);
+						memo_valid[temp_index] = 1U;
+						break;
+						}
+					}
+				}
+			src1_value = memo_value[temp_index];
+			src1_mask = memo_mask[temp_index];
+			}
+		}
+
+	lxs_eval_functional_op(
+		op->type,
+		src0_value,
+		src0_mask,
+		src1_value,
+		src1_mask,
+		out_value,
+		out_mask);
+	}
+
 static void lxs_execute_functional_regions(
 	lxs_engine_ctx *ctx,
 	const lxs_functional_region_plan *regions,
@@ -1852,91 +1992,89 @@ static void lxs_execute_functional_regions(
 	for (uint32_t i = 0; i < count; ++i)
 		{
 		const lxs_functional_region_plan *region = &regions[i];
-		uint64_t temp_value[8] = { 0 };
-		uint64_t temp_mask[8] = { 0 };
 		uint64_t out_value = 0ULL;
 		uint64_t out_mask = 0ULL;
-
-		for (uint32_t op_index = 0; op_index < region->op_count; ++op_index)
+		if (region->exec_kind == LXS_FUNCTIONAL_REGION_EXEC_EXPR)
 			{
-			const lxs_functional_region_op *op = &region->ops[op_index];
-			uint64_t src0_value;
-			uint64_t src0_mask;
-			uint64_t src1_value = 0ULL;
-			uint64_t src1_mask = 0ULL;
-			uint64_t next_value = 0ULL;
-			uint64_t next_mask = 0ULL;
+			uint64_t memo_value[8] = { 0 };
+			uint64_t memo_mask[8] = { 0 };
+			uint8_t memo_valid[8] = { 0 };
+			uint32_t root_index = region->op_count > 0U ? (region->op_count - 1U) : 0U;
+			lxs_eval_functional_expr(
+				region,
+				root_index,
+				net_value,
+				net_mask,
+				memo_value,
+				memo_mask,
+				memo_valid,
+				&out_value,
+				&out_mask);
+			}
+		else
+			{
+			uint64_t temp_value[8] = { 0 };
+			uint64_t temp_mask[8] = { 0 };
 
-			if (op->src0 < region->input_count)
+			for (uint32_t op_index = 0; op_index < region->op_count; ++op_index)
 				{
-				uint32_t net_id = region->inputs[op->src0];
-				src0_value = net_value[net_id];
-				src0_mask = net_mask[net_id];
-				}
-			else
-				{
-				uint32_t temp_index = op->src0 - region->input_count;
-				src0_value = temp_value[temp_index];
-				src0_mask = temp_mask[temp_index];
-				}
+				const lxs_functional_region_op *op = &region->ops[op_index];
+				uint64_t src0_value;
+				uint64_t src0_mask;
+				uint64_t src1_value = 0ULL;
+				uint64_t src1_mask = 0ULL;
+				uint64_t next_value = 0ULL;
+				uint64_t next_mask = 0ULL;
 
-			if (op->type != LXS_FUNCTIONAL_REGION_OP_BUF &&
-				op->type != LXS_FUNCTIONAL_REGION_OP_NOT)
-				{
-				if (op->src1 < region->input_count)
+				if (op->src0 < region->input_count)
 					{
-					uint32_t net_id = region->inputs[op->src1];
-					src1_value = net_value[net_id];
-					src1_mask = net_mask[net_id];
+					uint32_t net_id = region->inputs[op->src0];
+					src0_value = net_value[net_id];
+					src0_mask = net_mask[net_id];
 					}
 				else
 					{
-					uint32_t temp_index = op->src1 - region->input_count;
-					src1_value = temp_value[temp_index];
-					src1_mask = temp_mask[temp_index];
+					uint32_t temp_index = op->src0 - region->input_count;
+					src0_value = temp_value[temp_index];
+					src0_mask = temp_mask[temp_index];
 					}
-				}
 
-			switch (op->type)
-				{
-				case LXS_FUNCTIONAL_REGION_OP_BUF:
-					LXS_EVAL_BUF(src0_value, src0_mask, next_value, next_mask);
-					break;
-				case LXS_FUNCTIONAL_REGION_OP_NOT:
-					LXS_EVAL_NOT(src0_value, src0_mask, next_value, next_mask);
-					break;
-				case LXS_FUNCTIONAL_REGION_OP_AND:
-					LXS_EVAL_AND(src0_value, src0_mask, src1_value, src1_mask, next_value, next_mask);
-					break;
-				case LXS_FUNCTIONAL_REGION_OP_OR:
-					LXS_EVAL_OR(src0_value, src0_mask, src1_value, src1_mask, next_value, next_mask);
-					break;
-				case LXS_FUNCTIONAL_REGION_OP_XOR:
-					LXS_EVAL_XOR(src0_value, src0_mask, src1_value, src1_mask, next_value, next_mask);
-					break;
-				case LXS_FUNCTIONAL_REGION_OP_NAND:
-					LXS_EVAL_AND(src0_value, src0_mask, src1_value, src1_mask, next_value, next_mask);
-					LXS_EVAL_NOT(next_value, next_mask, next_value, next_mask);
-					break;
-				case LXS_FUNCTIONAL_REGION_OP_NOR:
-					LXS_EVAL_OR(src0_value, src0_mask, src1_value, src1_mask, next_value, next_mask);
-					LXS_EVAL_NOT(next_value, next_mask, next_value, next_mask);
-					break;
-				default:
-					LXS_EVAL_XOR(src0_value, src0_mask, src1_value, src1_mask, next_value, next_mask);
-					LXS_EVAL_NOT(next_value, next_mask, next_value, next_mask);
-					break;
-				}
+				if (op->type != LXS_FUNCTIONAL_REGION_OP_BUF &&
+					op->type != LXS_FUNCTIONAL_REGION_OP_NOT)
+					{
+					if (op->src1 < region->input_count)
+						{
+						uint32_t net_id = region->inputs[op->src1];
+						src1_value = net_value[net_id];
+						src1_mask = net_mask[net_id];
+						}
+					else
+						{
+						uint32_t temp_index = op->src1 - region->input_count;
+						src1_value = temp_value[temp_index];
+						src1_mask = temp_mask[temp_index];
+						}
+					}
 
-			if (op->dst == 0xFFU)
-				{
-				out_value = next_value;
-				out_mask = next_mask;
-				}
-			else
-				{
-				temp_value[op->dst] = next_value;
-				temp_mask[op->dst] = next_mask;
+				lxs_eval_functional_op(
+					op->type,
+					src0_value,
+					src0_mask,
+					src1_value,
+					src1_mask,
+					&next_value,
+					&next_mask);
+
+				if (op->dst == 0xFFU)
+					{
+					out_value = next_value;
+					out_mask = next_mask;
+					}
+				else
+					{
+					temp_value[op->dst] = next_value;
+					temp_mask[op->dst] = next_mask;
+					}
 				}
 			}
 

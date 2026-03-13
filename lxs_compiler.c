@@ -1067,8 +1067,16 @@ static int lxs_functional_op_gate_type(uint8_t type, uint32_t *gate_type_out)
 		}
 	}
 
+static uint32_t lxs_choose_functional_exec_kind(uint32_t op_count, uint32_t temp_count)
+	{
+	(void)op_count;
+	(void)temp_count;
+	return LXS_FUNCTIONAL_REGION_EXEC_MICROPROGRAM;
+	}
+
 static int lxs_emit_functional_region(
 	lxs_netlist *nl,
+	uint32_t exec_kind,
 	uint32_t output,
 	const uint32_t *inputs,
 	uint32_t input_count,
@@ -1089,7 +1097,7 @@ static int lxs_emit_functional_region(
 		return 0;
 		}
 
-	region.exec_kind = LXS_FUNCTIONAL_REGION_EXEC_MICROPROGRAM;
+	region.exec_kind = exec_kind;
 	region.output = output;
 	region.input_count = input_count;
 	region.temp_count = (uint8_t)(op_count > 0U ? (op_count - 1U) : 0U);
@@ -4594,7 +4602,7 @@ static uint32_t lxs_collect_recognized_functional_regions(
 			continue;
 			}
 
-		region.exec_kind = LXS_FUNCTIONAL_REGION_EXEC_MICROPROGRAM;
+		region.exec_kind = lxs_choose_functional_exec_kind(state.op_count, state.temp_count);
 		region.level = nl->gates[i].level;
 		region.output = nl->gates[i].output;
 		region.input_count = state.boundary_count;
@@ -6579,7 +6587,9 @@ static lxs_netlist* lxs_load_bench(const char *path)
 			}
 		else
 			{
-			if (strcmp(gate_name, "FUNC_REGION") == 0)
+			if (strcmp(gate_name, "FUNC_REGION") == 0 ||
+				strcmp(gate_name, "FUNC_EXPR") == 0 ||
+				strcmp(gate_name, "FUNC_MICRO") == 0)
 				{
 				char *sections[9];
 				char *section_ctx = NULL;
@@ -6589,6 +6599,20 @@ static lxs_netlist* lxs_load_bench(const char *path)
 				uint8_t op_src1[8];
 				uint32_t op_count = 0U;
 				uint32_t section_count = 0U;
+				uint32_t exec_kind;
+
+				if (strcmp(gate_name, "FUNC_EXPR") == 0)
+					{
+					exec_kind = LXS_FUNCTIONAL_REGION_EXEC_EXPR;
+					}
+				else if (strcmp(gate_name, "FUNC_MICRO") == 0)
+					{
+					exec_kind = LXS_FUNCTIONAL_REGION_EXEC_MICROPROGRAM;
+					}
+				else
+					{
+					exec_kind = LXS_FUNCTIONAL_REGION_EXEC_MICROPROGRAM;
+					}
 
 				while (section && section_count < 9U)
 					{
@@ -6703,8 +6727,14 @@ static lxs_netlist* lxs_load_bench(const char *path)
 					op_types[op_count++] = op_type;
 					}
 
+				if (strcmp(gate_name, "FUNC_REGION") == 0)
+					{
+					exec_kind = lxs_choose_functional_exec_kind(op_count, op_count > 0U ? (op_count - 1U) : 0U);
+					}
+
 				if (!lxs_emit_functional_region(
 						nl,
+						exec_kind,
 						output_ids[0],
 						input_ids,
 						input_count,
