@@ -1,0 +1,8 @@
+INPUT(a)
+INPUT(b)
+INPUT(c)
+INPUT(d)
+INPUT(e)
+OUTPUT(y)
+
+y = FUNC_REGION(a,b,c,d,e; AND(i0,i1); OR(t0,i2); XOR(t1,i3); XNOR(t2,i4))

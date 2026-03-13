@@ -13,8 +13,12 @@ typedef struct lxs_loaded_case
 static int lxs_set_env_var(const char *name, const char *value)
 	{
 #ifdef _WIN32
-	return _putenv_s(name, value) == 0;
+	return _putenv_s(name, value ? value : "") == 0;
 #else
+	if (!value)
+		{
+		return unsetenv(name) == 0;
+		}
 	return setenv(name, value, 1) == 0;
 #endif
 	}
@@ -1583,9 +1587,16 @@ static int lxs_test_ripple_slice2_macro(void)
 	uint64_t out_masks[3];
 	int ok = 1;
 
+	if (!lxs_set_env_var("LXS_RECOGNITION_MASK", "32"))
+		{
+		fprintf(stderr, "FAIL ripple_slice2_macro: unable to set env\n");
+		return 0;
+		}
+
 	if (!lxs_load_case("Tests\\Circuits\\ripple_slice2_macro.bench", &loaded))
 		{
 		fprintf(stderr, "FAIL ripple_slice2_macro: unable to load test circuit\n");
+		lxs_set_env_var("LXS_RECOGNITION_MASK", NULL);
 		return 0;
 		}
 
@@ -1630,6 +1641,7 @@ static int lxs_test_ripple_slice2_macro(void)
 		}
 
 	lxs_unload_case(&loaded);
+	lxs_set_env_var("LXS_RECOGNITION_MASK", NULL);
 	return ok;
 	}
 
@@ -3018,6 +3030,63 @@ static int lxs_test_regfile2_rewrite(void)
 	return ok;
 	}
 
+static int lxs_test_functional_region_explicit(void)
+	{
+	lxs_loaded_case lhs;
+	lxs_loaded_case rhs;
+	uint64_t values[5];
+	uint64_t masks[5];
+	uint64_t lhs_out_values[1];
+	uint64_t lhs_out_masks[1];
+	uint64_t rhs_out_values[1];
+	uint64_t rhs_out_masks[1];
+	int ok = 1;
+
+	if (!lxs_load_case("Tests\\Circuits\\functional_region_primitive.bench", &lhs))
+		{
+		fprintf(stderr, "FAIL functional_region_explicit: unable to load primitive circuit\n");
+		return 0;
+		}
+
+	if (!lxs_load_case("Tests\\Circuits\\functional_region_explicit.bench", &rhs))
+		{
+		fprintf(stderr, "FAIL functional_region_explicit: unable to load explicit circuit\n");
+		lxs_unload_case(&lhs);
+		return 0;
+		}
+
+	ok &= lxs_expect_u64("functional_region_explicit.count", rhs.plan->functional_region_count, 1ULL);
+	ok &= lxs_expect_u64("functional_region_explicit.comb_gate_count", rhs.plan->comb_gate_count, 0ULL);
+
+	memset(masks, 0, sizeof(masks));
+	for (uint32_t combo = 0; combo < 32U; ++combo)
+		{
+		char label[96];
+
+		for (uint32_t bit = 0; bit < 5U; ++bit)
+			{
+			values[bit] = ((combo >> bit) & 1U) ? ~0ULL : 0ULL;
+			}
+
+		lxs_apply_inputs(&lhs.ctx, lhs.plan, values, masks);
+		lxs_execute_plan(&lhs.ctx, lhs.plan);
+		lxs_read_outputs(&lhs.ctx, lhs.plan, lhs_out_values, lhs_out_masks);
+
+		lxs_apply_inputs(&rhs.ctx, rhs.plan, values, masks);
+		lxs_execute_plan(&rhs.ctx, rhs.plan);
+		lxs_read_outputs(&rhs.ctx, rhs.plan, rhs_out_values, rhs_out_masks);
+
+		snprintf(label, sizeof(label), "functional_region_explicit.combo_%u.value", combo);
+		ok &= lxs_expect_u64(label, rhs_out_values[0], lhs_out_values[0]);
+		snprintf(label, sizeof(label), "functional_region_explicit.combo_%u.mask", combo);
+		ok &= lxs_expect_u64(label, rhs_out_masks[0], lhs_out_masks[0]);
+		}
+
+	lxs_unload_case(&lhs);
+	lxs_unload_case(&rhs);
+	return ok;
+	}
+
 int main(void)
 	{
 	int ok = 1;
@@ -3076,6 +3145,7 @@ int main(void)
 	ok &= lxs_test_regfile2_explicit();
 	ok &= lxs_test_counter_en_rewrite();
 	ok &= lxs_test_regfile2_rewrite();
+	ok &= lxs_test_functional_region_explicit();
 
 	if (!ok)
 		{

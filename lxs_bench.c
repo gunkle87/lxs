@@ -678,7 +678,9 @@ static void lxs_write_plan_profile(FILE *stream, const lxs_plan_profile *profile
 		"arithmetic_matches=%u,arithmetic_node_reduction=%u,"
 		"arithmetic_gate_equiv=%u,arithmetic_absorbed_work_share=%.6f,"
 		"control_matches=%u,control_node_reduction=%u,"
-		"control_gate_equiv=%u,control_absorbed_work_share=%.6f\n",
+		"control_gate_equiv=%u,control_absorbed_work_share=%.6f,"
+		"functional_matches=%u,functional_node_reduction=%u,"
+		"functional_gate_equiv=%u,functional_absorbed_work_share=%.6f\n",
 		profile->circuit_name,
 		profile->recognition_mask,
 		profile->recognition_mode,
@@ -709,7 +711,11 @@ static void lxs_write_plan_profile(FILE *stream, const lxs_plan_profile *profile
 		profile->recognition_match_count[LXS_RECOGNITION_FAMILY_CONTROL],
 		profile->recognition_node_reduction[LXS_RECOGNITION_FAMILY_CONTROL],
 		profile->recognition_gate_equiv[LXS_RECOGNITION_FAMILY_CONTROL],
-		profile->recognition_absorbed_work_share[LXS_RECOGNITION_FAMILY_CONTROL]);
+		profile->recognition_absorbed_work_share[LXS_RECOGNITION_FAMILY_CONTROL],
+		profile->recognition_match_count[LXS_RECOGNITION_FAMILY_FUNCTIONAL],
+		profile->recognition_node_reduction[LXS_RECOGNITION_FAMILY_FUNCTIONAL],
+		profile->recognition_gate_equiv[LXS_RECOGNITION_FAMILY_FUNCTIONAL],
+		profile->recognition_absorbed_work_share[LXS_RECOGNITION_FAMILY_FUNCTIONAL]);
 
 	for (uint32_t family = 0; family < LXS_RECOGNITION_FAMILY_COUNT; ++family)
 		{
@@ -736,6 +742,9 @@ static void lxs_write_plan_profile(FILE *stream, const lxs_plan_profile *profile
 				break;
 			case LXS_RECOGNITION_FAMILY_CONTROL:
 				family_name = "control";
+				break;
+			case LXS_RECOGNITION_FAMILY_FUNCTIONAL:
+				family_name = "functional";
 				break;
 			default:
 				family_name = "unknown";

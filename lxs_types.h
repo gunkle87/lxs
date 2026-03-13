@@ -84,6 +84,7 @@ typedef enum lxs_recognition_family
 	LXS_RECOGNITION_FAMILY_REGISTER_EN,
 	LXS_RECOGNITION_FAMILY_ARITHMETIC,
 	LXS_RECOGNITION_FAMILY_CONTROL,
+	LXS_RECOGNITION_FAMILY_FUNCTIONAL,
 	LXS_RECOGNITION_FAMILY_COUNT
 	} lxs_recognition_family;
 
@@ -166,6 +167,7 @@ struct lxs_gate_ir
 typedef struct lxs_netlist lxs_netlist;
 typedef struct lxs_source_macro lxs_source_macro;
 typedef struct lxs_source_multi_macro lxs_source_multi_macro;
+typedef struct lxs_source_functional_region lxs_source_functional_region;
 typedef struct lxs_source_register lxs_source_register;
 typedef struct lxs_source_rom lxs_source_rom;
 typedef struct lxs_source_ram lxs_source_ram;
@@ -194,6 +196,10 @@ struct lxs_netlist
 	lxs_source_multi_macro *source_multi_macros;
 	uint32_t source_multi_macro_count;
 	uint32_t source_multi_macro_cap;
+
+	lxs_source_functional_region *source_functional_regions;
+	uint32_t source_functional_region_count;
+	uint32_t source_functional_region_cap;
 
 	lxs_source_register *source_registers;
 	uint32_t source_register_count;
@@ -265,6 +271,23 @@ struct lxs_source_multi_macro
 	uint32_t gate_count;
 	};
 
+struct lxs_source_functional_region
+	{
+	uint32_t exec_kind;
+	uint32_t output;
+	uint32_t gate_indices[8];
+	uint32_t input_count;
+	uint8_t temp_count;
+	uint8_t op_count;
+	uint8_t node_budget;
+	uint8_t max_depth;
+	uint32_t inputs[5];
+	uint8_t op_type[8];
+	uint8_t op_dst[8];
+	uint8_t op_src0[8];
+	uint8_t op_src1[8];
+	};
+
 struct lxs_source_register
 	{
 	uint32_t width_bits;
@@ -318,6 +341,8 @@ struct lxs_level_plan
 	uint32_t macro_count;
 	uint32_t multi_macro_start;
 	uint32_t multi_macro_count;
+	uint32_t functional_region_start;
+	uint32_t functional_region_count;
 	};
 
 typedef struct lxs_macro_plan lxs_macro_plan;
