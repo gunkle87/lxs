@@ -1,12 +1,13 @@
 $ErrorActionPreference = "Stop"
 
-$inputPath = if ($args.Length -gt 0) { $args[0] } else { throw "usage: gen_vector_adder_macro.ps1 <input.bench> <output.bench> [anchor|packed]" }
-$outputPath = if ($args.Length -gt 1) { $args[1] } else { throw "usage: gen_vector_adder_macro.ps1 <input.bench> <output.bench> [anchor|packed]" }
+$inputPath = if ($args.Length -gt 0) { $args[0] } else { throw "usage: gen_vector_adder_macro.ps1 <input.bench> <output.bench> [anchor|packed|neighborhood]" }
+$outputPath = if ($args.Length -gt 1) { $args[1] } else { throw "usage: gen_vector_adder_macro.ps1 <input.bench> <output.bench> [anchor|packed|neighborhood]" }
 $mode = if ($args.Length -gt 2) { $args[2].ToLowerInvariant() } else { "packed" }
 $useSlices = $mode -eq "packed"
+$useNeighborhood = $mode -eq "neighborhood"
 $toolDir = Split-Path -Parent $MyInvocation.MyCommand.Path
 . (Join-Path $toolDir "LxsRewriteLib.ps1")
-$usage = "usage: gen_vector_adder_macro.ps1 <input.bench> <output.bench> [anchor|packed]"
+$usage = "usage: gen_vector_adder_macro.ps1 <input.bench> <output.bench> [anchor|packed|neighborhood]"
 
 Initialize-LxsRewrite $mode $outputPath $usage
 $io = Get-BenchIo $inputPath
@@ -43,6 +44,16 @@ $carry = $zero
 $bit = 0
 while ($bit -lt $width)
 	{
+	if ($useNeighborhood -and ($bit + 3) -lt $width)
+		{
+		$carryOutName = if (($bit + 3) -eq ($width - 1) -and $carryOut) { $carryOut } else { "carry_$($bit + 3)" }
+		$lines.Add(
+			"$($sumOutputs[$bit]), $($sumOutputs[$bit + 1]), $($sumOutputs[$bit + 2]), $($sumOutputs[$bit + 3]), $carryOutName = RIPPLE_ADD4($($aInputs[$bit]), $($bInputs[$bit]), $($aInputs[$bit + 1]), $($bInputs[$bit + 1]), $($aInputs[$bit + 2]), $($bInputs[$bit + 2]), $($aInputs[$bit + 3]), $($bInputs[$bit + 3]), $carry)")
+		$carry = $carryOutName
+		$bit += 4
+		continue
+		}
+
 	if ($useSlices -and ($bit + 1) -lt $width)
 		{
 		$carryOutName = if (($bit + 1) -eq ($width - 1) -and $carryOut) { $carryOut } else { "carry_$($bit + 1)" }

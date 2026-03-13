@@ -106,6 +106,11 @@ typedef struct lxs_plan_profile
 	uint32_t recognition_match_count[LXS_RECOGNITION_FAMILY_COUNT];
 	uint32_t recognition_node_reduction[LXS_RECOGNITION_FAMILY_COUNT];
 	uint32_t recognition_gate_equiv[LXS_RECOGNITION_FAMILY_COUNT];
+	uint64_t recognition_candidate_roots[LXS_RECOGNITION_FAMILY_COUNT];
+	uint64_t recognition_nodes_visited[LXS_RECOGNITION_FAMILY_COUNT];
+	uint32_t recognition_max_depth[LXS_RECOGNITION_FAMILY_COUNT];
+	uint64_t recognition_abort_count[LXS_RECOGNITION_FAMILY_COUNT][LXS_RECOGNITION_ABORT_REASON_COUNT];
+	uint64_t recognition_time_us[LXS_RECOGNITION_FAMILY_COUNT];
 	uint64_t primitive_gate_equiv;
 	uint64_t macro_gate_equiv;
 	uint64_t total_gate_equiv;
@@ -479,6 +484,26 @@ static void lxs_build_plan_profile(
 		profile->recognition_node_reduction,
 		plan->recognition_node_reduction,
 		sizeof(profile->recognition_node_reduction));
+	memcpy(
+		profile->recognition_candidate_roots,
+		plan->recognition_candidate_roots,
+		sizeof(profile->recognition_candidate_roots));
+	memcpy(
+		profile->recognition_nodes_visited,
+		plan->recognition_nodes_visited,
+		sizeof(profile->recognition_nodes_visited));
+	memcpy(
+		profile->recognition_max_depth,
+		plan->recognition_max_depth,
+		sizeof(profile->recognition_max_depth));
+	memcpy(
+		profile->recognition_abort_count,
+		plan->recognition_abort_count,
+		sizeof(profile->recognition_abort_count));
+	memcpy(
+		profile->recognition_time_us,
+		plan->recognition_time_us,
+		sizeof(profile->recognition_time_us));
 	profile->comb_gate_count = plan->comb_gate_count;
 	profile->dff_count = plan->state.count;
 	profile->chunk_count = plan->span_count;
@@ -685,6 +710,57 @@ static void lxs_write_plan_profile(FILE *stream, const lxs_plan_profile *profile
 		profile->recognition_node_reduction[LXS_RECOGNITION_FAMILY_CONTROL],
 		profile->recognition_gate_equiv[LXS_RECOGNITION_FAMILY_CONTROL],
 		profile->recognition_absorbed_work_share[LXS_RECOGNITION_FAMILY_CONTROL]);
+
+	for (uint32_t family = 0; family < LXS_RECOGNITION_FAMILY_COUNT; ++family)
+		{
+		const char *family_name = "";
+		switch (family)
+			{
+			case LXS_RECOGNITION_FAMILY_PARITY:
+				family_name = "parity";
+				break;
+			case LXS_RECOGNITION_FAMILY_SHARED_XOR:
+				family_name = "shared_xor";
+				break;
+			case LXS_RECOGNITION_FAMILY_SHARED_AND:
+				family_name = "shared_and";
+				break;
+			case LXS_RECOGNITION_FAMILY_COMPARE:
+				family_name = "compare";
+				break;
+			case LXS_RECOGNITION_FAMILY_REGISTER_EN:
+				family_name = "register_en";
+				break;
+			case LXS_RECOGNITION_FAMILY_ARITHMETIC:
+				family_name = "arithmetic";
+				break;
+			case LXS_RECOGNITION_FAMILY_CONTROL:
+				family_name = "control";
+				break;
+			default:
+				family_name = "unknown";
+				break;
+			}
+
+		fprintf(
+			stream,
+			"\n# recognition_telemetry,%s,family=%s,candidate_roots=%llu,nodes_visited=%llu,max_depth=%u,"
+			"abort_shape=%llu,abort_fanout=%llu,abort_branch=%llu,abort_depth=%llu,"
+			"abort_node_budget=%llu,abort_overlap=%llu,time_us=%llu",
+			profile->circuit_name,
+			family_name,
+			(unsigned long long)profile->recognition_candidate_roots[family],
+			(unsigned long long)profile->recognition_nodes_visited[family],
+			profile->recognition_max_depth[family],
+			(unsigned long long)profile->recognition_abort_count[family][LXS_RECOGNITION_ABORT_SHAPE],
+			(unsigned long long)profile->recognition_abort_count[family][LXS_RECOGNITION_ABORT_FANOUT],
+			(unsigned long long)profile->recognition_abort_count[family][LXS_RECOGNITION_ABORT_BRANCH],
+			(unsigned long long)profile->recognition_abort_count[family][LXS_RECOGNITION_ABORT_DEPTH],
+			(unsigned long long)profile->recognition_abort_count[family][LXS_RECOGNITION_ABORT_NODE_BUDGET],
+			(unsigned long long)profile->recognition_abort_count[family][LXS_RECOGNITION_ABORT_OVERLAP],
+			(unsigned long long)profile->recognition_time_us[family]);
+		}
+	fprintf(stream, "\n");
 	}
 
 static void lxs_write_trace_header(FILE *stream)

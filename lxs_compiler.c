@@ -3,6 +3,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <malloc.h>
+#include <time.h>
 
 #define LXS_ALIGN_SIZE 64U
 #define LXS_INITIAL_CAP 256U
@@ -1138,6 +1139,163 @@ static int lxs_emit_ripple_slice2_macro(
 	return 1;
 	}
 
+static int lxs_emit_ripple_add4_macro(
+	lxs_netlist *nl,
+	const uint32_t *outputs,
+	const uint32_t *inputs,
+	uint32_t serial)
+	{
+	lxs_source_multi_macro macro;
+	uint32_t gate_inputs[2];
+	uint32_t xor0;
+	uint32_t and0a;
+	uint32_t and0b;
+	uint32_t carry0;
+	uint32_t xor1;
+	uint32_t and1a;
+	uint32_t and1b;
+	uint32_t carry1;
+	uint32_t xor2;
+	uint32_t and2a;
+	uint32_t and2b;
+	uint32_t carry2;
+	uint32_t xor3;
+	uint32_t and3a;
+	uint32_t and3b;
+
+	memset(&macro, 0, sizeof(macro));
+	macro.type = LXS_SOURCE_MULTI_MACRO_RIPPLE_ADD4;
+	macro.input_count = 9U;
+	macro.output_count = 5U;
+	macro.gate_count = 20U;
+	for (uint32_t i = 0; i < 9U; ++i)
+		{
+		macro.inputs[i] = inputs[i];
+		}
+	for (uint32_t i = 0; i < 5U; ++i)
+		{
+		macro.outputs[i] = outputs[i];
+		}
+
+	xor0 = lxs_intern_temp_net(nl, "ra4", serial, "xor0");
+	and0a = lxs_intern_temp_net(nl, "ra4", serial, "and0a");
+	and0b = lxs_intern_temp_net(nl, "ra4", serial, "and0b");
+	carry0 = lxs_intern_temp_net(nl, "ra4", serial, "carry0");
+	xor1 = lxs_intern_temp_net(nl, "ra4", serial, "xor1");
+	and1a = lxs_intern_temp_net(nl, "ra4", serial, "and1a");
+	and1b = lxs_intern_temp_net(nl, "ra4", serial, "and1b");
+	carry1 = lxs_intern_temp_net(nl, "ra4", serial, "carry1");
+	xor2 = lxs_intern_temp_net(nl, "ra4", serial, "xor2");
+	and2a = lxs_intern_temp_net(nl, "ra4", serial, "and2a");
+	and2b = lxs_intern_temp_net(nl, "ra4", serial, "and2b");
+	carry2 = lxs_intern_temp_net(nl, "ra4", serial, "carry2");
+	xor3 = lxs_intern_temp_net(nl, "ra4", serial, "xor3");
+	and3a = lxs_intern_temp_net(nl, "ra4", serial, "and3a");
+	and3b = lxs_intern_temp_net(nl, "ra4", serial, "and3b");
+	if (xor0 == UINT32_MAX || and0a == UINT32_MAX || and0b == UINT32_MAX || carry0 == UINT32_MAX ||
+		xor1 == UINT32_MAX || and1a == UINT32_MAX || and1b == UINT32_MAX || carry1 == UINT32_MAX ||
+		xor2 == UINT32_MAX || and2a == UINT32_MAX || and2b == UINT32_MAX || carry2 == UINT32_MAX ||
+		xor3 == UINT32_MAX || and3a == UINT32_MAX || and3b == UINT32_MAX)
+		{
+		return 0;
+		}
+
+	gate_inputs[0] = inputs[0];
+	gate_inputs[1] = inputs[1];
+	if (!lxs_emit_gate_record(nl, LXS_GATE_XOR, xor0, gate_inputs, 2U, &macro.gate_indices[0]) ||
+		!lxs_emit_gate_record(nl, LXS_GATE_AND, and0a, gate_inputs, 2U, &macro.gate_indices[2]))
+		{
+		return 0;
+		}
+
+	gate_inputs[0] = xor0;
+	gate_inputs[1] = inputs[8];
+	if (!lxs_emit_gate_record(nl, LXS_GATE_XOR, outputs[0], gate_inputs, 2U, &macro.gate_indices[1]) ||
+		!lxs_emit_gate_record(nl, LXS_GATE_AND, and0b, gate_inputs, 2U, &macro.gate_indices[3]))
+		{
+		return 0;
+		}
+
+	gate_inputs[0] = and0a;
+	gate_inputs[1] = and0b;
+	if (!lxs_emit_gate_record(nl, LXS_GATE_OR, carry0, gate_inputs, 2U, &macro.gate_indices[4]))
+		{
+		return 0;
+		}
+
+	gate_inputs[0] = inputs[2];
+	gate_inputs[1] = inputs[3];
+	if (!lxs_emit_gate_record(nl, LXS_GATE_XOR, xor1, gate_inputs, 2U, &macro.gate_indices[5]) ||
+		!lxs_emit_gate_record(nl, LXS_GATE_AND, and1a, gate_inputs, 2U, &macro.gate_indices[7]))
+		{
+		return 0;
+		}
+
+	gate_inputs[0] = xor1;
+	gate_inputs[1] = carry0;
+	if (!lxs_emit_gate_record(nl, LXS_GATE_XOR, outputs[1], gate_inputs, 2U, &macro.gate_indices[6]) ||
+		!lxs_emit_gate_record(nl, LXS_GATE_AND, and1b, gate_inputs, 2U, &macro.gate_indices[8]))
+		{
+		return 0;
+		}
+
+	gate_inputs[0] = and1a;
+	gate_inputs[1] = and1b;
+	if (!lxs_emit_gate_record(nl, LXS_GATE_OR, carry1, gate_inputs, 2U, &macro.gate_indices[9]))
+		{
+		return 0;
+		}
+
+	gate_inputs[0] = inputs[4];
+	gate_inputs[1] = inputs[5];
+	if (!lxs_emit_gate_record(nl, LXS_GATE_XOR, xor2, gate_inputs, 2U, &macro.gate_indices[10]) ||
+		!lxs_emit_gate_record(nl, LXS_GATE_AND, and2a, gate_inputs, 2U, &macro.gate_indices[12]))
+		{
+		return 0;
+		}
+
+	gate_inputs[0] = xor2;
+	gate_inputs[1] = carry1;
+	if (!lxs_emit_gate_record(nl, LXS_GATE_XOR, outputs[2], gate_inputs, 2U, &macro.gate_indices[11]) ||
+		!lxs_emit_gate_record(nl, LXS_GATE_AND, and2b, gate_inputs, 2U, &macro.gate_indices[13]))
+		{
+		return 0;
+		}
+
+	gate_inputs[0] = and2a;
+	gate_inputs[1] = and2b;
+	if (!lxs_emit_gate_record(nl, LXS_GATE_OR, carry2, gate_inputs, 2U, &macro.gate_indices[14]))
+		{
+		return 0;
+		}
+
+	gate_inputs[0] = inputs[6];
+	gate_inputs[1] = inputs[7];
+	if (!lxs_emit_gate_record(nl, LXS_GATE_XOR, xor3, gate_inputs, 2U, &macro.gate_indices[15]) ||
+		!lxs_emit_gate_record(nl, LXS_GATE_AND, and3a, gate_inputs, 2U, &macro.gate_indices[17]))
+		{
+		return 0;
+		}
+
+	gate_inputs[0] = xor3;
+	gate_inputs[1] = carry2;
+	if (!lxs_emit_gate_record(nl, LXS_GATE_XOR, outputs[3], gate_inputs, 2U, &macro.gate_indices[16]) ||
+		!lxs_emit_gate_record(nl, LXS_GATE_AND, and3b, gate_inputs, 2U, &macro.gate_indices[18]))
+		{
+		return 0;
+		}
+
+	gate_inputs[0] = and3a;
+	gate_inputs[1] = and3b;
+	if (!lxs_emit_gate_record(nl, LXS_GATE_OR, outputs[4], gate_inputs, 2U, &macro.gate_indices[19]) ||
+		!lxs_push_source_multi_macro(nl, &macro))
+		{
+		return 0;
+		}
+
+	return 1;
+	}
+
 static int lxs_emit_xor_fan8_macro(
 	lxs_netlist *nl,
 	const uint32_t *outputs,
@@ -1549,7 +1707,10 @@ static uint8_t lxs_propagate_source_multi_output_levels(
 
 	net_consumers = lxs_calloc_aligned(net_consumer_start[nl->net_count], sizeof(uint32_t));
 	gate_macros = lxs_calloc_aligned(
-		nl->source_multi_macro_count ? (size_t)nl->source_multi_macro_count * 9U : 1U,
+		nl->source_multi_macro_count ?
+			(size_t)nl->source_multi_macro_count *
+			(sizeof(nl->source_multi_macros[0].gate_indices) / sizeof(nl->source_multi_macros[0].gate_indices[0])) :
+			1U,
 		sizeof(uint32_t));
 	if (!net_consumers || !gate_macros)
 		{
@@ -2786,6 +2947,74 @@ static void lxs_record_recognition(
 	node_reduction[family] += matched_gate_count > 0U ? matched_gate_count - 1U : 0U;
 	}
 
+static void lxs_record_recognition_candidate(
+	uint64_t *candidate_roots,
+	uint32_t family)
+	{
+	if (!candidate_roots || family >= LXS_RECOGNITION_FAMILY_COUNT)
+		{
+		return;
+		}
+
+	candidate_roots[family]++;
+	}
+
+static void lxs_record_recognition_visit(
+	uint64_t *nodes_visited,
+	uint32_t *max_depth_reached,
+	uint32_t family,
+	uint32_t depth)
+	{
+	if (family >= LXS_RECOGNITION_FAMILY_COUNT)
+		{
+		return;
+		}
+
+	if (nodes_visited)
+		{
+		nodes_visited[family]++;
+		}
+	if (max_depth_reached && depth > max_depth_reached[family])
+		{
+		max_depth_reached[family] = depth;
+		}
+	}
+
+static void lxs_record_recognition_abort(
+	uint64_t abort_count[LXS_RECOGNITION_FAMILY_COUNT][LXS_RECOGNITION_ABORT_REASON_COUNT],
+	uint32_t family,
+	uint32_t reason)
+	{
+	if (!abort_count ||
+		family >= LXS_RECOGNITION_FAMILY_COUNT ||
+		reason >= LXS_RECOGNITION_ABORT_REASON_COUNT)
+		{
+		return;
+		}
+
+	abort_count[family][reason]++;
+	}
+
+static void lxs_record_recognition_time(
+	uint64_t *time_us,
+	uint32_t family,
+	clock_t start_clock,
+	clock_t end_clock)
+	{
+	double delta_seconds;
+
+	if (!time_us || family >= LXS_RECOGNITION_FAMILY_COUNT)
+		{
+		return;
+		}
+
+	delta_seconds = (double)(end_clock - start_clock) / (double)CLOCKS_PER_SEC;
+	if (delta_seconds > 0.0)
+		{
+		time_us[family] += (uint64_t)(delta_seconds * 1000000.0);
+		}
+	}
+
 static const lxs_recognition_pattern lxs_pattern_parity4 =
 	{
 	LXS_RECOGNITION_FAMILY_PARITY,
@@ -2995,10 +3224,21 @@ static uint32_t lxs_collect_macros(
 	uint32_t recognition_mask,
 	uint32_t *family_match_count,
 	uint32_t *family_node_reduction,
+	uint64_t *family_candidate_roots,
+	uint64_t *family_nodes_visited,
+	uint32_t *family_max_depth_reached,
+	uint64_t family_abort_count[LXS_RECOGNITION_FAMILY_COUNT][LXS_RECOGNITION_ABORT_REASON_COUNT],
+	uint64_t *family_time_us,
 	lxs_macro_plan *macros)
 	{
 	uint32_t *net_use_count;
 	uint32_t macro_count = 0U;
+
+	(void)family_candidate_roots;
+	(void)family_nodes_visited;
+	(void)family_max_depth_reached;
+	(void)family_abort_count;
+	(void)family_time_us;
 
 	net_use_count = lxs_calloc_aligned(nl->net_count, sizeof(uint32_t));
 	if (!net_use_count)
@@ -3324,6 +3564,11 @@ static uint32_t lxs_collect_source_multi_macros(
 			macro.type = LXS_MULTI_MACRO_XOR_FAN8;
 			macro.gate_equiv_count = 8U;
 			}
+		else if (source->type == LXS_SOURCE_MULTI_MACRO_RIPPLE_ADD4)
+			{
+			macro.type = LXS_MULTI_MACRO_RIPPLE_ADD4;
+			macro.gate_equiv_count = 20U;
+			}
 		else if (source->type == LXS_SOURCE_MULTI_MACRO_AND_FAN8)
 			{
 			macro.type = LXS_MULTI_MACRO_AND_FAN8;
@@ -3377,13 +3622,788 @@ static uint32_t lxs_collect_source_multi_macros(
 	return nl->source_multi_macro_count;
 	}
 
+static int lxs_try_match_xnor_bank4_local(
+	const lxs_netlist *nl,
+	const int32_t *comb_driver,
+	const uint32_t *gate_use_count,
+	const uint8_t *matched_gates,
+	uint32_t root_index,
+	uint64_t *family_candidate_roots,
+	uint64_t *family_nodes_visited,
+	uint32_t *family_max_depth_reached,
+	uint64_t family_abort_count[LXS_RECOGNITION_FAMILY_COUNT][LXS_RECOGNITION_ABORT_REASON_COUNT],
+	uint32_t *matched_gate_indices,
+	uint32_t *matched_gate_count,
+	lxs_multi_macro_plan *macro)
+	{
+	uint32_t input_ids[8];
+	uint32_t output_ids[4];
+	uint32_t not_indices[4];
+	uint32_t unique_xor_indices[4];
+	uint8_t unique_xor_absorb[4];
+	uint32_t unique_xor_count = 0U;
+	uint32_t found = 0U;
+	uint32_t level = 0U;
+
+	if (root_index >= nl->gate_count)
+		{
+		lxs_record_recognition_abort(
+			family_abort_count,
+			LXS_RECOGNITION_FAMILY_COMPARE,
+			LXS_RECOGNITION_ABORT_SHAPE);
+		return 0;
+		}
+
+	if (matched_gates[root_index] ||
+		nl->gates[root_index].type != LXS_GATE_NOT ||
+		nl->gates[root_index].input_count != 1U)
+		{
+		return 0;
+		}
+
+	lxs_record_recognition_candidate(family_candidate_roots, LXS_RECOGNITION_FAMILY_COMPARE);
+
+	for (uint32_t gate_index = root_index;
+		gate_index < nl->gate_count && gate_index < root_index + 8U && found < 4U;
+		++gate_index)
+		{
+		const lxs_gate_ir *not_gate = &nl->gates[gate_index];
+		int32_t xor_index;
+		const lxs_gate_ir *xor_gate;
+
+		lxs_record_recognition_visit(
+			family_nodes_visited,
+			family_max_depth_reached,
+			LXS_RECOGNITION_FAMILY_COMPARE,
+			1U);
+
+		if (matched_gates[gate_index] ||
+			not_gate->type != LXS_GATE_NOT ||
+			not_gate->input_count != 1U)
+			{
+			continue;
+			}
+
+		xor_index = comb_driver[not_gate->inputs[0]];
+		if (xor_index < 0)
+			{
+			continue;
+			}
+
+		xor_gate = &nl->gates[(uint32_t)xor_index];
+		lxs_record_recognition_visit(
+			family_nodes_visited,
+			family_max_depth_reached,
+			LXS_RECOGNITION_FAMILY_COMPARE,
+			2U);
+
+		if (matched_gates[(uint32_t)xor_index])
+			{
+			continue;
+			}
+
+		if (xor_gate->type != LXS_GATE_XOR || xor_gate->input_count != 2U)
+			{
+			continue;
+			}
+
+		not_indices[found] = gate_index;
+		input_ids[found * 2U] = xor_gate->inputs[0];
+		input_ids[found * 2U + 1U] = xor_gate->inputs[1];
+		output_ids[found] = not_gate->output;
+		if (not_gate->level > level)
+			{
+			level = not_gate->level;
+			}
+		if (xor_gate->level > level)
+			{
+			level = xor_gate->level;
+			}
+
+		{
+		uint32_t seen = 0U;
+		for (uint32_t j = 0; j < unique_xor_count; ++j)
+			{
+			if (unique_xor_indices[j] == (uint32_t)xor_index)
+				{
+				seen = 1U;
+				break;
+				}
+			}
+		if (!seen)
+			{
+			unique_xor_indices[unique_xor_count++] = (uint32_t)xor_index;
+			}
+		}
+		found++;
+		}
+
+	if (found != 4U)
+		{
+		lxs_record_recognition_abort(
+			family_abort_count,
+			LXS_RECOGNITION_FAMILY_COMPARE,
+			LXS_RECOGNITION_ABORT_SHAPE);
+		return 0;
+		}
+
+	for (uint32_t i = 0; i < unique_xor_count; ++i)
+		{
+		uint32_t total_consumers = 0U;
+		uint32_t local_consumers = 0U;
+		uint32_t xor_output = nl->gates[unique_xor_indices[i]].output;
+
+		for (uint32_t j = 0; j < 4U; ++j)
+			{
+			if (nl->gates[not_indices[j]].inputs[0] == xor_output)
+				{
+				local_consumers++;
+				}
+			}
+
+		for (uint32_t gate_index = 0; gate_index < nl->gate_count; ++gate_index)
+			{
+			const lxs_gate_ir *consumer = &nl->gates[gate_index];
+			uint32_t consumes_output = 0U;
+
+			for (uint32_t input_index = 0; input_index < consumer->input_count; ++input_index)
+				{
+				if (consumer->inputs[input_index] == xor_output)
+					{
+					consumes_output = 1U;
+					break;
+					}
+				}
+
+			if (!consumes_output)
+				{
+				continue;
+				}
+
+			total_consumers++;
+			if (consumer->type != LXS_GATE_NOT)
+				{
+				if (!(consumer->type == LXS_GATE_AND || consumer->type == LXS_GATE_OR))
+					{
+					lxs_record_recognition_abort(
+						family_abort_count,
+						LXS_RECOGNITION_FAMILY_COMPARE,
+						LXS_RECOGNITION_ABORT_FANOUT);
+					return 0;
+					}
+				}
+			}
+
+		if (total_consumers != gate_use_count[xor_output])
+			{
+			lxs_record_recognition_abort(
+				family_abort_count,
+				LXS_RECOGNITION_FAMILY_COMPARE,
+				LXS_RECOGNITION_ABORT_BRANCH);
+			return 0;
+			}
+
+		unique_xor_absorb[i] = total_consumers == local_consumers ? 1U : 0U;
+		}
+
+	memset(macro, 0, sizeof(*macro));
+	macro->type = LXS_MULTI_MACRO_XNOR_BANK4;
+	macro->level = level;
+	for (uint32_t i = 0; i < 8U; ++i)
+		{
+		macro->inputs[i] = input_ids[i];
+		}
+	for (uint32_t i = 0; i < 4U; ++i)
+		{
+		macro->outputs[i] = output_ids[i];
+		}
+	macro->input_count = 8U;
+	macro->output_count = 4U;
+	macro->gate_equiv_count = 4U;
+	if (matched_gate_count)
+		{
+		*matched_gate_count = 0U;
+		}
+	for (uint32_t i = 0; i < 4U; ++i)
+		{
+		if (matched_gate_indices && matched_gate_count)
+			{
+			matched_gate_indices[*matched_gate_count] = not_indices[i];
+			(*matched_gate_count)++;
+			}
+		}
+	for (uint32_t i = 0; i < unique_xor_count; ++i)
+		{
+		if (unique_xor_absorb[i])
+			{
+			macro->gate_equiv_count++;
+			if (matched_gate_indices && matched_gate_count)
+				{
+				matched_gate_indices[*matched_gate_count] = unique_xor_indices[i];
+				(*matched_gate_count)++;
+				}
+			}
+		}
+	return 1;
+	}
+
+static int lxs_try_match_compare_and4_local(
+	const lxs_netlist *nl,
+	const int32_t *comb_driver,
+	const uint32_t *gate_use_count,
+	const uint8_t *matched_gates,
+	uint32_t root_index,
+	uint64_t *family_candidate_roots,
+	uint64_t *family_nodes_visited,
+	uint32_t *family_max_depth_reached,
+	uint64_t family_abort_count[LXS_RECOGNITION_FAMILY_COUNT][LXS_RECOGNITION_ABORT_REASON_COUNT],
+	uint32_t *matched_gate_indices,
+	uint32_t *matched_gate_count,
+	lxs_multi_macro_plan *macro)
+	{
+	const lxs_gate_ir *root_gate;
+	uint32_t source_ids[4];
+	uint32_t invert_mask = 0U;
+	uint32_t invert_count = 0U;
+
+	if (root_index >= nl->gate_count)
+		{
+		lxs_record_recognition_abort(
+			family_abort_count,
+			LXS_RECOGNITION_FAMILY_COMPARE,
+			LXS_RECOGNITION_ABORT_SHAPE);
+		return 0;
+		}
+
+	root_gate = &nl->gates[root_index];
+	if (matched_gates[root_index] ||
+		root_gate->type != LXS_GATE_AND ||
+		root_gate->input_count != 4U)
+		{
+		return 0;
+		}
+
+	lxs_record_recognition_candidate(family_candidate_roots, LXS_RECOGNITION_FAMILY_COMPARE);
+	lxs_record_recognition_visit(
+		family_nodes_visited,
+		family_max_depth_reached,
+		LXS_RECOGNITION_FAMILY_COMPARE,
+		1U);
+
+	if (matched_gate_count)
+		{
+		*matched_gate_count = 0U;
+		}
+
+	for (uint32_t input_index = 0; input_index < 4U; ++input_index)
+		{
+		uint32_t source_net = root_gate->inputs[input_index];
+		int32_t source_gate_index;
+
+		{
+		int32_t not_index = comb_driver[source_net];
+		if (not_index >= 0)
+			{
+			const lxs_gate_ir *not_gate = &nl->gates[(uint32_t)not_index];
+
+			lxs_record_recognition_visit(
+				family_nodes_visited,
+				family_max_depth_reached,
+				LXS_RECOGNITION_FAMILY_COMPARE,
+				2U);
+
+			if (not_gate->type == LXS_GATE_NOT &&
+				not_gate->input_count == 1U &&
+				gate_use_count[source_net] == 1U)
+				{
+				source_net = not_gate->inputs[0];
+				invert_mask |= (1U << input_index);
+				invert_count++;
+				if (matched_gate_indices && matched_gate_count)
+					{
+					matched_gate_indices[*matched_gate_count] = (uint32_t)not_index;
+					(*matched_gate_count)++;
+					}
+				}
+			}
+		}
+
+		source_gate_index = comb_driver[source_net];
+		if (source_gate_index < 0)
+			{
+			lxs_record_recognition_abort(
+				family_abort_count,
+				LXS_RECOGNITION_FAMILY_COMPARE,
+				LXS_RECOGNITION_ABORT_SHAPE);
+			if (matched_gate_count)
+				{
+				*matched_gate_count = 0U;
+				}
+			return 0;
+			}
+
+		lxs_record_recognition_visit(
+			family_nodes_visited,
+			family_max_depth_reached,
+			LXS_RECOGNITION_FAMILY_COMPARE,
+			3U);
+
+		if (nl->gates[(uint32_t)source_gate_index].type != LXS_GATE_XOR ||
+			nl->gates[(uint32_t)source_gate_index].input_count != 2U)
+			{
+			lxs_record_recognition_abort(
+				family_abort_count,
+				LXS_RECOGNITION_FAMILY_COMPARE,
+				LXS_RECOGNITION_ABORT_SHAPE);
+			if (matched_gate_count)
+				{
+				*matched_gate_count = 0U;
+				}
+			return 0;
+			}
+
+		source_ids[input_index] = source_net;
+		}
+
+	memset(macro, 0, sizeof(*macro));
+	macro->type = LXS_MULTI_MACRO_COMPARE_AND4;
+	macro->level = root_gate->level;
+	macro->input_count = 4U;
+	macro->output_count = 1U;
+	macro->gate_equiv_count = 3U + invert_count;
+	macro->param0 = invert_mask;
+	for (uint32_t i = 0; i < 4U; ++i)
+		{
+		macro->inputs[i] = source_ids[i];
+		}
+	macro->outputs[0] = root_gate->output;
+
+	if (matched_gate_indices && matched_gate_count)
+		{
+		matched_gate_indices[*matched_gate_count] = root_index;
+		(*matched_gate_count)++;
+		}
+
+	return 1;
+	}
+
+static int lxs_try_match_compare_or4_local(
+	const lxs_netlist *nl,
+	const int32_t *comb_driver,
+	const uint32_t *gate_use_count,
+	const uint8_t *matched_gates,
+	uint32_t root_index,
+	uint64_t *family_candidate_roots,
+	uint64_t *family_nodes_visited,
+	uint32_t *family_max_depth_reached,
+	uint64_t family_abort_count[LXS_RECOGNITION_FAMILY_COUNT][LXS_RECOGNITION_ABORT_REASON_COUNT],
+	uint32_t *matched_gate_indices,
+	uint32_t *matched_gate_count,
+	lxs_multi_macro_plan *macro)
+	{
+	const lxs_gate_ir *root_gate;
+	uint32_t base_ids[4];
+	uint32_t term_masks[4];
+	uint32_t invert_count = 0U;
+	uint32_t and_indices[4];
+	uint32_t unique_not_indices[16];
+	uint32_t unique_not_count = 0U;
+
+	if (root_index >= nl->gate_count)
+		{
+		lxs_record_recognition_abort(
+			family_abort_count,
+			LXS_RECOGNITION_FAMILY_COMPARE,
+			LXS_RECOGNITION_ABORT_SHAPE);
+		return 0;
+		}
+
+	root_gate = &nl->gates[root_index];
+	if (matched_gates[root_index] ||
+		root_gate->type != LXS_GATE_OR ||
+		root_gate->input_count != 4U)
+		{
+		return 0;
+		}
+
+	lxs_record_recognition_candidate(family_candidate_roots, LXS_RECOGNITION_FAMILY_COMPARE);
+	lxs_record_recognition_visit(
+		family_nodes_visited,
+		family_max_depth_reached,
+		LXS_RECOGNITION_FAMILY_COMPARE,
+		1U);
+
+	if (matched_gate_count)
+		{
+		*matched_gate_count = 0U;
+		}
+
+	for (uint32_t term_index = 0; term_index < 4U; ++term_index)
+		{
+		uint32_t and_net = root_gate->inputs[term_index];
+		int32_t and_index = comb_driver[and_net];
+		const lxs_gate_ir *and_gate;
+		uint32_t local_mask = 0U;
+		uint32_t seen_mask = 0U;
+
+		if (and_index < 0 || gate_use_count[and_net] != 1U)
+			{
+			lxs_record_recognition_abort(
+				family_abort_count,
+				LXS_RECOGNITION_FAMILY_COMPARE,
+				LXS_RECOGNITION_ABORT_BRANCH);
+			if (matched_gate_count)
+				{
+				*matched_gate_count = 0U;
+				}
+			return 0;
+			}
+
+		and_gate = &nl->gates[(uint32_t)and_index];
+		and_indices[term_index] = (uint32_t)and_index;
+		lxs_record_recognition_visit(
+			family_nodes_visited,
+			family_max_depth_reached,
+			LXS_RECOGNITION_FAMILY_COMPARE,
+			2U);
+
+		if (matched_gates[(uint32_t)and_index] ||
+			and_gate->type != LXS_GATE_AND ||
+			and_gate->input_count != 4U)
+			{
+			lxs_record_recognition_abort(
+				family_abort_count,
+				LXS_RECOGNITION_FAMILY_COMPARE,
+				LXS_RECOGNITION_ABORT_SHAPE);
+			if (matched_gate_count)
+				{
+				*matched_gate_count = 0U;
+				}
+			return 0;
+			}
+
+		if (matched_gate_indices && matched_gate_count)
+			{
+			matched_gate_indices[*matched_gate_count] = (uint32_t)and_index;
+			(*matched_gate_count)++;
+			}
+
+		for (uint32_t input_index = 0; input_index < 4U; ++input_index)
+			{
+			uint32_t source_net = and_gate->inputs[input_index];
+			int32_t not_index = comb_driver[source_net];
+			int32_t source_gate_index;
+			uint32_t base_position = UINT32_MAX;
+
+			if (not_index >= 0)
+				{
+				const lxs_gate_ir *not_gate = &nl->gates[(uint32_t)not_index];
+
+				lxs_record_recognition_visit(
+					family_nodes_visited,
+					family_max_depth_reached,
+					LXS_RECOGNITION_FAMILY_COMPARE,
+					3U);
+
+				if (not_gate->type == LXS_GATE_NOT &&
+					not_gate->input_count == 1U)
+					{
+					source_net = not_gate->inputs[0];
+					{
+					uint32_t seen_not = 0U;
+					for (uint32_t k = 0; k < unique_not_count; ++k)
+						{
+						if (unique_not_indices[k] == (uint32_t)not_index)
+							{
+							seen_not = 1U;
+							break;
+							}
+						}
+					if (!seen_not)
+						{
+						unique_not_indices[unique_not_count++] = (uint32_t)not_index;
+						invert_count++;
+						}
+					}
+					}
+				}
+
+			source_gate_index = comb_driver[source_net];
+			if (source_gate_index < 0 ||
+				nl->gates[(uint32_t)source_gate_index].type != LXS_GATE_XOR ||
+				nl->gates[(uint32_t)source_gate_index].input_count != 2U)
+				{
+				lxs_record_recognition_abort(
+					family_abort_count,
+					LXS_RECOGNITION_FAMILY_COMPARE,
+					LXS_RECOGNITION_ABORT_SHAPE);
+				if (matched_gate_count)
+					{
+					*matched_gate_count = 0U;
+					}
+				return 0;
+				}
+
+			lxs_record_recognition_visit(
+				family_nodes_visited,
+				family_max_depth_reached,
+				LXS_RECOGNITION_FAMILY_COMPARE,
+				4U);
+
+			if (term_index == 0U)
+				{
+				base_ids[input_index] = source_net;
+				base_position = input_index;
+				}
+			else
+				{
+				for (uint32_t base_index = 0; base_index < 4U; ++base_index)
+					{
+					if (base_ids[base_index] == source_net)
+						{
+						base_position = base_index;
+						break;
+						}
+					}
+				}
+
+			if (base_position == UINT32_MAX || ((seen_mask >> base_position) & 1U) != 0U)
+				{
+				lxs_record_recognition_abort(
+					family_abort_count,
+					LXS_RECOGNITION_FAMILY_COMPARE,
+					LXS_RECOGNITION_ABORT_OVERLAP);
+				if (matched_gate_count)
+					{
+					*matched_gate_count = 0U;
+					}
+				return 0;
+				}
+
+			seen_mask |= (1U << base_position);
+			if (source_net != and_gate->inputs[input_index])
+				{
+				local_mask |= (1U << base_position);
+				}
+			}
+
+		term_masks[term_index] = local_mask;
+		}
+
+	for (uint32_t i = 0; i < unique_not_count; ++i)
+		{
+		uint32_t not_output = nl->gates[unique_not_indices[i]].output;
+
+		for (uint32_t gate_index = 0; gate_index < nl->gate_count; ++gate_index)
+			{
+			const lxs_gate_ir *consumer = &nl->gates[gate_index];
+			uint32_t consumes_output = 0U;
+			uint32_t local_consumer = 0U;
+
+			for (uint32_t input_index = 0; input_index < consumer->input_count; ++input_index)
+				{
+				if (consumer->inputs[input_index] == not_output)
+					{
+					consumes_output = 1U;
+					break;
+					}
+				}
+
+			if (!consumes_output)
+				{
+				continue;
+				}
+
+			for (uint32_t term_index = 0; term_index < 4U; ++term_index)
+				{
+				if (and_indices[term_index] == gate_index)
+					{
+					local_consumer = 1U;
+					break;
+					}
+				}
+
+			if (!local_consumer)
+				{
+				lxs_record_recognition_abort(
+					family_abort_count,
+					LXS_RECOGNITION_FAMILY_COMPARE,
+					LXS_RECOGNITION_ABORT_BRANCH);
+				if (matched_gate_count)
+					{
+					*matched_gate_count = 0U;
+					}
+				return 0;
+				}
+			}
+		}
+
+	memset(macro, 0, sizeof(*macro));
+	macro->type = LXS_MULTI_MACRO_COMPARE_OR4;
+	macro->level = root_gate->level;
+	macro->input_count = 4U;
+	macro->output_count = 1U;
+	macro->gate_equiv_count = 15U + invert_count;
+	macro->param0 =
+		(term_masks[0] & 0xFU) |
+		((term_masks[1] & 0xFU) << 4U) |
+		((term_masks[2] & 0xFU) << 8U) |
+		((term_masks[3] & 0xFU) << 12U);
+	for (uint32_t i = 0; i < 4U; ++i)
+		{
+		macro->inputs[i] = base_ids[i];
+		}
+	macro->outputs[0] = root_gate->output;
+
+	if (matched_gate_indices && matched_gate_count)
+		{
+		for (uint32_t i = 0; i < unique_not_count; ++i)
+			{
+			matched_gate_indices[*matched_gate_count] = unique_not_indices[i];
+			(*matched_gate_count)++;
+			}
+		matched_gate_indices[*matched_gate_count] = root_index;
+		(*matched_gate_count)++;
+		}
+
+	return 1;
+	}
+
+static int lxs_try_match_compare_decode4_local(
+	const lxs_netlist *nl,
+	const int32_t *comb_driver,
+	const uint8_t *matched_gates,
+	uint32_t root_index,
+	uint64_t *family_candidate_roots,
+	uint64_t *family_nodes_visited,
+	uint32_t *family_max_depth_reached,
+	uint64_t family_abort_count[LXS_RECOGNITION_FAMILY_COUNT][LXS_RECOGNITION_ABORT_REASON_COUNT],
+	uint32_t *matched_gate_count,
+	uint32_t *gate_equiv_count)
+	{
+	const lxs_gate_ir *root_gate;
+	uint32_t compare_literals = 0U;
+
+	if (root_index >= nl->gate_count)
+		{
+		lxs_record_recognition_abort(
+			family_abort_count,
+			LXS_RECOGNITION_FAMILY_COMPARE,
+			LXS_RECOGNITION_ABORT_SHAPE);
+		return 0;
+		}
+
+	root_gate = &nl->gates[root_index];
+	if (matched_gates[root_index] ||
+		(root_gate->type != LXS_GATE_AND && root_gate->type != LXS_GATE_OR) ||
+		root_gate->input_count < 4U ||
+		root_gate->input_count > 8U)
+		{
+		return 0;
+		}
+
+	lxs_record_recognition_candidate(family_candidate_roots, LXS_RECOGNITION_FAMILY_COMPARE);
+	lxs_record_recognition_visit(
+		family_nodes_visited,
+		family_max_depth_reached,
+		LXS_RECOGNITION_FAMILY_COMPARE,
+		1U);
+
+	for (uint32_t input_index = 0; input_index < root_gate->input_count; ++input_index)
+		{
+		int32_t driver_index = comb_driver[root_gate->inputs[input_index]];
+
+		if (driver_index < 0)
+			{
+			continue;
+			}
+
+		if ((uint32_t)driver_index >= nl->gate_count)
+			{
+			lxs_record_recognition_abort(
+				family_abort_count,
+				LXS_RECOGNITION_FAMILY_COMPARE,
+				LXS_RECOGNITION_ABORT_NODE_BUDGET);
+			return 0;
+			}
+
+		{
+		const lxs_gate_ir *driver_gate = &nl->gates[(uint32_t)driver_index];
+
+		lxs_record_recognition_visit(
+			family_nodes_visited,
+			family_max_depth_reached,
+			LXS_RECOGNITION_FAMILY_COMPARE,
+			2U);
+
+		if (driver_gate->type == LXS_GATE_XOR && driver_gate->input_count == 2U)
+			{
+			compare_literals++;
+			continue;
+			}
+
+		if (driver_gate->type == LXS_GATE_NOT && driver_gate->input_count == 1U)
+			{
+			int32_t xor_index = comb_driver[driver_gate->inputs[0]];
+			if (xor_index < 0)
+				{
+				continue;
+				}
+			if ((uint32_t)xor_index >= nl->gate_count)
+				{
+				lxs_record_recognition_abort(
+					family_abort_count,
+					LXS_RECOGNITION_FAMILY_COMPARE,
+					LXS_RECOGNITION_ABORT_NODE_BUDGET);
+				return 0;
+				}
+			lxs_record_recognition_visit(
+				family_nodes_visited,
+				family_max_depth_reached,
+				LXS_RECOGNITION_FAMILY_COMPARE,
+				3U);
+			if (nl->gates[(uint32_t)xor_index].type == LXS_GATE_XOR &&
+				nl->gates[(uint32_t)xor_index].input_count == 2U)
+				{
+				compare_literals++;
+				}
+			}
+		}
+		}
+
+	if (compare_literals < 4U)
+		{
+		lxs_record_recognition_abort(
+			family_abort_count,
+			LXS_RECOGNITION_FAMILY_COMPARE,
+			LXS_RECOGNITION_ABORT_SHAPE);
+		return 0;
+		}
+
+	if (matched_gate_count)
+		{
+		*matched_gate_count = compare_literals;
+		}
+	if (gate_equiv_count)
+		{
+		*gate_equiv_count = compare_literals;
+		}
+	return 1;
+	}
+
 static uint32_t lxs_collect_multi_macros(
 	const lxs_netlist *nl,
 	const int32_t *comb_driver,
 	uint8_t *matched_gates,
 	uint32_t recognition_mask,
+	uint32_t recognition_mode,
 	uint32_t *family_match_count,
 	uint32_t *family_node_reduction,
+	uint64_t *family_candidate_roots,
+	uint64_t *family_nodes_visited,
+	uint32_t *family_max_depth_reached,
+	uint64_t family_abort_count[LXS_RECOGNITION_FAMILY_COUNT][LXS_RECOGNITION_ABORT_REASON_COUNT],
+	uint64_t *family_time_us,
 	lxs_multi_macro_plan *macros)
 	{
 	uint32_t *net_use_count;
@@ -3536,90 +4556,140 @@ static uint32_t lxs_collect_multi_macros(
 
 	if (lxs_recognition_family_enabled(recognition_mask, LXS_RECOGNITION_FAMILY_COMPARE))
 		{
-		for (uint32_t i = 0; i < nl->gate_count; ++i)
+		clock_t family_start = clock();
+		if (recognition_mode == LXS_RECOGNITION_MODE_REPLACE)
 			{
-			const lxs_gate_ir *seed = &nl->gates[i];
-			uint32_t input_ids[8];
-			uint32_t output_ids[4];
-			uint32_t gate_indices[8];
-			uint32_t found = 0U;
-			lxs_multi_macro_plan macro;
-
-			if (matched_gates[i] || seed->type != LXS_GATE_NOT || seed->input_count != 1U)
+			for (uint32_t i = 0; i < nl->gate_count; ++i)
 				{
-				continue;
-				}
+				lxs_multi_macro_plan macro;
+				uint32_t matched_gate_indices[32];
+				uint32_t matched_gate_count = 0U;
 
-			for (uint32_t j = i; j < nl->gate_count && found < 4U; ++j)
-				{
-				const lxs_gate_ir *gate = &nl->gates[j];
-				int32_t xor_index;
-				const lxs_gate_ir *xor_gate;
-
-				if (matched_gates[j] || gate->type != LXS_GATE_NOT || gate->input_count != 1U || gate->level != seed->level)
+				if (!lxs_try_match_compare_or4_local(
+						nl,
+						comb_driver,
+						gate_use_count,
+						matched_gates,
+						i,
+						family_candidate_roots,
+						family_nodes_visited,
+						family_max_depth_reached,
+						family_abort_count,
+						matched_gate_indices,
+						&matched_gate_count,
+						&macro))
 					{
 					continue;
 					}
 
-				xor_index = comb_driver[gate->inputs[0]];
-				if (xor_index < 0)
+				for (uint32_t j = 0; j < matched_gate_count; ++j)
+					{
+					matched_gates[matched_gate_indices[j]] = 1U;
+					}
+
+				if (macros)
+					{
+					macros[macro_count] = macro;
+					}
+				lxs_record_recognition(
+					family_match_count,
+					family_node_reduction,
+					LXS_RECOGNITION_FAMILY_COMPARE,
+					matched_gate_count);
+				macro_count++;
+				}
+
+			for (uint32_t i = 0; i < nl->gate_count; ++i)
+				{
+				lxs_multi_macro_plan macro;
+				uint32_t matched_gate_indices[32];
+				uint32_t matched_gate_count = 0U;
+
+				if (!lxs_try_match_compare_and4_local(
+						nl,
+						comb_driver,
+						gate_use_count,
+						matched_gates,
+						i,
+						family_candidate_roots,
+						family_nodes_visited,
+						family_max_depth_reached,
+						family_abort_count,
+						matched_gate_indices,
+						&matched_gate_count,
+						&macro) &&
+					!lxs_try_match_xnor_bank4_local(
+						nl,
+						comb_driver,
+						gate_use_count,
+						matched_gates,
+						i,
+						family_candidate_roots,
+						family_nodes_visited,
+						family_max_depth_reached,
+						family_abort_count,
+						matched_gate_indices,
+						&matched_gate_count,
+						&macro))
 					{
 					continue;
 					}
 
-				xor_gate = &nl->gates[(uint32_t)xor_index];
-				if (matched_gates[(uint32_t)xor_index] ||
-					xor_gate->type != LXS_GATE_XOR ||
-					xor_gate->input_count != 2U ||
-					gate_use_count[xor_gate->output] != 1U)
+				for (uint32_t j = 0; j < matched_gate_count; ++j)
 					{
-					continue;
+					matched_gates[matched_gate_indices[j]] = 1U;
 					}
 
-				input_ids[found * 2U] = xor_gate->inputs[0];
-				input_ids[found * 2U + 1U] = xor_gate->inputs[1];
-				output_ids[found] = gate->output;
-				gate_indices[found * 2U] = (uint32_t)xor_index;
-				gate_indices[found * 2U + 1U] = j;
-				found++;
+				if (macros)
+					{
+					macros[macro_count] = macro;
+					}
+				lxs_record_recognition(
+					family_match_count,
+						family_node_reduction,
+						LXS_RECOGNITION_FAMILY_COMPARE,
+						matched_gate_count);
+				macro_count++;
 				}
-
-			if (found != 4U)
-				{
-				continue;
-				}
-
-			for (uint32_t j = 0; j < 8U; ++j)
-				{
-				matched_gates[gate_indices[j]] = 1U;
-				}
-
-			memset(&macro, 0, sizeof(macro));
-			macro.type = LXS_MULTI_MACRO_XNOR_BANK4;
-			macro.level = seed->level;
-			for (uint32_t j = 0; j < 8U; ++j)
-				{
-				macro.inputs[j] = input_ids[j];
-				}
-			for (uint32_t j = 0; j < 4U; ++j)
-				{
-				macro.outputs[j] = output_ids[j];
-				}
-			macro.input_count = 8U;
-			macro.output_count = 4U;
-			macro.gate_equiv_count = 8U;
-
-			if (macros)
-				{
-				macros[macro_count] = macro;
-				}
-			lxs_record_recognition(
-				family_match_count,
-				family_node_reduction,
-				LXS_RECOGNITION_FAMILY_COMPARE,
-				8U);
-			macro_count++;
 			}
+		else
+			{
+			for (uint32_t i = 0; i < nl->gate_count; ++i)
+				{
+				uint32_t matched_gate_count = 0U;
+				uint32_t gate_equiv_count = 0U;
+
+				if (!lxs_try_match_compare_decode4_local(
+						nl,
+						comb_driver,
+						matched_gates,
+						i,
+						family_candidate_roots,
+						family_nodes_visited,
+						family_max_depth_reached,
+						family_abort_count,
+						&matched_gate_count,
+						&gate_equiv_count))
+					{
+					continue;
+					}
+
+				lxs_record_recognition(
+					family_match_count,
+					family_node_reduction,
+					LXS_RECOGNITION_FAMILY_COMPARE,
+					matched_gate_count);
+				if (gate_equiv_count > 0U)
+					{
+					macro_count++;
+					}
+				}
+			}
+		lxs_record_recognition_time(
+			family_time_us,
+			LXS_RECOGNITION_FAMILY_COMPARE,
+			family_start,
+			clock());
 		}
 
 	if (lxs_recognition_family_enabled(recognition_mask, LXS_RECOGNITION_FAMILY_ARITHMETIC))
@@ -4229,7 +5299,7 @@ static lxs_netlist* lxs_load_bench(const char *path)
 			char *input_ctx = NULL;
 			char *input_token = strtok_s(open_paren + 1, ",", &input_ctx);
 
-			while (input_token && input_count < 9U)
+			while (input_token && input_count < 17U)
 				{
 				input_ids[input_count] = lxs_intern_net(nl, lxs_trim(input_token));
 				if (input_ids[input_count] == UINT32_MAX)
@@ -4270,6 +5340,17 @@ static lxs_netlist* lxs_load_bench(const char *path)
 			{
 			if (output_count != 3U || input_count != 5U ||
 				!lxs_emit_ripple_slice2_macro(nl, output_ids, input_ids, macro_serial++))
+				{
+				lxs_free_netlist(nl);
+				fclose(stream);
+				return NULL;
+				}
+			is_special_macro = 1U;
+			}
+		else if (strcmp(gate_name, "RIPPLE_ADD4") == 0)
+			{
+			if (output_count != 5U || input_count != 9U ||
+				!lxs_emit_ripple_add4_macro(nl, output_ids, input_ids, macro_serial++))
 				{
 				lxs_free_netlist(nl);
 				fclose(stream);
@@ -4596,8 +5677,14 @@ lxs_plan* lxs_compile_to_plan(lxs_netlist *nl)
 		comb_driver,
 		recognition_multi_marks,
 		plan->recognition_mask,
+		plan->recognition_mode,
 		plan->recognition_match_count,
 		plan->recognition_node_reduction,
+		plan->recognition_candidate_roots,
+		plan->recognition_nodes_visited,
+		plan->recognition_max_depth,
+		plan->recognition_abort_count,
+		plan->recognition_time_us,
 		NULL);
 	if (plan->recognition_mode == LXS_RECOGNITION_MODE_REPORT_ONLY)
 		{
@@ -4649,6 +5736,11 @@ lxs_plan* lxs_compile_to_plan(lxs_netlist *nl)
 		plan->recognition_mask,
 		plan->recognition_match_count,
 		plan->recognition_node_reduction,
+		plan->recognition_candidate_roots,
+		plan->recognition_nodes_visited,
+		plan->recognition_max_depth,
+		plan->recognition_abort_count,
+		plan->recognition_time_us,
 		NULL);
 	if (plan->recognition_mode == LXS_RECOGNITION_MODE_REPORT_ONLY)
 		{
@@ -4847,6 +5939,12 @@ lxs_plan* lxs_compile_to_plan(lxs_netlist *nl)
 				comb_driver,
 				multi_matched_gates,
 				plan->recognition_mask,
+				plan->recognition_mode,
+				NULL,
+				NULL,
+				NULL,
+				NULL,
+				NULL,
 				NULL,
 				NULL,
 				plan->multi_macros + multi_macro_fill);
@@ -4878,6 +5976,11 @@ lxs_plan* lxs_compile_to_plan(lxs_netlist *nl)
 				comb_driver,
 				matched_gates,
 				plan->recognition_mask,
+				NULL,
+				NULL,
+				NULL,
+				NULL,
+				NULL,
 				NULL,
 				NULL,
 				plan->macros + macro_fill);

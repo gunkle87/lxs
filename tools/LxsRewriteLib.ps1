@@ -8,7 +8,7 @@ function Initialize-LxsRewrite
 		[string]$Usage
 	)
 
-	if ($Mode -ne "packed" -and $Mode -ne "anchor")
+	if ($Mode -ne "packed" -and $Mode -ne "anchor" -and $Mode -ne "neighborhood")
 		{
 		throw $Usage
 		}

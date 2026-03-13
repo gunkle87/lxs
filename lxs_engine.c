@@ -1041,6 +1041,124 @@ static void lxs_execute_multi_macros(
 			net_value[macro->outputs[2]] = carry1_value;
 			net_mask[macro->outputs[2]] = carry1_mask;
 			}
+		else if (macro->type == LXS_MULTI_MACRO_RIPPLE_ADD4)
+			{
+			uint64_t xor2_value;
+			uint64_t xor2_mask;
+			uint64_t and2_value;
+			uint64_t and2_mask;
+			uint64_t inner2_value;
+			uint64_t inner2_mask;
+			uint64_t sum2_value;
+			uint64_t sum2_mask;
+			uint64_t carry2_value;
+			uint64_t carry2_mask;
+			uint64_t xor3_value;
+			uint64_t xor3_mask;
+			uint64_t and3_value;
+			uint64_t and3_mask;
+			uint64_t inner3_value;
+			uint64_t inner3_mask;
+			uint64_t sum3_value;
+			uint64_t sum3_mask;
+			uint64_t carry3_value;
+			uint64_t carry3_mask;
+
+			LXS_EVAL_XOR(
+				net_value[macro->inputs[0]],
+				net_mask[macro->inputs[0]],
+				net_value[macro->inputs[1]],
+				net_mask[macro->inputs[1]],
+				xor0_value,
+				xor0_mask);
+			LXS_EVAL_XOR(
+				xor0_value,
+				xor0_mask,
+				net_value[macro->inputs[8]],
+				net_mask[macro->inputs[8]],
+				sum0_value,
+				sum0_mask);
+			LXS_EVAL_AND(
+				net_value[macro->inputs[0]],
+				net_mask[macro->inputs[0]],
+				net_value[macro->inputs[1]],
+				net_mask[macro->inputs[1]],
+				and0_value,
+				and0_mask);
+			LXS_EVAL_AND(
+				xor0_value,
+				xor0_mask,
+				net_value[macro->inputs[8]],
+				net_mask[macro->inputs[8]],
+				inner0_value,
+				inner0_mask);
+			LXS_EVAL_OR(and0_value, and0_mask, inner0_value, inner0_mask, carry0_value, carry0_mask);
+
+			LXS_EVAL_XOR(
+				net_value[macro->inputs[2]],
+				net_mask[macro->inputs[2]],
+				net_value[macro->inputs[3]],
+				net_mask[macro->inputs[3]],
+				xor1_value,
+				xor1_mask);
+			LXS_EVAL_XOR(carry0_value, carry0_mask, xor1_value, xor1_mask, sum1_value, sum1_mask);
+			LXS_EVAL_AND(
+				net_value[macro->inputs[2]],
+				net_mask[macro->inputs[2]],
+				net_value[macro->inputs[3]],
+				net_mask[macro->inputs[3]],
+				and1_value,
+				and1_mask);
+			LXS_EVAL_AND(carry0_value, carry0_mask, xor1_value, xor1_mask, inner1_value, inner1_mask);
+			LXS_EVAL_OR(and1_value, and1_mask, inner1_value, inner1_mask, carry1_value, carry1_mask);
+
+			LXS_EVAL_XOR(
+				net_value[macro->inputs[4]],
+				net_mask[macro->inputs[4]],
+				net_value[macro->inputs[5]],
+				net_mask[macro->inputs[5]],
+				xor2_value,
+				xor2_mask);
+			LXS_EVAL_XOR(carry1_value, carry1_mask, xor2_value, xor2_mask, sum2_value, sum2_mask);
+			LXS_EVAL_AND(
+				net_value[macro->inputs[4]],
+				net_mask[macro->inputs[4]],
+				net_value[macro->inputs[5]],
+				net_mask[macro->inputs[5]],
+				and2_value,
+				and2_mask);
+			LXS_EVAL_AND(carry1_value, carry1_mask, xor2_value, xor2_mask, inner2_value, inner2_mask);
+			LXS_EVAL_OR(and2_value, and2_mask, inner2_value, inner2_mask, carry2_value, carry2_mask);
+
+			LXS_EVAL_XOR(
+				net_value[macro->inputs[6]],
+				net_mask[macro->inputs[6]],
+				net_value[macro->inputs[7]],
+				net_mask[macro->inputs[7]],
+				xor3_value,
+				xor3_mask);
+			LXS_EVAL_XOR(carry2_value, carry2_mask, xor3_value, xor3_mask, sum3_value, sum3_mask);
+			LXS_EVAL_AND(
+				net_value[macro->inputs[6]],
+				net_mask[macro->inputs[6]],
+				net_value[macro->inputs[7]],
+				net_mask[macro->inputs[7]],
+				and3_value,
+				and3_mask);
+			LXS_EVAL_AND(carry2_value, carry2_mask, xor3_value, xor3_mask, inner3_value, inner3_mask);
+			LXS_EVAL_OR(and3_value, and3_mask, inner3_value, inner3_mask, carry3_value, carry3_mask);
+
+			net_value[macro->outputs[0]] = sum0_value;
+			net_mask[macro->outputs[0]] = sum0_mask;
+			net_value[macro->outputs[1]] = sum1_value;
+			net_mask[macro->outputs[1]] = sum1_mask;
+			net_value[macro->outputs[2]] = sum2_value;
+			net_mask[macro->outputs[2]] = sum2_mask;
+			net_value[macro->outputs[3]] = sum3_value;
+			net_mask[macro->outputs[3]] = sum3_mask;
+			net_value[macro->outputs[4]] = carry3_value;
+			net_mask[macro->outputs[4]] = carry3_mask;
+			}
 		else if (macro->type == LXS_MULTI_MACRO_XOR_FAN8)
 			{
 			for (uint32_t j = 0; j < 8U; ++j)
@@ -1070,6 +1188,112 @@ static void lxs_execute_multi_macros(
 				net_value[macro->outputs[j]] = sum_value;
 				net_mask[macro->outputs[j]] = sum_mask;
 				}
+			}
+		else if (macro->type == LXS_MULTI_MACRO_COMPARE_AND4)
+			{
+			uint64_t term_value;
+			uint64_t term_mask;
+			uint32_t invert_mask = macro->param0 & 0xFU;
+
+			term_value = net_value[macro->inputs[0]];
+			term_mask = net_mask[macro->inputs[0]];
+			if ((invert_mask & 1U) != 0U)
+				{
+				LXS_EVAL_NOT(term_value, term_mask, term_value, term_mask);
+				}
+
+			for (uint32_t j = 1; j < 4U; ++j)
+				{
+				uint64_t rhs_value = net_value[macro->inputs[j]];
+				uint64_t rhs_mask = net_mask[macro->inputs[j]];
+
+				if ((invert_mask & (1U << j)) != 0U)
+					{
+					LXS_EVAL_NOT(rhs_value, rhs_mask, rhs_value, rhs_mask);
+					}
+
+				LXS_EVAL_AND(
+					term_value,
+					term_mask,
+					rhs_value,
+					rhs_mask,
+					term_value,
+					term_mask);
+				}
+
+			net_value[macro->outputs[0]] = term_value;
+			net_mask[macro->outputs[0]] = term_mask;
+			}
+		else if (macro->type == LXS_MULTI_MACRO_COMPARE_OR4)
+			{
+			uint64_t direct_value[4];
+			uint64_t direct_mask[4];
+			uint64_t invert_value[4];
+			uint64_t invert_mask_arr[4];
+			uint64_t out_value;
+			uint64_t out_mask;
+
+			for (uint32_t j = 0; j < 4U; ++j)
+				{
+				direct_value[j] = net_value[macro->inputs[j]];
+				direct_mask[j] = net_mask[macro->inputs[j]];
+				LXS_EVAL_NOT(
+					direct_value[j],
+					direct_mask[j],
+					invert_value[j],
+					invert_mask_arr[j]);
+				}
+
+			out_value = 0ULL;
+			out_mask = 0ULL;
+			for (uint32_t term_index = 0; term_index < 4U; ++term_index)
+				{
+				uint32_t term_bits = (macro->param0 >> (term_index * 4U)) & 0xFU;
+				uint64_t term_value;
+				uint64_t term_mask;
+
+				for (uint32_t j = 0; j < 4U; ++j)
+					{
+					uint64_t select = ((term_bits >> j) & 1U) ? ~0ULL : 0ULL;
+					uint64_t chosen_value = (direct_value[j] & ~select) | (invert_value[j] & select);
+					uint64_t chosen_mask = (direct_mask[j] & ~select) | (invert_mask_arr[j] & select);
+
+					if (j == 0U)
+						{
+						term_value = chosen_value;
+						term_mask = chosen_mask;
+						}
+					else
+						{
+						LXS_EVAL_AND(
+							term_value,
+							term_mask,
+							chosen_value,
+							chosen_mask,
+							term_value,
+							term_mask);
+						}
+					}
+
+				if (term_index == 0U)
+					{
+					out_value = term_value;
+					out_mask = term_mask;
+					}
+				else
+					{
+					LXS_EVAL_OR(
+						out_value,
+						out_mask,
+						term_value,
+						term_mask,
+						out_value,
+						out_mask);
+					}
+				}
+
+			net_value[macro->outputs[0]] = out_value;
+			net_mask[macro->outputs[0]] = out_mask;
 			}
 		else if (macro->type == LXS_MULTI_MACRO_XNOR_BANK4)
 			{

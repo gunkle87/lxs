@@ -39,8 +39,11 @@ typedef enum lxs_multi_macro_type
 	LXS_MULTI_MACRO_HALF_ADDER = 0,
 	LXS_MULTI_MACRO_FULL_ADDER,
 	LXS_MULTI_MACRO_RIPPLE_SLICE2,
+	LXS_MULTI_MACRO_RIPPLE_ADD4,
 	LXS_MULTI_MACRO_XOR_FAN8,
 	LXS_MULTI_MACRO_AND_FAN8,
+	LXS_MULTI_MACRO_COMPARE_AND4,
+	LXS_MULTI_MACRO_COMPARE_OR4,
 	LXS_MULTI_MACRO_XNOR_BANK4,
 	LXS_MULTI_MACRO_GUARD_CHAIN4,
 	LXS_MULTI_MACRO_FULL_ADDER_CINV,
@@ -53,6 +56,7 @@ typedef enum lxs_source_multi_macro_type
 	LXS_SOURCE_MULTI_MACRO_HALF_ADDER = 0,
 	LXS_SOURCE_MULTI_MACRO_FULL_ADDER,
 	LXS_SOURCE_MULTI_MACRO_RIPPLE_SLICE2,
+	LXS_SOURCE_MULTI_MACRO_RIPPLE_ADD4,
 	LXS_SOURCE_MULTI_MACRO_XOR_FAN8,
 	LXS_SOURCE_MULTI_MACRO_AND_FAN8,
 	LXS_SOURCE_MULTI_MACRO_XNOR_BANK4,
@@ -92,6 +96,17 @@ typedef enum lxs_recognition_pattern_kind
 	LXS_RECOGNITION_PATTERN_SHARED_FANOUT,
 	LXS_RECOGNITION_PATTERN_BANK
 	} lxs_recognition_pattern_kind;
+
+typedef enum lxs_recognition_abort_reason
+	{
+	LXS_RECOGNITION_ABORT_SHAPE = 0,
+	LXS_RECOGNITION_ABORT_FANOUT,
+	LXS_RECOGNITION_ABORT_BRANCH,
+	LXS_RECOGNITION_ABORT_DEPTH,
+	LXS_RECOGNITION_ABORT_NODE_BUDGET,
+	LXS_RECOGNITION_ABORT_OVERLAP,
+	LXS_RECOGNITION_ABORT_REASON_COUNT
+	} lxs_recognition_abort_reason;
 
 typedef struct lxs_recognition_pattern lxs_recognition_pattern;
 struct lxs_recognition_pattern
@@ -240,7 +255,7 @@ struct lxs_source_multi_macro
 	uint32_t type;
 	uint32_t inputs[9];
 	uint32_t outputs[8];
-	uint32_t gate_indices[10];
+	uint32_t gate_indices[20];
 	uint32_t input_count;
 	uint32_t output_count;
 	uint32_t gate_count;
@@ -321,6 +336,7 @@ struct lxs_multi_macro_plan
 	uint32_t input_count;
 	uint32_t output_count;
 	uint32_t gate_equiv_count;
+	uint32_t param0;
 	};
 
 typedef struct lxs_io_plan lxs_io_plan;
@@ -398,6 +414,11 @@ struct lxs_plan
 	uint32_t recognition_mode;
 	uint32_t recognition_match_count[LXS_RECOGNITION_FAMILY_COUNT];
 	uint32_t recognition_node_reduction[LXS_RECOGNITION_FAMILY_COUNT];
+	uint64_t recognition_candidate_roots[LXS_RECOGNITION_FAMILY_COUNT];
+	uint64_t recognition_nodes_visited[LXS_RECOGNITION_FAMILY_COUNT];
+	uint32_t recognition_max_depth[LXS_RECOGNITION_FAMILY_COUNT];
+	uint64_t recognition_abort_count[LXS_RECOGNITION_FAMILY_COUNT][LXS_RECOGNITION_ABORT_REASON_COUNT];
+	uint64_t recognition_time_us[LXS_RECOGNITION_FAMILY_COUNT];
 
 	lxs_gate_ir *comb_gates;
 	lxs_chunk_plan *chunks;

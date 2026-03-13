@@ -1114,6 +1114,184 @@ static int lxs_test_xnor_bank4_recognition_negative(void)
 	return ok;
 	}
 
+static int lxs_test_compare_and4_recognition(void)
+	{
+	lxs_loaded_case loaded;
+	uint64_t values[8];
+	uint64_t masks[8];
+	uint64_t out_values[1];
+	uint64_t out_masks[1];
+	int ok = 1;
+
+	if (!lxs_set_env_var("LXS_RECOGNITION_MASK", "8"))
+		{
+		fprintf(stderr, "FAIL compare_and4_recognition: unable to set recognition mask\n");
+		return 0;
+		}
+
+	if (!lxs_load_case("Tests\\Circuits\\compare_and4_primitive.bench", &loaded))
+		{
+		fprintf(stderr, "FAIL compare_and4_recognition: unable to load test circuit\n");
+		lxs_set_env_var("LXS_RECOGNITION_MASK", NULL);
+		return 0;
+		}
+
+	ok &= lxs_expect_u64("compare_and4_recognition.multi_macro_count", loaded.plan->multi_macro_count, 1ULL);
+	ok &= lxs_expect_u64("compare_and4_recognition.comb_gate_count", loaded.plan->comb_gate_count, 4ULL);
+	ok &= lxs_expect_u64(
+		"compare_and4_recognition.match_count",
+		loaded.plan->recognition_match_count[LXS_RECOGNITION_FAMILY_COMPARE],
+		1ULL);
+	ok &= lxs_expect_u64(
+		"compare_and4_recognition.node_reduction",
+		loaded.plan->recognition_node_reduction[LXS_RECOGNITION_FAMILY_COMPARE],
+		2ULL);
+
+	for (uint32_t combo = 0; combo < 256U; ++combo)
+		{
+		char label[96];
+		uint32_t x0;
+		uint32_t x1;
+		uint32_t x2;
+		uint32_t x3;
+		uint32_t expected;
+
+		for (uint32_t i = 0; i < 8U; ++i)
+			{
+			uint32_t bit = (combo >> i) & 1U;
+			values[i] = bit ? ~0ULL : 0ULL;
+			masks[i] = 0ULL;
+			}
+
+		x0 = ((combo >> 0U) & 1U) ^ ((combo >> 1U) & 1U);
+		x1 = ((combo >> 2U) & 1U) ^ ((combo >> 3U) & 1U);
+		x2 = ((combo >> 4U) & 1U) ^ ((combo >> 5U) & 1U);
+		x3 = ((combo >> 6U) & 1U) ^ ((combo >> 7U) & 1U);
+		expected = ((x0 ^ 1U) & x1 & (x2 ^ 1U) & x3);
+
+		lxs_apply_inputs(&loaded.ctx, loaded.plan, values, masks);
+		lxs_execute_plan(&loaded.ctx, loaded.plan);
+		lxs_read_outputs(&loaded.ctx, loaded.plan, out_values, out_masks);
+
+		snprintf(label, sizeof(label), "compare_and4_recognition.out.%u", combo);
+		ok &= lxs_expect_u64(label, out_values[0], expected ? ~0ULL : 0ULL);
+		snprintf(label, sizeof(label), "compare_and4_recognition.mask.%u", combo);
+		ok &= lxs_expect_u64(label, out_masks[0], 0ULL);
+		}
+
+	lxs_unload_case(&loaded);
+	lxs_set_env_var("LXS_RECOGNITION_MASK", NULL);
+	return ok;
+	}
+
+static int lxs_test_compare_and4_recognition_negative(void)
+	{
+	lxs_loaded_case loaded;
+	int ok = 1;
+
+	if (!lxs_set_env_var("LXS_RECOGNITION_MASK", "8"))
+		{
+		fprintf(stderr, "FAIL compare_and4_recognition_negative: unable to set recognition mask\n");
+		return 0;
+		}
+
+	if (!lxs_load_case("Tests\\Circuits\\compare_and4_negative.bench", &loaded))
+		{
+		fprintf(stderr, "FAIL compare_and4_recognition_negative: unable to load test circuit\n");
+		lxs_set_env_var("LXS_RECOGNITION_MASK", NULL);
+		return 0;
+		}
+
+	ok &= lxs_expect_u64("compare_and4_recognition_negative.multi_macro_count", loaded.plan->multi_macro_count, 0ULL);
+	ok &= lxs_expect_u64("compare_and4_recognition_negative.comb_gate_count", loaded.plan->comb_gate_count, 8ULL);
+	ok &= lxs_expect_u64(
+		"compare_and4_recognition_negative.match_count",
+		loaded.plan->recognition_match_count[LXS_RECOGNITION_FAMILY_COMPARE],
+		0ULL);
+	ok &= lxs_expect_u64(
+		"compare_and4_recognition_negative.node_reduction",
+		loaded.plan->recognition_node_reduction[LXS_RECOGNITION_FAMILY_COMPARE],
+		0ULL);
+
+	lxs_unload_case(&loaded);
+	lxs_set_env_var("LXS_RECOGNITION_MASK", NULL);
+	return ok;
+	}
+
+static int lxs_test_compare_or4_recognition(void)
+	{
+	lxs_loaded_case loaded;
+	uint64_t values[8];
+	uint64_t masks[8];
+	uint64_t out_values[1];
+	uint64_t out_masks[1];
+	int ok = 1;
+
+	if (!lxs_set_env_var("LXS_RECOGNITION_MASK", "8"))
+		{
+		fprintf(stderr, "FAIL compare_or4_recognition: unable to set recognition mask\n");
+		return 0;
+		}
+
+	if (!lxs_load_case("Tests\\Circuits\\compare_or4_primitive.bench", &loaded))
+		{
+		fprintf(stderr, "FAIL compare_or4_recognition: unable to load test circuit\n");
+		lxs_set_env_var("LXS_RECOGNITION_MASK", NULL);
+		return 0;
+		}
+
+	ok &= lxs_expect_u64("compare_or4_recognition.multi_macro_count", loaded.plan->multi_macro_count, 1ULL);
+	ok &= lxs_expect_u64("compare_or4_recognition.comb_gate_count", loaded.plan->comb_gate_count, 4ULL);
+	ok &= lxs_expect_u64(
+		"compare_or4_recognition.match_count",
+		loaded.plan->recognition_match_count[LXS_RECOGNITION_FAMILY_COMPARE],
+		1ULL);
+	ok &= lxs_expect_u64(
+		"compare_or4_recognition.node_reduction",
+		loaded.plan->recognition_node_reduction[LXS_RECOGNITION_FAMILY_COMPARE],
+		8ULL);
+
+	for (uint32_t combo = 0; combo < 256U; ++combo)
+		{
+		char label[96];
+		uint32_t x0;
+		uint32_t x1;
+		uint32_t x2;
+		uint32_t x3;
+		uint32_t expected;
+
+		for (uint32_t i = 0; i < 8U; ++i)
+			{
+			uint32_t bit = (combo >> i) & 1U;
+			values[i] = bit ? ~0ULL : 0ULL;
+			masks[i] = 0ULL;
+			}
+
+		x0 = ((combo >> 0U) & 1U) ^ ((combo >> 1U) & 1U);
+		x1 = ((combo >> 2U) & 1U) ^ ((combo >> 3U) & 1U);
+		x2 = ((combo >> 4U) & 1U) ^ ((combo >> 5U) & 1U);
+		x3 = ((combo >> 6U) & 1U) ^ ((combo >> 7U) & 1U);
+		expected =
+			(((x0 ^ 1U) & (x1 ^ 1U) & (x2 ^ 1U) & x3) |
+			 ((x0 ^ 1U) & (x1 ^ 1U) & x2 & (x3 ^ 1U)) |
+			 ((x0 ^ 1U) & x1 & (x2 ^ 1U) & (x3 ^ 1U)) |
+			 (x0 & (x1 ^ 1U) & (x2 ^ 1U) & (x3 ^ 1U)));
+
+		lxs_apply_inputs(&loaded.ctx, loaded.plan, values, masks);
+		lxs_execute_plan(&loaded.ctx, loaded.plan);
+		lxs_read_outputs(&loaded.ctx, loaded.plan, out_values, out_masks);
+
+		snprintf(label, sizeof(label), "compare_or4_recognition.out.%u", combo);
+		ok &= lxs_expect_u64(label, out_values[0], expected ? ~0ULL : 0ULL);
+		snprintf(label, sizeof(label), "compare_or4_recognition.mask.%u", combo);
+		ok &= lxs_expect_u64(label, out_masks[0], 0ULL);
+		}
+
+	lxs_unload_case(&loaded);
+	lxs_set_env_var("LXS_RECOGNITION_MASK", NULL);
+	return ok;
+	}
+
 static int lxs_test_ripple_slice2_cinv_recognition(void)
 	{
 	lxs_loaded_case loaded;
@@ -1606,6 +1784,73 @@ static int lxs_test_ripple_slice2_explicit(void)
 		ok &= lxs_expect_u64(label, out_masks[1], 0ULL);
 		snprintf(label, sizeof(label), "ripple_slice2_explicit.carry.mask.%u", combo);
 		ok &= lxs_expect_u64(label, out_masks[2], 0ULL);
+		}
+
+	lxs_unload_case(&loaded);
+	return ok;
+	}
+
+static int lxs_test_ripple_add4_explicit(void)
+	{
+	lxs_loaded_case loaded;
+	uint64_t values[9];
+	uint64_t masks[9];
+	uint64_t out_values[5];
+	uint64_t out_masks[5];
+	int ok = 1;
+
+	if (!lxs_load_case("Tests\\Circuits\\ripple_add4_explicit.bench", &loaded))
+		{
+		fprintf(stderr, "FAIL ripple_add4_explicit: unable to load test circuit\n");
+		return 0;
+		}
+
+	ok &= lxs_expect_u64("ripple_add4_explicit.multi_macro_count", loaded.plan->multi_macro_count, 1ULL);
+	ok &= lxs_expect_u64("ripple_add4_explicit.comb_gate_count", loaded.plan->comb_gate_count, 0ULL);
+
+	for (uint32_t combo = 0; combo < 512U; ++combo)
+		{
+		uint32_t a;
+		uint32_t b;
+		uint32_t cin;
+		uint32_t total;
+		char label[96];
+
+		for (uint32_t i = 0; i < 9U; ++i)
+			{
+			uint32_t bit = (combo >> i) & 1U;
+			values[i] = bit ? ~0ULL : 0ULL;
+			masks[i] = 0ULL;
+			}
+
+		a = ((combo >> 0U) & 1U) |
+			(((combo >> 2U) & 1U) << 1U) |
+			(((combo >> 4U) & 1U) << 2U) |
+			(((combo >> 6U) & 1U) << 3U);
+		b = ((combo >> 1U) & 1U) |
+			(((combo >> 3U) & 1U) << 1U) |
+			(((combo >> 5U) & 1U) << 2U) |
+			(((combo >> 7U) & 1U) << 3U);
+		cin = (combo >> 8U) & 1U;
+		total = a + b + cin;
+
+		lxs_apply_inputs(&loaded.ctx, loaded.plan, values, masks);
+		lxs_execute_plan(&loaded.ctx, loaded.plan);
+		lxs_read_outputs(&loaded.ctx, loaded.plan, out_values, out_masks);
+
+		for (uint32_t i = 0; i < 4U; ++i)
+			{
+			uint32_t bit = (total >> i) & 1U;
+			snprintf(label, sizeof(label), "ripple_add4_explicit.sum%u.%u", i, combo);
+			ok &= lxs_expect_u64(label, out_values[i], bit ? ~0ULL : 0ULL);
+			snprintf(label, sizeof(label), "ripple_add4_explicit.mask%u.%u", i, combo);
+			ok &= lxs_expect_u64(label, out_masks[i], 0ULL);
+			}
+
+		snprintf(label, sizeof(label), "ripple_add4_explicit.cout.%u", combo);
+		ok &= lxs_expect_u64(label, out_values[4], ((total >> 4U) & 1U) ? ~0ULL : 0ULL);
+		snprintf(label, sizeof(label), "ripple_add4_explicit.mask4.%u", combo);
+		ok &= lxs_expect_u64(label, out_masks[4], 0ULL);
 		}
 
 	lxs_unload_case(&loaded);
@@ -2685,6 +2930,9 @@ int main(void)
 	ok &= lxs_test_xnor_bank4_explicit();
 	ok &= lxs_test_xnor_bank4_recognition();
 	ok &= lxs_test_xnor_bank4_recognition_negative();
+	ok &= lxs_test_compare_and4_recognition();
+	ok &= lxs_test_compare_and4_recognition_negative();
+	ok &= lxs_test_compare_or4_recognition();
 	ok &= lxs_test_ripple_slice2_cinv_recognition();
 	ok &= lxs_test_ripple_slice2_cinv_recognition_negative();
 	ok &= lxs_test_wide_gates_explicit();
@@ -2694,6 +2942,7 @@ int main(void)
 	ok &= lxs_test_half_adder_explicit();
 	ok &= lxs_test_full_adder_explicit();
 	ok &= lxs_test_ripple_slice2_explicit();
+	ok &= lxs_test_ripple_add4_explicit();
 	ok &= lxs_test_dff_not();
 	ok &= lxs_test_register_descriptor();
 	ok &= lxs_test_rom_descriptor();
