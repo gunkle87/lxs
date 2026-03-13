@@ -40,6 +40,13 @@ admission during the recognition phase.
     3. Recognition is bounded
        Recognizers must operate within explicit legality boundaries.
        No heuristic widening is allowed during the active family pass.
+       Phase 2 guard rails additionally require:
+       -   fixed root or output anchoring
+       -   fixed max node budget
+       -   fixed traversal depth
+       -   strict abort on fanout growth
+       -   strict abort on branch growth
+       -   strict abort on overlap ambiguity
 
     4. Recognition is measurable
        Every recognizer must produce objective metrics against R0.
@@ -83,10 +90,23 @@ admission during the recognition phase.
        Demonstrate that the replacement is semantically identical to the
        original structure.
 
-    7. Benchmark Qualification
+    7. Stress-Pack Qualification
+       Before any full corpus census, the recognizer must clear a small
+       heavy-bench stress pack within a fixed time budget.
+
+       At minimum, the stress pack should include:
+       -   EPFL multiplier
+       -   ISCAS89 s38417
+       -   ISCAS89 s38584
+       -   one late ITC99 benchmark
+
+       A recognizer that cannot fail fast on this stress pack is not ready for
+       corpus-scale census.
+
+    8. Benchmark Qualification
        Run the full standardized suite and report metrics relative to R0.
 
-    8. Admission Decision
+    9. Admission Decision
        End the family with one of the allowed decision outcomes.
 
 ## 5. Decision Outcomes
@@ -154,6 +174,12 @@ admission during the recognition phase.
     -   circuits affected
     -   recognizer-on versus recognizer-off delta
     -   full-suite delta versus R0
+    -   matcher telemetry:
+        -   candidate_roots
+        -   nodes_visited
+        -   max_depth_reached
+        -   abort_reason
+        -   time_per_family
 
     Recognizers must be disableable independently of their kernels.
 
@@ -178,6 +204,7 @@ admission during the recognition phase.
     -   introduce benchmark-specific heuristics
     -   expand kernel semantics
     -   create broad global search logic
+    -   widen search radius when the problem is matcher expressiveness
     -   change execution scheduling semantics
     -   reinterpret sequential boundaries
 

@@ -2744,6 +2744,23 @@ static uint32_t lxs_default_recognition_mask(void)
 	return (uint32_t)value;
 	}
 
+static uint32_t lxs_default_recognition_mode(void)
+	{
+	const char *text = getenv("LXS_RECOGNITION_MODE");
+
+	if (!text || text[0] == '\0')
+		{
+		return LXS_RECOGNITION_MODE_REPLACE;
+		}
+
+	if (strcmp(text, "report") == 0 || strcmp(text, "report_only") == 0)
+		{
+		return LXS_RECOGNITION_MODE_REPORT_ONLY;
+		}
+
+	return LXS_RECOGNITION_MODE_REPLACE;
+	}
+
 static int lxs_recognition_family_enabled(uint32_t mask, uint32_t family)
 	{
 	if (family >= LXS_RECOGNITION_FAMILY_COUNT)
@@ -2769,11 +2786,49 @@ static void lxs_record_recognition(
 	node_reduction[family] += matched_gate_count > 0U ? matched_gate_count - 1U : 0U;
 	}
 
-static int lxs_collect_parity_leaves(
+static const lxs_recognition_pattern lxs_pattern_parity4 =
+	{
+	LXS_RECOGNITION_FAMILY_PARITY,
+	LXS_RECOGNITION_PATTERN_REDUCTION_TREE,
+	LXS_GATE_XOR,
+	LXS_GATE_XOR,
+	4U,
+	3U,
+	LXS_MACRO_PARITY4,
+	0U,
+	0U
+	};
+
+static const lxs_recognition_pattern lxs_pattern_parity8 =
+	{
+	LXS_RECOGNITION_FAMILY_PARITY,
+	LXS_RECOGNITION_PATTERN_REDUCTION_TREE,
+	LXS_GATE_XOR,
+	LXS_GATE_XOR,
+	8U,
+	7U,
+	LXS_MACRO_PARITY8,
+	0U,
+	0U
+	};
+
+static const lxs_recognition_legality lxs_legality_strict_reduction =
+	{
+	1U,
+	1U,
+	1U,
+	0U,
+	8U,
+	8U
+	};
+
+static int lxs_collect_reduction_leaves(
 	const lxs_netlist *nl,
 	const int32_t *comb_driver,
 	const uint32_t *net_use_count,
 	const uint8_t *matched_gates,
+	uint32_t internal_gate_type,
+	const lxs_recognition_legality *legality,
 	uint32_t net_id,
 	uint32_t max_leaves,
 	uint32_t *leaves,
@@ -2798,10 +2853,10 @@ static int lxs_collect_parity_leaves(
 
 	{
 	const lxs_gate_ir *gate = &nl->gates[(uint32_t)driver];
-	if (gate->type != LXS_GATE_XOR ||
+	if (gate->type != internal_gate_type ||
 		gate->input_count != 2U ||
-		matched_gates[(uint32_t)driver] ||
-		net_use_count[net_id] != 1U)
+		(legality && legality->forbid_matched_overlap && matched_gates[(uint32_t)driver]) ||
+		(legality && legality->require_single_use_internal && net_use_count[net_id] != 1U))
 		{
 		if (*leaf_count >= max_leaves)
 			{
@@ -2813,22 +2868,26 @@ static int lxs_collect_parity_leaves(
 		return 1;
 		}
 
-	if (!lxs_collect_parity_leaves(
+	if (!lxs_collect_reduction_leaves(
 		nl,
 		comb_driver,
 		net_use_count,
 		matched_gates,
+		internal_gate_type,
+		legality,
 		gate->inputs[0],
 		max_leaves,
 		leaves,
 		leaf_count,
 		gate_indices,
 		gate_count) ||
-		!lxs_collect_parity_leaves(
+		!lxs_collect_reduction_leaves(
 			nl,
 			comb_driver,
 			net_use_count,
 			matched_gates,
+			internal_gate_type,
+			legality,
 			gate->inputs[1],
 			max_leaves,
 			leaves,
@@ -2845,13 +2904,14 @@ static int lxs_collect_parity_leaves(
 	}
 	}
 
-static int lxs_try_match_parity(
+static int lxs_try_match_reduction_pattern(
 	const lxs_netlist *nl,
 	const int32_t *comb_driver,
 	const uint32_t *net_use_count,
 	uint8_t *matched_gates,
 	uint32_t gate_index,
-	uint32_t leaf_target,
+	const lxs_recognition_pattern *pattern,
+	const lxs_recognition_legality *legality,
 	lxs_macro_plan *macro)
 	{
 	const lxs_gate_ir *root = &nl->gates[gate_index];
@@ -2860,29 +2920,40 @@ static int lxs_try_match_parity(
 	uint32_t leaf_count = 0U;
 	uint32_t gate_count = 0U;
 
-	if (root->type != LXS_GATE_XOR || root->input_count != 2U || matched_gates[gate_index])
+	if (!pattern || pattern->kind != LXS_RECOGNITION_PATTERN_REDUCTION_TREE)
 		{
 		return 0;
 		}
 
-	if (!lxs_collect_parity_leaves(
+	if (root->type != pattern->root_gate_type ||
+		root->input_count != 2U ||
+		(legality && legality->forbid_matched_overlap && matched_gates[gate_index]))
+		{
+		return 0;
+		}
+
+	if (!lxs_collect_reduction_leaves(
 		nl,
 		comb_driver,
 		net_use_count,
 		matched_gates,
+		pattern->internal_gate_type,
+		legality,
 		root->inputs[0],
-		leaf_target,
+		pattern->leaf_count,
 		leaves,
 		&leaf_count,
 		gate_indices,
 		&gate_count) ||
-		!lxs_collect_parity_leaves(
+		!lxs_collect_reduction_leaves(
 			nl,
 			comb_driver,
 			net_use_count,
 			matched_gates,
+			pattern->internal_gate_type,
+			legality,
 			root->inputs[1],
-			leaf_target,
+			pattern->leaf_count,
 			leaves,
 			&leaf_count,
 			gate_indices,
@@ -2892,7 +2963,10 @@ static int lxs_try_match_parity(
 		}
 
 	gate_indices[gate_count++] = gate_index;
-	if (leaf_count != leaf_target || gate_count != (leaf_target - 1U))
+	if (leaf_count != pattern->leaf_count ||
+		gate_count != pattern->gate_count ||
+		(legality && legality->max_nodes > 0U && gate_count > legality->max_nodes) ||
+		(legality && legality->max_leaves > 0U && leaf_count > legality->max_leaves))
 		{
 		return 0;
 		}
@@ -2903,10 +2977,10 @@ static int lxs_try_match_parity(
 		}
 
 	memset(macro, 0, sizeof(*macro));
-	macro->type = (leaf_target == 8U) ? LXS_MACRO_PARITY8 : LXS_MACRO_PARITY4;
+	macro->type = pattern->macro_type;
 	macro->level = root->level;
 	macro->output = root->output;
-	for (uint32_t i = 0; i < leaf_target; ++i)
+	for (uint32_t i = 0; i < pattern->leaf_count; ++i)
 		{
 		macro->inputs[i] = leaves[i];
 		}
@@ -2952,8 +3026,24 @@ static uint32_t lxs_collect_macros(
 			{
 			lxs_macro_plan macro;
 
-			if (lxs_try_match_parity(nl, comb_driver, net_use_count, matched_gates, i, 8U, &macro) ||
-				lxs_try_match_parity(nl, comb_driver, net_use_count, matched_gates, i, 4U, &macro))
+			if (lxs_try_match_reduction_pattern(
+					nl,
+					comb_driver,
+					net_use_count,
+					matched_gates,
+					i,
+					&lxs_pattern_parity8,
+					&lxs_legality_strict_reduction,
+					&macro) ||
+				lxs_try_match_reduction_pattern(
+					nl,
+					comb_driver,
+					net_use_count,
+					matched_gates,
+					i,
+					&lxs_pattern_parity4,
+					&lxs_legality_strict_reduction,
+					&macro))
 				{
 				if (macros)
 					{
@@ -4479,16 +4569,40 @@ lxs_plan* lxs_compile_to_plan(lxs_netlist *nl)
 	plan->net_count = nl->net_count;
 	plan->gate_count = nl->gate_count;
 	plan->recognition_mask = lxs_default_recognition_mask();
+	plan->recognition_mode = lxs_default_recognition_mode();
 	plan->multi_macro_count = lxs_collect_source_multi_macros(nl, multi_matched_gates, NULL);
 	{
-	uint32_t recognized_multi_count = lxs_collect_multi_macros(
+	uint8_t *recognition_multi_marks = multi_matched_gates;
+	uint32_t recognized_multi_count;
+	if (plan->recognition_mode == LXS_RECOGNITION_MODE_REPORT_ONLY)
+		{
+		recognition_multi_marks = lxs_malloc_aligned(nl->gate_count * sizeof(uint8_t));
+		if (!recognition_multi_marks)
+			{
+			lxs_free_aligned(comb_driver);
+			lxs_free_aligned(level_cache);
+			lxs_free_aligned(visiting);
+			lxs_free_aligned(net_remap);
+			lxs_free_aligned(net_assigned);
+			lxs_free_aligned(matched_gates);
+			lxs_free_aligned(multi_matched_gates);
+			lxs_free_aligned(plan);
+			return NULL;
+			}
+		memcpy(recognition_multi_marks, multi_matched_gates, nl->gate_count * sizeof(uint8_t));
+		}
+	recognized_multi_count = lxs_collect_multi_macros(
 		nl,
 		comb_driver,
-		multi_matched_gates,
+		recognition_multi_marks,
 		plan->recognition_mask,
 		plan->recognition_match_count,
 		plan->recognition_node_reduction,
 		NULL);
+	if (plan->recognition_mode == LXS_RECOGNITION_MODE_REPORT_ONLY)
+		{
+		lxs_free_aligned(recognition_multi_marks);
+		}
 	if (recognized_multi_count == UINT32_MAX)
 		{
 		lxs_free_aligned(comb_driver);
@@ -4497,23 +4611,49 @@ lxs_plan* lxs_compile_to_plan(lxs_netlist *nl)
 		lxs_free_aligned(net_remap);
 		lxs_free_aligned(net_assigned);
 		lxs_free_aligned(matched_gates);
-		lxs_free_aligned(multi_matched_gates);
-		lxs_free_aligned(plan);
-		return NULL;
+			lxs_free_aligned(multi_matched_gates);
+			lxs_free_aligned(plan);
+			return NULL;
 		}
-	plan->multi_macro_count += recognized_multi_count;
+	if (plan->recognition_mode == LXS_RECOGNITION_MODE_REPLACE)
+		{
+		plan->multi_macro_count += recognized_multi_count;
+		}
 	}
 	memcpy(matched_gates, multi_matched_gates, (size_t)nl->gate_count * sizeof(uint8_t));
 	plan->macro_count = lxs_collect_source_macros(nl, matched_gates, NULL);
 	{
-	uint32_t recognized_macro_count = lxs_collect_macros(
+	uint8_t *recognition_marks = matched_gates;
+	uint32_t recognized_macro_count;
+	if (plan->recognition_mode == LXS_RECOGNITION_MODE_REPORT_ONLY)
+		{
+		recognition_marks = lxs_malloc_aligned(nl->gate_count * sizeof(uint8_t));
+		if (!recognition_marks)
+			{
+			lxs_free_aligned(comb_driver);
+			lxs_free_aligned(level_cache);
+			lxs_free_aligned(visiting);
+			lxs_free_aligned(net_remap);
+			lxs_free_aligned(net_assigned);
+			lxs_free_aligned(matched_gates);
+			lxs_free_aligned(multi_matched_gates);
+			lxs_free_aligned(plan);
+			return NULL;
+			}
+		memcpy(recognition_marks, matched_gates, nl->gate_count * sizeof(uint8_t));
+		}
+	recognized_macro_count = lxs_collect_macros(
 		nl,
 		comb_driver,
-		matched_gates,
+		recognition_marks,
 		plan->recognition_mask,
 		plan->recognition_match_count,
 		plan->recognition_node_reduction,
 		NULL);
+	if (plan->recognition_mode == LXS_RECOGNITION_MODE_REPORT_ONLY)
+		{
+		lxs_free_aligned(recognition_marks);
+		}
 	if (recognized_macro_count == UINT32_MAX)
 		{
 		lxs_free_aligned(comb_driver);
@@ -4522,11 +4662,14 @@ lxs_plan* lxs_compile_to_plan(lxs_netlist *nl)
 		lxs_free_aligned(net_remap);
 		lxs_free_aligned(net_assigned);
 		lxs_free_aligned(matched_gates);
-		lxs_free_aligned(multi_matched_gates);
-		lxs_free_aligned(plan);
-		return NULL;
+			lxs_free_aligned(multi_matched_gates);
+			lxs_free_aligned(plan);
+			return NULL;
 		}
-	plan->macro_count += recognized_macro_count;
+	if (plan->recognition_mode == LXS_RECOGNITION_MODE_REPLACE)
+		{
+		plan->macro_count += recognized_macro_count;
+		}
 	}
 	plan->level_count = 0U;
 	for (uint32_t i = 0; i < nl->gate_count; ++i)
@@ -4693,33 +4836,34 @@ lxs_plan* lxs_compile_to_plan(lxs_netlist *nl)
 	plan->state.q_is_contiguous =
 		lxs_find_contiguous_range(plan->state.q_outputs, plan->state.count, &plan->state.q_contiguous_base);
 
-		if (plan->multi_macro_count > 0U)
+	if (plan->multi_macro_count > 0U)
 		{
 		memset(multi_matched_gates, 0, (size_t)nl->gate_count * sizeof(uint8_t));
 		multi_macro_fill = lxs_collect_source_multi_macros(nl, multi_matched_gates, plan->multi_macros);
-		{
-		uint32_t recognized_multi_fill = lxs_collect_multi_macros(
-			nl,
-			comb_driver,
-			multi_matched_gates,
-			plan->recognition_mask,
-			NULL,
-			NULL,
-			plan->multi_macros + multi_macro_fill);
-		if (recognized_multi_fill == UINT32_MAX)
+		if (plan->recognition_mode == LXS_RECOGNITION_MODE_REPLACE)
 			{
-			lxs_free_plan(plan);
-			lxs_free_aligned(comb_driver);
-			lxs_free_aligned(level_cache);
-			lxs_free_aligned(visiting);
-			lxs_free_aligned(net_remap);
-			lxs_free_aligned(net_assigned);
-			lxs_free_aligned(matched_gates);
-			lxs_free_aligned(multi_matched_gates);
-			return NULL;
+			uint32_t recognized_multi_fill = lxs_collect_multi_macros(
+				nl,
+				comb_driver,
+				multi_matched_gates,
+				plan->recognition_mask,
+				NULL,
+				NULL,
+				plan->multi_macros + multi_macro_fill);
+			if (recognized_multi_fill == UINT32_MAX)
+				{
+				lxs_free_plan(plan);
+				lxs_free_aligned(comb_driver);
+				lxs_free_aligned(level_cache);
+				lxs_free_aligned(visiting);
+				lxs_free_aligned(net_remap);
+				lxs_free_aligned(net_assigned);
+				lxs_free_aligned(matched_gates);
+				lxs_free_aligned(multi_matched_gates);
+				return NULL;
+				}
+			multi_macro_fill += recognized_multi_fill;
 			}
-		multi_macro_fill += recognized_multi_fill;
-		}
 		plan->multi_macro_count = multi_macro_fill;
 		}
 
@@ -4727,29 +4871,30 @@ lxs_plan* lxs_compile_to_plan(lxs_netlist *nl)
 	if (plan->macro_count > 0U)
 		{
 		macro_fill = lxs_collect_source_macros(nl, matched_gates, plan->macros);
-		{
-		uint32_t recognized_macro_fill = lxs_collect_macros(
-			nl,
-			comb_driver,
-			matched_gates,
-			plan->recognition_mask,
-			NULL,
-			NULL,
-			plan->macros + macro_fill);
-		if (recognized_macro_fill == UINT32_MAX)
+		if (plan->recognition_mode == LXS_RECOGNITION_MODE_REPLACE)
 			{
-			lxs_free_plan(plan);
-			lxs_free_aligned(comb_driver);
-			lxs_free_aligned(level_cache);
-			lxs_free_aligned(visiting);
-			lxs_free_aligned(net_remap);
-			lxs_free_aligned(net_assigned);
-			lxs_free_aligned(matched_gates);
-			lxs_free_aligned(multi_matched_gates);
-			return NULL;
+			uint32_t recognized_macro_fill = lxs_collect_macros(
+				nl,
+				comb_driver,
+				matched_gates,
+				plan->recognition_mask,
+				NULL,
+				NULL,
+				plan->macros + macro_fill);
+			if (recognized_macro_fill == UINT32_MAX)
+				{
+				lxs_free_plan(plan);
+				lxs_free_aligned(comb_driver);
+				lxs_free_aligned(level_cache);
+				lxs_free_aligned(visiting);
+				lxs_free_aligned(net_remap);
+				lxs_free_aligned(net_assigned);
+				lxs_free_aligned(matched_gates);
+				lxs_free_aligned(multi_matched_gates);
+				return NULL;
+				}
+			macro_fill += recognized_macro_fill;
 			}
-		macro_fill += recognized_macro_fill;
-		}
 		plan->macro_count = macro_fill;
 		qsort(plan->macros, plan->macro_count, sizeof(lxs_macro_plan), lxs_compare_macros);
 		}

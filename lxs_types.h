@@ -79,6 +79,52 @@ typedef enum lxs_recognition_family
 	LXS_RECOGNITION_FAMILY_COUNT
 	} lxs_recognition_family;
 
+typedef enum lxs_recognition_mode
+	{
+	LXS_RECOGNITION_MODE_REPLACE = 0,
+	LXS_RECOGNITION_MODE_REPORT_ONLY
+	} lxs_recognition_mode;
+
+typedef enum lxs_recognition_pattern_kind
+	{
+	LXS_RECOGNITION_PATTERN_NONE = 0,
+	LXS_RECOGNITION_PATTERN_REDUCTION_TREE,
+	LXS_RECOGNITION_PATTERN_SHARED_FANOUT,
+	LXS_RECOGNITION_PATTERN_BANK
+	} lxs_recognition_pattern_kind;
+
+typedef struct lxs_recognition_pattern lxs_recognition_pattern;
+struct lxs_recognition_pattern
+	{
+	uint32_t family;
+	uint32_t kind;
+	uint32_t root_gate_type;
+	uint32_t internal_gate_type;
+	uint32_t leaf_count;
+	uint32_t gate_count;
+	uint32_t macro_type;
+	uint32_t multi_macro_type;
+	uint8_t is_multi_macro;
+	};
+
+typedef struct lxs_recognition_legality lxs_recognition_legality;
+struct lxs_recognition_legality
+	{
+	uint8_t require_single_use_internal;
+	uint8_t require_output_boundary;
+	uint8_t forbid_matched_overlap;
+	uint8_t reserved;
+	uint32_t max_nodes;
+	uint32_t max_leaves;
+	};
+
+typedef struct lxs_recognition_precedence lxs_recognition_precedence;
+struct lxs_recognition_precedence
+	{
+	uint32_t family;
+	uint32_t blocks_mask;
+	};
+
 typedef enum lxs_register_mode
 	{
 	LXS_REGISTER_MODE_PLAIN = 0,
@@ -349,6 +395,7 @@ struct lxs_plan
 	uint32_t macro_count;
 	uint32_t multi_macro_count;
 	uint32_t recognition_mask;
+	uint32_t recognition_mode;
 	uint32_t recognition_match_count[LXS_RECOGNITION_FAMILY_COUNT];
 	uint32_t recognition_node_reduction[LXS_RECOGNITION_FAMILY_COUNT];
 

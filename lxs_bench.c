@@ -102,6 +102,7 @@ typedef struct lxs_plan_profile
 	uint32_t single_chunk_level_count;
 	uint32_t gate_type_count[LXS_GATE_TYPE_COUNT];
 	uint32_t recognition_mask;
+	uint32_t recognition_mode;
 	uint32_t recognition_match_count[LXS_RECOGNITION_FAMILY_COUNT];
 	uint32_t recognition_node_reduction[LXS_RECOGNITION_FAMILY_COUNT];
 	uint32_t recognition_gate_equiv[LXS_RECOGNITION_FAMILY_COUNT];
@@ -469,6 +470,7 @@ static void lxs_build_plan_profile(
 	memset(profile, 0, sizeof(*profile));
 	lxs_make_circuit_name(root, path, profile->circuit_name, sizeof(profile->circuit_name));
 	profile->recognition_mask = plan->recognition_mask;
+	profile->recognition_mode = plan->recognition_mode;
 	memcpy(
 		profile->recognition_match_count,
 		plan->recognition_match_count,
@@ -638,7 +640,7 @@ static void lxs_write_plan_profile(FILE *stream, const lxs_plan_profile *profile
 
 	fprintf(
 		stream,
-		"# recognition,%s,mask=%u,parity_matches=%u,parity_node_reduction=%u,"
+		"# recognition,%s,mask=%u,mode=%u,parity_matches=%u,parity_node_reduction=%u,"
 		"parity_gate_equiv=%u,parity_absorbed_work_share=%.6f,"
 		"shared_xor_matches=%u,shared_xor_node_reduction=%u,"
 		"shared_xor_gate_equiv=%u,shared_xor_absorbed_work_share=%.6f,"
@@ -654,6 +656,7 @@ static void lxs_write_plan_profile(FILE *stream, const lxs_plan_profile *profile
 		"control_gate_equiv=%u,control_absorbed_work_share=%.6f\n",
 		profile->circuit_name,
 		profile->recognition_mask,
+		profile->recognition_mode,
 		profile->recognition_match_count[LXS_RECOGNITION_FAMILY_PARITY],
 		profile->recognition_node_reduction[LXS_RECOGNITION_FAMILY_PARITY],
 		profile->recognition_gate_equiv[LXS_RECOGNITION_FAMILY_PARITY],
