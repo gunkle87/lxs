@@ -36,7 +36,8 @@ $families = @(
 	[pscustomobject]@{ Name = "compare"; Label = "Compare/Equality"; Mask = "8"; MatchField = "compare_matches"; GateField = "compare_gate_equiv"; ShareField = "compare_absorbed_work_share" },
 	[pscustomobject]@{ Name = "register_en"; Label = "Register Enable"; Mask = "16"; MatchField = "register_en_matches"; GateField = "register_en_gate_equiv"; ShareField = "register_en_absorbed_work_share" },
 	[pscustomobject]@{ Name = "arithmetic"; Label = "Arithmetic"; Mask = "32"; MatchField = "arithmetic_matches"; GateField = "arithmetic_gate_equiv"; ShareField = "arithmetic_absorbed_work_share" },
-	[pscustomobject]@{ Name = "control"; Label = "Control"; Mask = "64"; MatchField = "control_matches"; GateField = "control_gate_equiv"; ShareField = "control_absorbed_work_share" }
+	[pscustomobject]@{ Name = "control"; Label = "Control"; Mask = "64"; MatchField = "control_matches"; GateField = "control_gate_equiv"; ShareField = "control_absorbed_work_share" },
+	[pscustomobject]@{ Name = "functional"; Label = "Functional"; Mask = "128"; MatchField = "functional_matches"; GateField = "functional_gate_equiv"; ShareField = "functional_absorbed_work_share" }
 )
 
 if ($Family -ne "all")

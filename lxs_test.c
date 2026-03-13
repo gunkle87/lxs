@@ -3087,6 +3087,78 @@ static int lxs_test_functional_region_explicit(void)
 	return ok;
 	}
 
+static int lxs_test_functional_region_recognition(void)
+	{
+	lxs_loaded_case lhs;
+	lxs_loaded_case rhs;
+	uint64_t values[5];
+	uint64_t masks[5];
+	uint64_t lhs_out_values[1];
+	uint64_t lhs_out_masks[1];
+	uint64_t rhs_out_values[1];
+	uint64_t rhs_out_masks[1];
+	int ok = 1;
+
+	if (!lxs_set_env_var("LXS_RECOGNITION_MASK", "128") ||
+		!lxs_set_env_var("LXS_RECOGNITION_MODE", "replace"))
+		{
+		fprintf(stderr, "FAIL functional_region_recognition: unable to set env\n");
+		return 0;
+		}
+
+	if (!lxs_load_case("Tests\\Circuits\\functional_region_primitive.bench", &lhs))
+		{
+		fprintf(stderr, "FAIL functional_region_recognition: unable to load primitive circuit\n");
+		lxs_set_env_var("LXS_RECOGNITION_MODE", NULL);
+		lxs_set_env_var("LXS_RECOGNITION_MASK", NULL);
+		return 0;
+		}
+
+	if (!lxs_set_env_var("LXS_RECOGNITION_MASK", "0") ||
+		!lxs_set_env_var("LXS_RECOGNITION_MODE", "replace") ||
+		!lxs_load_case("Tests\\Circuits\\functional_region_primitive.bench", &rhs))
+		{
+		fprintf(stderr, "FAIL functional_region_recognition: unable to load reference circuit\n");
+		lxs_unload_case(&lhs);
+		lxs_set_env_var("LXS_RECOGNITION_MODE", NULL);
+		lxs_set_env_var("LXS_RECOGNITION_MASK", NULL);
+		return 0;
+		}
+
+	ok &= lxs_expect_u64("functional_region_recognition.count", lhs.plan->functional_region_count, 1ULL);
+	ok &= lxs_expect_u64("functional_region_recognition.comb_gate_count", lhs.plan->comb_gate_count, 0ULL);
+
+	memset(masks, 0, sizeof(masks));
+	for (uint32_t combo = 0; combo < 32U; ++combo)
+		{
+		char label[96];
+
+		for (uint32_t bit = 0; bit < 5U; ++bit)
+			{
+			values[bit] = ((combo >> bit) & 1U) ? ~0ULL : 0ULL;
+			}
+
+		lxs_apply_inputs(&lhs.ctx, lhs.plan, values, masks);
+		lxs_execute_plan(&lhs.ctx, lhs.plan);
+		lxs_read_outputs(&lhs.ctx, lhs.plan, lhs_out_values, lhs_out_masks);
+
+		lxs_apply_inputs(&rhs.ctx, rhs.plan, values, masks);
+		lxs_execute_plan(&rhs.ctx, rhs.plan);
+		lxs_read_outputs(&rhs.ctx, rhs.plan, rhs_out_values, rhs_out_masks);
+
+		snprintf(label, sizeof(label), "functional_region_recognition.combo_%u.value", combo);
+		ok &= lxs_expect_u64(label, lhs_out_values[0], rhs_out_values[0]);
+		snprintf(label, sizeof(label), "functional_region_recognition.combo_%u.mask", combo);
+		ok &= lxs_expect_u64(label, lhs_out_masks[0], rhs_out_masks[0]);
+		}
+
+	lxs_unload_case(&lhs);
+	lxs_unload_case(&rhs);
+	lxs_set_env_var("LXS_RECOGNITION_MODE", NULL);
+	lxs_set_env_var("LXS_RECOGNITION_MASK", NULL);
+	return ok;
+	}
+
 int main(void)
 	{
 	int ok = 1;
@@ -3146,6 +3218,7 @@ int main(void)
 	ok &= lxs_test_counter_en_rewrite();
 	ok &= lxs_test_regfile2_rewrite();
 	ok &= lxs_test_functional_region_explicit();
+	ok &= lxs_test_functional_region_recognition();
 
 	if (!ok)
 		{

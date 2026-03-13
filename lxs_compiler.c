@@ -2163,6 +2163,198 @@ static int lxs_add_unique_boundary_input(
 	return 1;
 	}
 
+typedef struct lxs_functional_build_op lxs_functional_build_op;
+struct lxs_functional_build_op
+	{
+	uint8_t type;
+	uint8_t dst;
+	uint8_t src0_is_temp;
+	uint8_t src1_is_temp;
+	uint8_t src0_index;
+	uint8_t src1_index;
+	};
+
+typedef struct lxs_functional_build_state lxs_functional_build_state;
+struct lxs_functional_build_state
+	{
+	uint32_t gate_indices[8];
+	uint32_t gate_count;
+	uint32_t boundary_inputs[5];
+	uint32_t boundary_count;
+	uint8_t temp_count;
+	uint8_t op_count;
+	lxs_functional_build_op ops[8];
+	};
+
+static int lxs_find_or_add_boundary_input(
+	lxs_functional_build_state *state,
+	uint32_t net_id,
+	uint8_t *index_out)
+	{
+	for (uint32_t i = 0; i < state->boundary_count; ++i)
+		{
+		if (state->boundary_inputs[i] == net_id)
+			{
+			*index_out = (uint8_t)i;
+			return 1;
+			}
+		}
+
+	if (state->boundary_count >= 5U)
+		{
+		return 0;
+		}
+
+	state->boundary_inputs[state->boundary_count] = net_id;
+	*index_out = (uint8_t)state->boundary_count;
+	state->boundary_count++;
+	return 1;
+	}
+
+static uint8_t lxs_gate_type_to_functional_op(uint32_t type)
+	{
+	switch (type)
+		{
+		case LXS_GATE_BUF:
+			return LXS_FUNCTIONAL_REGION_OP_BUF;
+		case LXS_GATE_NOT:
+			return LXS_FUNCTIONAL_REGION_OP_NOT;
+		case LXS_GATE_AND:
+			return LXS_FUNCTIONAL_REGION_OP_AND;
+		case LXS_GATE_OR:
+			return LXS_FUNCTIONAL_REGION_OP_OR;
+		case LXS_GATE_XOR:
+			return LXS_FUNCTIONAL_REGION_OP_XOR;
+		case LXS_GATE_NAND:
+			return LXS_FUNCTIONAL_REGION_OP_NAND;
+		case LXS_GATE_NOR:
+			return LXS_FUNCTIONAL_REGION_OP_NOR;
+		case LXS_GATE_XNOR:
+		default:
+			return LXS_FUNCTIONAL_REGION_OP_XNOR;
+		}
+	}
+
+static int lxs_build_functional_cone_rooted_visit(
+	const lxs_netlist *nl,
+	const int32_t *comb_driver,
+	uint32_t gate_index,
+	uint32_t gate_seen[8],
+	uint32_t *gate_seen_count,
+	lxs_functional_build_state *state,
+	uint8_t is_root,
+	uint8_t *is_temp_out,
+	uint8_t *ref_out)
+	{
+	const lxs_gate_ir *gate = &nl->gates[gate_index];
+	lxs_functional_build_op *op;
+	uint8_t src0_is_temp = 0U;
+	uint8_t src1_is_temp = 0U;
+	uint8_t src0_index = 0U;
+	uint8_t src1_index = 0U;
+
+	for (uint32_t i = 0; i < *gate_seen_count; ++i)
+		{
+		if (gate_seen[i] == gate_index)
+			{
+			return 0;
+			}
+		}
+
+	if (*gate_seen_count >= 8U || state->gate_count >= 8U || state->op_count >= 8U)
+		{
+		return 0;
+			}
+
+	gate_seen[*gate_seen_count] = gate_index;
+	(*gate_seen_count)++;
+
+	for (uint32_t i = 0; i < gate->input_count; ++i)
+		{
+		uint32_t net_id = gate->inputs[i];
+		int32_t driver = comb_driver[net_id];
+
+		if (driver >= 0)
+			{
+			uint8_t child_is_temp = 0U;
+			uint8_t child_ref = 0U;
+
+			if (!lxs_build_functional_cone_rooted_visit(
+					nl,
+					comb_driver,
+					(uint32_t)driver,
+					gate_seen,
+					gate_seen_count,
+					state,
+					0U,
+					&child_is_temp,
+					&child_ref))
+				{
+				return 0;
+				}
+
+			if (i == 0U)
+				{
+				src0_is_temp = child_is_temp;
+				src0_index = child_ref;
+				}
+			else
+				{
+				src1_is_temp = child_is_temp;
+				src1_index = child_ref;
+				}
+			}
+		else
+			{
+			uint8_t boundary_index = 0U;
+
+			if (!lxs_find_or_add_boundary_input(state, net_id, &boundary_index))
+				{
+				return 0;
+				}
+
+			if (i == 0U)
+				{
+				src0_is_temp = 0U;
+				src0_index = boundary_index;
+				}
+			else
+				{
+				src1_is_temp = 0U;
+				src1_index = boundary_index;
+				}
+			}
+		}
+
+	op = &state->ops[state->op_count];
+	op->type = lxs_gate_type_to_functional_op(gate->type);
+	op->src0_is_temp = src0_is_temp;
+	op->src0_index = src0_index;
+	op->src1_is_temp = src1_is_temp;
+	op->src1_index = src1_index;
+	if (is_root)
+		{
+		op->dst = 0xFFU;
+		*is_temp_out = 0U;
+		*ref_out = 0U;
+		}
+	else
+		{
+		if (state->temp_count >= 8U)
+			{
+			return 0;
+			}
+		op->dst = state->temp_count;
+		*is_temp_out = 1U;
+		*ref_out = state->temp_count;
+		state->temp_count++;
+		}
+
+	state->gate_indices[state->gate_count++] = gate_index;
+	state->op_count++;
+	return 1;
+	}
+
 static int lxs_try_match_functional_cone_rooted_visit(
 	const lxs_netlist *nl,
 	const int32_t *comb_driver,
@@ -4326,6 +4518,129 @@ static uint32_t lxs_collect_source_functional_regions(
 			}
 		region_count++;
 		}
+
+	return region_count;
+	}
+
+static uint32_t lxs_collect_recognized_functional_regions(
+	const lxs_netlist *nl,
+	const int32_t *comb_driver,
+	const uint32_t *net_use_count,
+	uint8_t *matched_gates,
+	uint32_t recognition_mask,
+	uint32_t *family_match_count,
+	uint32_t *family_node_reduction,
+	uint64_t *family_candidate_roots,
+	uint64_t *family_nodes_visited,
+	uint32_t *family_max_depth_reached,
+	uint64_t family_abort_count[LXS_RECOGNITION_FAMILY_COUNT][LXS_RECOGNITION_ABORT_REASON_COUNT],
+	uint64_t *family_time_us,
+	lxs_functional_region_plan *regions)
+	{
+	uint32_t region_count = 0U;
+
+	if (!lxs_recognition_family_enabled(recognition_mask, LXS_RECOGNITION_FAMILY_FUNCTIONAL))
+		{
+		return 0U;
+		}
+
+	{
+	clock_t family_start = clock();
+	for (uint32_t rev = nl->gate_count; rev > 0U; --rev)
+		{
+		uint32_t i = rev - 1U;
+		lxs_functional_build_state state;
+		lxs_functional_region_plan region;
+		uint32_t gate_seen[8];
+		uint32_t gate_seen_count = 0U;
+		uint32_t matched_gate_count = 0U;
+		uint32_t gate_equiv_count = 0U;
+		uint8_t ignored_is_temp = 0U;
+		uint8_t ignored_ref = 0U;
+
+		if (!lxs_try_match_functional_cone_rooted(
+				nl,
+				comb_driver,
+				net_use_count,
+				matched_gates,
+				i,
+				family_candidate_roots,
+				family_nodes_visited,
+				family_max_depth_reached,
+				family_abort_count,
+				&matched_gate_count,
+				&gate_equiv_count))
+			{
+			continue;
+			}
+
+		memset(&state, 0, sizeof(state));
+		memset(&region, 0, sizeof(region));
+		if (!lxs_build_functional_cone_rooted_visit(
+				nl,
+				comb_driver,
+				i,
+				gate_seen,
+				&gate_seen_count,
+				&state,
+				1U,
+				&ignored_is_temp,
+				&ignored_ref))
+			{
+			lxs_record_recognition_abort(
+				family_abort_count,
+				LXS_RECOGNITION_FAMILY_FUNCTIONAL,
+				LXS_RECOGNITION_ABORT_SHAPE);
+			continue;
+			}
+
+		region.exec_kind = LXS_FUNCTIONAL_REGION_EXEC_MICROPROGRAM;
+		region.level = nl->gates[i].level;
+		region.output = nl->gates[i].output;
+		region.input_count = state.boundary_count;
+		region.temp_count = state.temp_count;
+		region.op_count = state.op_count;
+		region.node_budget = 8U;
+		region.max_depth = 3U;
+		region.gate_equiv_count = gate_equiv_count;
+		for (uint32_t j = 0; j < state.boundary_count; ++j)
+			{
+			region.inputs[j] = state.boundary_inputs[j];
+			}
+		for (uint32_t j = 0; j < state.op_count; ++j)
+			{
+			region.ops[j].type = state.ops[j].type;
+			region.ops[j].dst = state.ops[j].dst;
+			region.ops[j].src0 = state.ops[j].src0_is_temp ?
+				(uint8_t)(state.boundary_count + state.ops[j].src0_index) :
+				state.ops[j].src0_index;
+			region.ops[j].src1 = state.ops[j].src1_is_temp ?
+				(uint8_t)(state.boundary_count + state.ops[j].src1_index) :
+				state.ops[j].src1_index;
+			}
+
+		for (uint32_t j = 0; j < state.gate_count; ++j)
+			{
+			matched_gates[state.gate_indices[j]] = 1U;
+			}
+
+		lxs_record_recognition(
+			family_match_count,
+			family_node_reduction,
+			LXS_RECOGNITION_FAMILY_FUNCTIONAL,
+			matched_gate_count);
+		if (regions)
+			{
+			regions[region_count] = region;
+			}
+		region_count++;
+		}
+	lxs_record_recognition_time(
+		family_time_us,
+		LXS_RECOGNITION_FAMILY_FUNCTIONAL,
+		family_start,
+		clock());
+	}
 
 	return region_count;
 	}
@@ -6646,6 +6961,8 @@ lxs_plan* lxs_compile_to_plan(lxs_netlist *nl)
 	uint32_t macro_level_fill = 0U;
 	uint32_t multi_macro_level_fill = 0U;
 	uint32_t functional_region_level_fill = 0U;
+	uint32_t functional_region_fill = 0U;
+	uint32_t recognized_functional_count = 0U;
 	uint32_t gate_alloc_count;
 
 	if (!nl)
@@ -6793,7 +7110,7 @@ lxs_plan* lxs_compile_to_plan(lxs_netlist *nl)
 	uint32_t recognized_multi_count;
 	if (plan->recognition_mode == LXS_RECOGNITION_MODE_REPORT_ONLY)
 		{
-		recognition_multi_marks = lxs_malloc_aligned(nl->gate_count * sizeof(uint8_t));
+		recognition_multi_marks = lxs_malloc_aligned((size_t)gate_alloc_count * sizeof(uint8_t));
 		if (!recognition_multi_marks)
 			{
 			lxs_free_aligned(comb_driver);
@@ -6846,12 +7163,71 @@ lxs_plan* lxs_compile_to_plan(lxs_netlist *nl)
 	memcpy(matched_gates, multi_matched_gates, (size_t)nl->gate_count * sizeof(uint8_t));
 	plan->macro_count = lxs_collect_source_macros(nl, matched_gates, NULL);
 	plan->functional_region_count = lxs_collect_source_functional_regions(nl, matched_gates, NULL);
+	if (plan->recognition_mode == LXS_RECOGNITION_MODE_REPLACE)
+		{
+		uint8_t *functional_marks = lxs_malloc_aligned((size_t)gate_alloc_count * sizeof(uint8_t));
+		uint32_t *net_use_count = lxs_calloc_aligned(nl->net_count ? nl->net_count : 1U, sizeof(uint32_t));
+		if (!functional_marks || !net_use_count)
+			{
+			lxs_free_aligned(functional_marks);
+			lxs_free_aligned(comb_driver);
+			lxs_free_aligned(level_cache);
+			lxs_free_aligned(visiting);
+			lxs_free_aligned(net_remap);
+			lxs_free_aligned(net_assigned);
+			lxs_free_aligned(matched_gates);
+			lxs_free_aligned(multi_matched_gates);
+			lxs_free_aligned(plan);
+			return NULL;
+			}
+		memcpy(functional_marks, matched_gates, nl->gate_count * sizeof(uint8_t));
+		for (uint32_t i = 0; i < nl->gate_count; ++i)
+			{
+			for (uint32_t j = 0; j < nl->gates[i].input_count; ++j)
+				{
+				net_use_count[nl->gates[i].inputs[j]]++;
+				}
+			}
+		for (uint32_t i = 0; i < nl->output_count; ++i)
+			{
+			net_use_count[nl->outputs[i]]++;
+			}
+		recognized_functional_count = lxs_collect_recognized_functional_regions(
+			nl,
+			comb_driver,
+			net_use_count,
+			functional_marks,
+			plan->recognition_mask,
+			NULL,
+			NULL,
+			NULL,
+			NULL,
+			NULL,
+			NULL,
+			NULL,
+			NULL);
+		lxs_free_aligned(functional_marks);
+		lxs_free_aligned(net_use_count);
+		if (recognized_functional_count == UINT32_MAX)
+			{
+			lxs_free_aligned(comb_driver);
+			lxs_free_aligned(level_cache);
+			lxs_free_aligned(visiting);
+			lxs_free_aligned(net_remap);
+			lxs_free_aligned(net_assigned);
+			lxs_free_aligned(matched_gates);
+			lxs_free_aligned(multi_matched_gates);
+			lxs_free_aligned(plan);
+			return NULL;
+			}
+		plan->functional_region_count += recognized_functional_count;
+		}
 	{
 	uint8_t *recognition_marks = matched_gates;
 	uint32_t recognized_macro_count;
 	if (plan->recognition_mode == LXS_RECOGNITION_MODE_REPORT_ONLY)
 		{
-		recognition_marks = lxs_malloc_aligned(nl->gate_count * sizeof(uint8_t));
+		recognition_marks = lxs_malloc_aligned((size_t)gate_alloc_count * sizeof(uint8_t));
 		if (!recognition_marks)
 			{
 			lxs_free_aligned(comb_driver);
@@ -6910,10 +7286,7 @@ lxs_plan* lxs_compile_to_plan(lxs_netlist *nl)
 			}
 		else
 			{
-			if (!matched_gates[i])
-				{
-				plan->comb_gate_count++;
-				}
+			plan->comb_gate_count++;
 			if ((nl->gates[i].level + 1U) > plan->level_count)
 				{
 				plan->level_count = nl->gates[i].level + 1U;
@@ -6936,7 +7309,6 @@ lxs_plan* lxs_compile_to_plan(lxs_netlist *nl)
 	plan->ram_write_addr_net_count = nl->source_ram_write_addr_count;
 	plan->ram_data_input_net_count = nl->source_ram_data_input_count;
 	plan->ram_output_net_count = nl->source_ram_output_count;
-	plan->functional_region_count = nl->source_functional_region_count;
 	for (uint32_t i = 0; i < nl->source_ram_count; ++i)
 		{
 		plan->ram_stage_bit_count += nl->source_rams[i].data_width;
@@ -7111,11 +7483,55 @@ lxs_plan* lxs_compile_to_plan(lxs_netlist *nl)
 	memcpy(matched_gates, multi_matched_gates, (size_t)nl->gate_count * sizeof(uint8_t));
 	if (plan->functional_region_count > 0U)
 		{
-		plan->functional_region_count = lxs_collect_source_functional_regions(
+		functional_region_fill = lxs_collect_source_functional_regions(
 			nl,
 			matched_gates,
 			plan->functional_regions);
+		if (plan->recognition_mode == LXS_RECOGNITION_MODE_REPLACE && recognized_functional_count > 0U)
+			{
+			uint32_t *net_use_count = lxs_calloc_aligned(nl->net_count ? nl->net_count : 1U, sizeof(uint32_t));
+			if (!net_use_count)
+				{
+				lxs_free_plan(plan);
+				lxs_free_aligned(comb_driver);
+				lxs_free_aligned(level_cache);
+				lxs_free_aligned(visiting);
+				lxs_free_aligned(net_remap);
+				lxs_free_aligned(net_assigned);
+				lxs_free_aligned(matched_gates);
+				lxs_free_aligned(multi_matched_gates);
+				return NULL;
+				}
+			for (uint32_t i = 0; i < nl->gate_count; ++i)
+				{
+				for (uint32_t j = 0; j < nl->gates[i].input_count; ++j)
+					{
+					net_use_count[nl->gates[i].inputs[j]]++;
+					}
+				}
+			for (uint32_t i = 0; i < nl->output_count; ++i)
+				{
+				net_use_count[nl->outputs[i]]++;
+				}
+			functional_region_fill += lxs_collect_recognized_functional_regions(
+				nl,
+				comb_driver,
+				net_use_count,
+				matched_gates,
+				plan->recognition_mask,
+				plan->recognition_match_count,
+				plan->recognition_node_reduction,
+				plan->recognition_candidate_roots,
+				plan->recognition_nodes_visited,
+				plan->recognition_max_depth,
+				plan->recognition_abort_count,
+				plan->recognition_time_us,
+				plan->functional_regions + functional_region_fill);
+			lxs_free_aligned(net_use_count);
+			}
+		plan->functional_region_count = functional_region_fill;
 		}
+	plan->comb_gate_count = 0U;
 	if (plan->macro_count > 0U)
 		{
 		macro_fill = lxs_collect_source_macros(nl, matched_gates, plan->macros);
@@ -7155,6 +7571,14 @@ lxs_plan* lxs_compile_to_plan(lxs_netlist *nl)
 	else
 		{
 		plan->macro_count = 0U;
+		}
+
+	for (uint32_t i = 0; i < nl->gate_count; ++i)
+		{
+		if (nl->gates[i].type != LXS_GATE_DFF && !matched_gates[i])
+			{
+			plan->comb_gate_count++;
+			}
 		}
 
 	if (plan->multi_macro_count > 1U)
@@ -7250,7 +7674,6 @@ lxs_plan* lxs_compile_to_plan(lxs_netlist *nl)
 		}
 
 	plan->span_count = chunk_fill;
-
 	lxs_free_aligned(comb_driver);
 	lxs_free_aligned(level_cache);
 	lxs_free_aligned(visiting);
