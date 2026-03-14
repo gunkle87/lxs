@@ -1,0 +1,12 @@
+INPUT(a)
+INPUT(b)
+INPUT(cin)
+
+OUTPUT(sum)
+OUTPUT(cout)
+
+t0 = XOR(a, b)
+sum = XOR(t0, cin)
+t1 = AND(a, b)
+t2 = AND(t0, cin)
+cout = OR(t1, t2)

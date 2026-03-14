@@ -1985,14 +1985,16 @@ static void lxs_execute_functional_regions(
 	for (uint32_t i = 0; i < count; ++i)
 		{
 		const lxs_functional_region_plan *region = &regions[i];
-		uint64_t out_value = 0ULL;
-		uint64_t out_mask = 0ULL;
+		uint64_t out_value[8] = { 0 };
+		uint64_t out_mask[8] = { 0 };
 		if (region->exec_kind == LXS_FUNCTIONAL_REGION_EXEC_EXPR)
 			{
 			uint64_t memo_value[8] = { 0 };
 			uint64_t memo_mask[8] = { 0 };
 			uint8_t memo_valid[8] = { 0 };
 			uint32_t root_index = region->op_count > 0U ? (region->op_count - 1U) : 0U;
+			uint64_t expr_value = 0ULL;
+			uint64_t expr_mask = 0ULL;
 			lxs_eval_functional_expr(
 				region,
 				root_index,
@@ -2001,8 +2003,10 @@ static void lxs_execute_functional_regions(
 				memo_value,
 				memo_mask,
 				memo_valid,
-				&out_value,
-				&out_mask);
+				&expr_value,
+				&expr_mask);
+			out_value[0] = expr_value;
+			out_mask[0] = expr_mask;
 			}
 		else
 			{
@@ -2041,10 +2045,10 @@ static void lxs_execute_functional_regions(
 					&next_value,
 					&next_mask);
 
-				if (op->dst == 0xFFU)
+				if (op->dst_kind == LXS_FUNCTIONAL_REGION_DST_OUTPUT)
 					{
-					out_value = next_value;
-					out_mask = next_mask;
+					out_value[op->dst] = next_value;
+					out_mask[op->dst] = next_mask;
 					}
 				else
 					{
@@ -2054,8 +2058,11 @@ static void lxs_execute_functional_regions(
 				}
 			}
 
-		net_value[region->output] = out_value;
-		net_mask[region->output] = out_mask;
+		for (uint32_t output_index = 0; output_index < region->output_count; ++output_index)
+			{
+			net_value[region->outputs[output_index]] = out_value[output_index];
+			net_mask[region->outputs[output_index]] = out_mask[output_index];
+			}
 		ctx->probes.chunk_exec++;
 		ctx->probes.gate_eval += region->gate_equiv_count;
 		}

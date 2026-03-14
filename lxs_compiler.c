@@ -1072,12 +1072,16 @@ static uint32_t lxs_choose_functional_exec_kind(uint32_t op_count, uint32_t temp
 static int lxs_emit_functional_region(
 	lxs_netlist *nl,
 	uint32_t exec_kind,
-	uint32_t output,
 	const uint32_t *inputs,
 	uint32_t input_count,
+	const uint32_t *outputs,
+	uint32_t output_count,
 	const uint8_t *op_type,
+	const uint8_t *op_dst_kind,
+	const uint8_t *op_dst,
 	const uint8_t *op_arity,
 	const uint8_t op_src[8][4],
+	uint32_t temp_count,
 	uint32_t op_count,
 	uint32_t serial)
 	{
@@ -1087,21 +1091,25 @@ static int lxs_emit_functional_region(
 	memset(&region, 0, sizeof(region));
 	memset(temp_nets, 0, sizeof(temp_nets));
 
-	if (input_count == 0U || input_count > 6U || op_count == 0U || op_count > 8U)
+	if (input_count == 0U || input_count > 6U ||
+		output_count == 0U || output_count > 8U ||
+		op_count == 0U || op_count > 8U ||
+		temp_count > 8U)
 		{
 		return 0;
 		}
 
 	region.exec_kind = exec_kind;
-	region.output = output;
 	region.input_count = input_count;
-	region.temp_count = (uint8_t)(op_count > 0U ? (op_count - 1U) : 0U);
+	region.output_count = output_count;
+	region.temp_count = (uint8_t)temp_count;
 	region.op_count = (uint8_t)op_count;
 	region.node_budget = 8U;
 	region.max_depth = 3U;
 	memcpy(region.inputs, inputs, (size_t)input_count * sizeof(uint32_t));
+	memcpy(region.outputs, outputs, (size_t)output_count * sizeof(uint32_t));
 
-	for (uint32_t i = 0; i + 1U < op_count; ++i)
+	for (uint32_t i = 0; i < temp_count; ++i)
 		{
 		char suffix[16];
 
@@ -1149,7 +1157,26 @@ static int lxs_emit_functional_region(
 				}
 			}
 
-		dst_net = (i + 1U == op_count) ? output : temp_nets[i];
+		if (op_dst_kind[i] == LXS_FUNCTIONAL_REGION_DST_TEMP)
+			{
+			if (op_dst[i] >= temp_count)
+				{
+				return 0;
+				}
+			dst_net = temp_nets[op_dst[i]];
+			}
+		else if (op_dst_kind[i] == LXS_FUNCTIONAL_REGION_DST_OUTPUT)
+			{
+			if (op_dst[i] >= output_count)
+				{
+				return 0;
+				}
+			dst_net = outputs[op_dst[i]];
+			}
+		else
+			{
+			return 0;
+			}
 		if (!lxs_emit_gate_record(
 				nl,
 				gate_type,
@@ -1162,7 +1189,8 @@ static int lxs_emit_functional_region(
 			}
 
 		region.op_type[i] = op_type[i];
-		region.op_dst[i] = (i + 1U == op_count) ? 0xFFU : (uint8_t)i;
+		region.op_dst_kind[i] = op_dst_kind[i];
+		region.op_dst[i] = op_dst[i];
 		region.op_arity[i] = op_arity[i];
 		for (uint32_t src_index = 0; src_index < 4U; ++src_index)
 			{
@@ -2036,7 +2064,7 @@ static int lxs_parse_functional_op_type(const char *name, uint8_t *type_out)
 static int lxs_parse_functional_ref(
 	const char *text,
 	uint32_t input_count,
-	uint32_t current_op,
+	uint32_t defined_temp_mask,
 	uint8_t *ref_out)
 	{
 	char *end = NULL;
@@ -2068,12 +2096,58 @@ static int lxs_parse_functional_ref(
 		return 1;
 		}
 
-	if (index >= current_op)
+	if (index >= 8U || (defined_temp_mask & (1UL << index)) == 0U)
 		{
 		return 0;
 		}
 
 	*ref_out = (uint8_t)(input_count + index);
+	return 1;
+	}
+
+static int lxs_parse_functional_dst(
+	const char *text,
+	uint32_t output_count,
+	uint8_t *dst_kind_out,
+	uint8_t *dst_out)
+	{
+	char *end = NULL;
+	unsigned long index;
+
+	if (!text || strlen(text) < 2U)
+		{
+		return 0;
+		}
+
+	if (text[0] != 't' && text[0] != 'o')
+		{
+		return 0;
+		}
+
+	index = strtoul(text + 1, &end, 10);
+	if (!end || *end != '\0')
+		{
+		return 0;
+		}
+
+	if (text[0] == 't')
+		{
+		if (index >= 8U)
+			{
+			return 0;
+			}
+		*dst_kind_out = LXS_FUNCTIONAL_REGION_DST_TEMP;
+		*dst_out = (uint8_t)index;
+		return 1;
+		}
+
+	if (index >= output_count)
+		{
+		return 0;
+		}
+
+	*dst_kind_out = LXS_FUNCTIONAL_REGION_DST_OUTPUT;
+	*dst_out = (uint8_t)index;
 	return 1;
 	}
 
@@ -3093,11 +3167,19 @@ static int lxs_compare_functional_regions(const void *lhs, const void *rhs)
 		{
 		return 1;
 		}
-	if (left->output < right->output)
+	if (left->outputs[0] < right->outputs[0])
 		{
 		return -1;
 		}
-	if (left->output > right->output)
+	if (left->outputs[0] > right->outputs[0])
+		{
+		return 1;
+		}
+	if (left->output_count < right->output_count)
+		{
+		return -1;
+		}
+	if (left->output_count > right->output_count)
 		{
 		return 1;
 		}
@@ -4567,13 +4649,14 @@ static uint32_t lxs_collect_source_functional_regions(
 		memset(&region, 0, sizeof(region));
 		region.exec_kind = source->exec_kind;
 		region.input_count = source->input_count;
+		region.output_count = source->output_count;
 		region.gate_equiv_count = source->op_count;
-		region.output = source->output;
 		region.temp_count = source->temp_count;
 		region.op_count = source->op_count;
 		region.node_budget = source->node_budget;
 		region.max_depth = source->max_depth;
 		memcpy(region.inputs, source->inputs, sizeof(region.inputs));
+		memcpy(region.outputs, source->outputs, sizeof(region.outputs));
 
 		for (uint32_t j = 0; j < source->op_count; ++j)
 			{
@@ -4585,6 +4668,7 @@ static uint32_t lxs_collect_source_functional_regions(
 				level = nl->gates[gate_index].level;
 				}
 			region.ops[j].type = source->op_type[j];
+			region.ops[j].dst_kind = source->op_dst_kind[j];
 			region.ops[j].dst = source->op_dst[j];
 			region.ops[j].arity = source->op_arity[j];
 			for (uint32_t src_index = 0; src_index < 4U; ++src_index)
@@ -4687,8 +4771,9 @@ static uint32_t lxs_collect_recognized_functional_regions(
 
 		region.exec_kind = lxs_choose_functional_exec_kind(state.op_count, state.temp_count);
 		region.level = nl->gates[i].level;
-		region.output = nl->gates[i].output;
 		region.input_count = state.boundary_count;
+		region.output_count = 1U;
+		region.outputs[0] = nl->gates[i].output;
 		region.temp_count = state.temp_count;
 		region.op_count = state.op_count;
 		region.node_budget = 8U;
@@ -4701,7 +4786,9 @@ static uint32_t lxs_collect_recognized_functional_regions(
 		for (uint32_t j = 0; j < state.op_count; ++j)
 			{
 			region.ops[j].type = state.ops[j].type;
-			region.ops[j].dst = state.ops[j].dst;
+			region.ops[j].dst_kind =
+				(state.ops[j].dst == 0xFFU) ? LXS_FUNCTIONAL_REGION_DST_OUTPUT : LXS_FUNCTIONAL_REGION_DST_TEMP;
+			region.ops[j].dst = (state.ops[j].dst == 0xFFU) ? 0U : state.ops[j].dst;
 			region.ops[j].arity = state.ops[j].arity;
 			for (uint32_t src_index = 0; src_index < state.ops[j].arity; ++src_index)
 				{
@@ -6679,10 +6766,16 @@ static lxs_netlist* lxs_load_bench(const char *path)
 				char *section_ctx = NULL;
 				char *section = strtok_s(open_paren + 1, ";", &section_ctx);
 				uint8_t op_types[8];
+				uint8_t op_dst_kind[8];
+				uint8_t op_dst[8];
 				uint8_t op_arity[8];
 				uint8_t op_src[8][4];
 				uint32_t op_count = 0U;
 				uint32_t section_count = 0U;
+				uint32_t temp_count = 0U;
+				uint32_t defined_temp_mask = 0U;
+				uint8_t assigned_outputs[8] = { 0 };
+				uint8_t saw_explicit_dst = 0U;
 				uint32_t exec_kind;
 
 				if (strcmp(gate_name, "FUNC_EXPR") == 0)
@@ -6704,7 +6797,7 @@ static lxs_netlist* lxs_load_bench(const char *path)
 					section = strtok_s(NULL, ";", &section_ctx);
 					}
 
-				if (output_count != 1U || section_count < 2U)
+				if (section_count < 2U)
 					{
 					lxs_free_netlist(nl);
 					fclose(stream);
@@ -6738,12 +6831,16 @@ static lxs_netlist* lxs_load_bench(const char *path)
 
 				for (uint32_t section_index = 1U; section_index < section_count; ++section_index)
 					{
+					char *op_expr = sections[section_index];
 					char *op_open;
 					char *op_close;
 					char *arg_ctx = NULL;
 					char *arg_token;
 					uint8_t op_type;
+					uint8_t dst_kind = LXS_FUNCTIONAL_REGION_DST_TEMP;
+					uint8_t dst_index = 0U;
 					uint32_t arg_count = 0U;
+					char *assign = strchr(op_expr, '=');
 
 					if (op_count >= 8U)
 						{
@@ -6752,8 +6849,69 @@ static lxs_netlist* lxs_load_bench(const char *path)
 						return NULL;
 						}
 
-					op_open = strchr(sections[section_index], '(');
-					op_close = strrchr(sections[section_index], ')');
+					if (assign)
+						{
+						*assign = '\0';
+						if (!lxs_parse_functional_dst(
+								lxs_trim(op_expr),
+								output_count,
+								&dst_kind,
+								&dst_index))
+							{
+							lxs_free_netlist(nl);
+							fclose(stream);
+							return NULL;
+							}
+						op_expr = lxs_trim(assign + 1);
+						saw_explicit_dst = 1U;
+						if (dst_kind == LXS_FUNCTIONAL_REGION_DST_TEMP)
+							{
+							if ((defined_temp_mask & (1UL << dst_index)) != 0U)
+								{
+								lxs_free_netlist(nl);
+								fclose(stream);
+								return NULL;
+								}
+							if ((uint32_t)dst_index + 1U > temp_count)
+								{
+								temp_count = (uint32_t)dst_index + 1U;
+								}
+							}
+						else
+							{
+							if (assigned_outputs[dst_index])
+								{
+								lxs_free_netlist(nl);
+								fclose(stream);
+								return NULL;
+								}
+							assigned_outputs[dst_index] = 1U;
+							}
+						}
+					else
+						{
+						if (output_count != 1U)
+							{
+							lxs_free_netlist(nl);
+							fclose(stream);
+							return NULL;
+							}
+						if (section_index + 1U == section_count)
+							{
+							dst_kind = LXS_FUNCTIONAL_REGION_DST_OUTPUT;
+							dst_index = 0U;
+							assigned_outputs[0] = 1U;
+							}
+						else
+							{
+							dst_kind = LXS_FUNCTIONAL_REGION_DST_TEMP;
+							dst_index = (uint8_t)op_count;
+							temp_count = op_count + 1U;
+							}
+						}
+
+					op_open = strchr(op_expr, '(');
+					op_close = strrchr(op_expr, ')');
 					if (!op_open || !op_close || op_close < op_open)
 						{
 						lxs_free_netlist(nl);
@@ -6763,7 +6921,7 @@ static lxs_netlist* lxs_load_bench(const char *path)
 
 					*op_open = '\0';
 					*op_close = '\0';
-					if (!lxs_parse_functional_op_type(lxs_trim(sections[section_index]), &op_type))
+					if (!lxs_parse_functional_op_type(lxs_trim(op_expr), &op_type))
 						{
 						lxs_free_netlist(nl);
 						fclose(stream);
@@ -6781,7 +6939,7 @@ static lxs_netlist* lxs_load_bench(const char *path)
 					while (arg_token && arg_count < 4U)
 						{
 						arg_token = lxs_trim(arg_token);
-						if (!lxs_parse_functional_ref(arg_token, input_count, op_count, &op_src[op_count][arg_count]))
+						if (!lxs_parse_functional_ref(arg_token, input_count, defined_temp_mask, &op_src[op_count][arg_count]))
 							{
 							lxs_free_netlist(nl);
 							fclose(stream);
@@ -6806,24 +6964,53 @@ static lxs_netlist* lxs_load_bench(const char *path)
 						return NULL;
 						}
 					op_types[op_count] = op_type;
+					op_dst_kind[op_count] = dst_kind;
+					op_dst[op_count] = dst_index;
 					op_arity[op_count] = (uint8_t)arg_count;
+					if (dst_kind == LXS_FUNCTIONAL_REGION_DST_TEMP)
+						{
+						defined_temp_mask |= (1UL << dst_index);
+						}
 					op_count++;
+					}
+
+				for (uint32_t output_index = 0U; output_index < output_count; ++output_index)
+					{
+					if (!assigned_outputs[output_index])
+						{
+						lxs_free_netlist(nl);
+						fclose(stream);
+						return NULL;
+						}
 					}
 
 				if (strcmp(gate_name, "FUNC_REGION") == 0)
 					{
-					exec_kind = lxs_choose_functional_exec_kind(op_count, op_count > 0U ? (op_count - 1U) : 0U);
+					exec_kind = (output_count == 1U && !saw_explicit_dst) ?
+						lxs_choose_functional_exec_kind(op_count, op_count > 0U ? (op_count - 1U) : 0U) :
+						LXS_FUNCTIONAL_REGION_EXEC_MICROPROGRAM;
+					}
+
+				if (exec_kind == LXS_FUNCTIONAL_REGION_EXEC_EXPR && output_count != 1U)
+					{
+					lxs_free_netlist(nl);
+					fclose(stream);
+					return NULL;
 					}
 
 				if (!lxs_emit_functional_region(
 						nl,
 						exec_kind,
-						output_ids[0],
 						input_ids,
 						input_count,
+						output_ids,
+						output_count,
 						op_types,
+						op_dst_kind,
+						op_dst,
 						op_arity,
 						op_src,
+						temp_count,
 						op_count,
 						macro_serial++))
 					{

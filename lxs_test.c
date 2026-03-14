@@ -3189,6 +3189,73 @@ static int lxs_test_functional_region_recognition(void)
 	return ok;
 	}
 
+static int lxs_test_functional_region_full_adder_explicit(void)
+	{
+	lxs_loaded_case lhs;
+	lxs_loaded_case micro_case;
+	uint64_t values[3];
+	uint64_t masks[3];
+	uint64_t lhs_out_values[2];
+	uint64_t lhs_out_masks[2];
+	uint64_t micro_out_values[2];
+	uint64_t micro_out_masks[2];
+	int ok = 1;
+
+	if (!lxs_load_case("Tests\\Circuits\\functional_region_full_adder_primitive.bench", &lhs))
+		{
+		fprintf(stderr, "FAIL functional_region_full_adder_explicit: unable to load primitive circuit\n");
+		return 0;
+		}
+
+	if (!lxs_load_case("Tests\\Circuits\\functional_region_full_adder_micro.bench", &micro_case))
+		{
+		fprintf(stderr, "FAIL functional_region_full_adder_explicit: unable to load micro circuit\n");
+		lxs_unload_case(&lhs);
+		return 0;
+		}
+
+	ok &= lxs_expect_u64("functional_region_full_adder_explicit.count", micro_case.plan->functional_region_count, 1ULL);
+	ok &= lxs_expect_u64("functional_region_full_adder_explicit.comb_gate_count", micro_case.plan->comb_gate_count, 0ULL);
+	ok &= lxs_expect_u64("functional_region_full_adder_explicit.output_count",
+		micro_case.plan->functional_regions[0].output_count,
+		2ULL);
+	ok &= lxs_expect_u64("functional_region_full_adder_explicit.exec_kind",
+		micro_case.plan->functional_regions[0].exec_kind,
+		LXS_FUNCTIONAL_REGION_EXEC_MICROPROGRAM);
+
+	memset(masks, 0, sizeof(masks));
+	for (uint32_t combo = 0; combo < 8U; ++combo)
+		{
+		char label[112];
+
+		for (uint32_t bit = 0; bit < 3U; ++bit)
+			{
+			values[bit] = ((combo >> bit) & 1U) ? ~0ULL : 0ULL;
+			}
+
+		lxs_apply_inputs(&lhs.ctx, lhs.plan, values, masks);
+		lxs_execute_plan(&lhs.ctx, lhs.plan);
+		lxs_read_outputs(&lhs.ctx, lhs.plan, lhs_out_values, lhs_out_masks);
+
+		lxs_apply_inputs(&micro_case.ctx, micro_case.plan, values, masks);
+		lxs_execute_plan(&micro_case.ctx, micro_case.plan);
+		lxs_read_outputs(&micro_case.ctx, micro_case.plan, micro_out_values, micro_out_masks);
+
+		snprintf(label, sizeof(label), "functional_region_full_adder_explicit.combo_%u.sum.value", combo);
+		ok &= lxs_expect_u64(label, micro_out_values[0], lhs_out_values[0]);
+		snprintf(label, sizeof(label), "functional_region_full_adder_explicit.combo_%u.sum.mask", combo);
+		ok &= lxs_expect_u64(label, micro_out_masks[0], lhs_out_masks[0]);
+		snprintf(label, sizeof(label), "functional_region_full_adder_explicit.combo_%u.cout.value", combo);
+		ok &= lxs_expect_u64(label, micro_out_values[1], lhs_out_values[1]);
+		snprintf(label, sizeof(label), "functional_region_full_adder_explicit.combo_%u.cout.mask", combo);
+		ok &= lxs_expect_u64(label, micro_out_masks[1], lhs_out_masks[1]);
+		}
+
+	lxs_unload_case(&lhs);
+	lxs_unload_case(&micro_case);
+	return ok;
+	}
+
 static int lxs_test_functional_region_merge_explicit(void)
 	{
 	lxs_loaded_case lhs;
@@ -3544,6 +3611,7 @@ int main(void)
 	ok &= lxs_test_regfile2_rewrite();
 	ok &= lxs_test_functional_region_explicit();
 	ok &= lxs_test_functional_region_recognition();
+	ok &= lxs_test_functional_region_full_adder_explicit();
 	ok &= lxs_test_functional_region_cache_explicit();
 	ok &= lxs_test_functional_region_chain_explicit();
 	ok &= lxs_test_functional_region_merge_explicit();

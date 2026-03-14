@@ -1,0 +1,8 @@
+INPUT(a)
+INPUT(b)
+INPUT(cin)
+
+OUTPUT(sum)
+OUTPUT(cout)
+
+sum, cout = FUNC_MICRO(a, b, cin; t0 = XOR(i0, i1); o0 = XOR(t0, i2); t1 = AND(i0, i1); t2 = AND(t0, i2); o1 = OR(t1, t2))
