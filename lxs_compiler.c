@@ -2934,6 +2934,45 @@ static uint32_t lxs_recompute_gate_level(
 	return gate_level;
 	}
 
+static uint8_t lxs_source_multi_macro_use_unit_level(uint32_t type)
+	{
+	switch (type)
+		{
+		case LXS_SOURCE_MULTI_MACRO_HALF_ADDER:
+		case LXS_SOURCE_MULTI_MACRO_FULL_ADDER:
+		case LXS_SOURCE_MULTI_MACRO_RIPPLE_SLICE2:
+		case LXS_SOURCE_MULTI_MACRO_RIPPLE_ADD4:
+		case LXS_SOURCE_MULTI_MACRO_CARRY_SAVE_ROW4:
+		case LXS_SOURCE_MULTI_MACRO_REDUCE_PROPAGATE4:
+			return 1U;
+		default:
+			return 0U;
+		}
+	}
+
+static uint32_t lxs_compute_source_multi_macro_unit_level(
+	const lxs_netlist *nl,
+	const int32_t *comb_driver,
+	const lxs_source_multi_macro *macro)
+	{
+	uint32_t macro_level = 0U;
+
+	for (uint32_t j = 0; j < macro->input_count; ++j)
+		{
+		int32_t driver = comb_driver[macro->inputs[j]];
+		if (driver >= 0)
+			{
+			uint32_t input_level = nl->gates[(uint32_t)driver].level + 1U;
+			if (input_level > macro_level)
+				{
+				macro_level = input_level;
+				}
+			}
+		}
+
+	return macro_level;
+	}
+
 static uint32_t lxs_compute_source_multi_macro_level(
 	const lxs_netlist *nl,
 	const int32_t *comb_driver,
@@ -2941,6 +2980,11 @@ static uint32_t lxs_compute_source_multi_macro_level(
 	{
 	uint32_t local_levels[40];
 	uint32_t macro_level = 0U;
+
+	if (lxs_source_multi_macro_use_unit_level(macro->type))
+		{
+		return lxs_compute_source_multi_macro_unit_level(nl, comb_driver, macro);
+		}
 
 	for (uint32_t j = 0; j < macro->gate_count; ++j)
 		{
@@ -5158,6 +5202,7 @@ static int lxs_describe_full_adder_cinv(
 
 static uint32_t lxs_collect_source_multi_macros(
 	const lxs_netlist *nl,
+	const int32_t *comb_driver,
 	uint8_t *matched_gates,
 	lxs_multi_macro_plan *macros)
 	{
@@ -5222,11 +5267,22 @@ static uint32_t lxs_collect_source_multi_macros(
 		for (uint32_t j = 0; j < source->gate_count; ++j)
 			{
 			uint32_t gate_index = source->gate_indices[j];
-
 			matched_gates[gate_index] = 1U;
-			if (nl->gates[gate_index].level > level)
+			}
+
+		if (lxs_source_multi_macro_use_unit_level(source->type))
+			{
+			level = lxs_compute_source_multi_macro_unit_level(nl, comb_driver, source);
+			}
+		else
+			{
+			for (uint32_t j = 0; j < source->gate_count; ++j)
 				{
-				level = nl->gates[gate_index].level;
+				uint32_t gate_index = source->gate_indices[j];
+				if (nl->gates[gate_index].level > level)
+					{
+					level = nl->gates[gate_index].level;
+					}
 				}
 			}
 
@@ -7627,7 +7683,7 @@ lxs_plan* lxs_compile_to_plan(lxs_netlist *nl)
 	plan->gate_count = nl->gate_count;
 	plan->recognition_mask = lxs_default_recognition_mask();
 	plan->recognition_mode = lxs_default_recognition_mode();
-	plan->multi_macro_count = lxs_collect_source_multi_macros(nl, multi_matched_gates, NULL);
+	plan->multi_macro_count = lxs_collect_source_multi_macros(nl, comb_driver, multi_matched_gates, NULL);
 	{
 	uint8_t *recognition_multi_marks = multi_matched_gates;
 	uint32_t recognized_multi_count;
@@ -7969,7 +8025,7 @@ lxs_plan* lxs_compile_to_plan(lxs_netlist *nl)
 	if (plan->multi_macro_count > 0U)
 		{
 		memset(multi_matched_gates, 0, (size_t)nl->gate_count * sizeof(uint8_t));
-		multi_macro_fill = lxs_collect_source_multi_macros(nl, multi_matched_gates, plan->multi_macros);
+		multi_macro_fill = lxs_collect_source_multi_macros(nl, comb_driver, multi_matched_gates, plan->multi_macros);
 		if (plan->recognition_mode == LXS_RECOGNITION_MODE_REPLACE)
 			{
 			uint32_t recognized_multi_fill = lxs_collect_multi_macros(
