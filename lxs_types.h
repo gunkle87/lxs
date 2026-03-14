@@ -281,11 +281,11 @@ struct lxs_source_functional_region
 	uint8_t op_count;
 	uint8_t node_budget;
 	uint8_t max_depth;
-	uint32_t inputs[5];
+	uint32_t inputs[6];
 	uint8_t op_type[8];
 	uint8_t op_dst[8];
-	uint8_t op_src0[8];
-	uint8_t op_src1[8];
+	uint8_t op_arity[8];
+	uint8_t op_src[8][4];
 	};
 
 struct lxs_source_register
@@ -391,8 +391,8 @@ struct lxs_functional_region_op
 	{
 	uint8_t type;
 	uint8_t dst;
-	uint8_t src0;
-	uint8_t src1;
+	uint8_t arity;
+	uint8_t src[4];
 	};
 
 typedef struct lxs_functional_region_plan lxs_functional_region_plan;
@@ -403,7 +403,7 @@ struct lxs_functional_region_plan
 	uint32_t input_count;
 	uint32_t gate_equiv_count;
 	uint32_t output;
-	uint32_t inputs[5];
+	uint32_t inputs[6];
 	uint8_t temp_count;
 	uint8_t op_count;
 	uint8_t node_budget;

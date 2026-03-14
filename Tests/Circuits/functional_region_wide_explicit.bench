@@ -1,0 +1,9 @@
+INPUT(a)
+INPUT(b)
+INPUT(c)
+INPUT(d)
+INPUT(e)
+INPUT(f)
+OUTPUT(y)
+
+y = FUNC_EXPR(a,b,c,d,e,f; AND(i0,i1); XOR(i2,i3); NOR(i4,i5); OR(t0,t1,t2,i0))

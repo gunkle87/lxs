@@ -1029,11 +1029,6 @@ static int lxs_emit_parity8_macro(
 	return 1;
 	}
 
-static int lxs_functional_op_arity(uint8_t type)
-	{
-	return (type == LXS_FUNCTIONAL_REGION_OP_BUF || type == LXS_FUNCTIONAL_REGION_OP_NOT) ? 1 : 2;
-	}
-
 static int lxs_functional_op_gate_type(uint8_t type, uint32_t *gate_type_out)
 	{
 	switch (type)
@@ -1081,8 +1076,8 @@ static int lxs_emit_functional_region(
 	const uint32_t *inputs,
 	uint32_t input_count,
 	const uint8_t *op_type,
-	const uint8_t *op_src0,
-	const uint8_t *op_src1,
+	const uint8_t *op_arity,
+	const uint8_t op_src[8][4],
 	uint32_t op_count,
 	uint32_t serial)
 	{
@@ -1092,7 +1087,7 @@ static int lxs_emit_functional_region(
 	memset(&region, 0, sizeof(region));
 	memset(temp_nets, 0, sizeof(temp_nets));
 
-	if (input_count == 0U || input_count > 5U || op_count == 0U || op_count > 8U)
+	if (input_count == 0U || input_count > 6U || op_count == 0U || op_count > 8U)
 		{
 		return 0;
 		}
@@ -1121,12 +1116,8 @@ static int lxs_emit_functional_region(
 	for (uint32_t i = 0; i < op_count; ++i)
 		{
 		uint32_t gate_type;
-		uint32_t gate_inputs[2];
+		uint32_t gate_inputs[4];
 		uint32_t dst_net;
-		uint32_t src0_ref = op_src0[i];
-		uint32_t src1_ref = op_src1[i];
-		uint32_t src0_net;
-		uint32_t src1_net = 0U;
 		uint32_t arity;
 
 		if (!lxs_functional_op_gate_type(op_type[i], &gate_type))
@@ -1134,41 +1125,31 @@ static int lxs_emit_functional_region(
 			return 0;
 			}
 
-		arity = (uint32_t)lxs_functional_op_arity(op_type[i]);
-		if (src0_ref < input_count)
+		arity = (uint32_t)op_arity[i];
+		if (arity == 0U || arity > 4U)
 			{
-			src0_net = inputs[src0_ref];
-			}
-		else
-			{
-			uint32_t temp_index = src0_ref - input_count;
-			if (temp_index >= i)
-				{
-				return 0;
-				}
-			src0_net = temp_nets[temp_index];
+			return 0;
 			}
 
-		if (arity == 2U)
+		for (uint32_t src_index = 0; src_index < arity; ++src_index)
 			{
-			if (src1_ref < input_count)
+			uint32_t src_ref = op_src[i][src_index];
+			if (src_ref < input_count)
 				{
-				src1_net = inputs[src1_ref];
+				gate_inputs[src_index] = inputs[src_ref];
 				}
 			else
 				{
-				uint32_t temp_index = src1_ref - input_count;
+				uint32_t temp_index = src_ref - input_count;
 				if (temp_index >= i)
 					{
 					return 0;
 					}
-				src1_net = temp_nets[temp_index];
+				gate_inputs[src_index] = temp_nets[temp_index];
 				}
 			}
 
 		dst_net = (i + 1U == op_count) ? output : temp_nets[i];
-		gate_inputs[0] = src0_net;
-		gate_inputs[1] = src1_net;
 		if (!lxs_emit_gate_record(
 				nl,
 				gate_type,
@@ -1182,8 +1163,11 @@ static int lxs_emit_functional_region(
 
 		region.op_type[i] = op_type[i];
 		region.op_dst[i] = (i + 1U == op_count) ? 0xFFU : (uint8_t)i;
-		region.op_src0[i] = op_src0[i];
-		region.op_src1[i] = op_src1[i];
+		region.op_arity[i] = op_arity[i];
+		for (uint32_t src_index = 0; src_index < 4U; ++src_index)
+			{
+			region.op_src[i][src_index] = op_src[i][src_index];
+			}
 		}
 
 	return lxs_push_source_functional_region(nl, &region);
@@ -2176,10 +2160,9 @@ struct lxs_functional_build_op
 	{
 	uint8_t type;
 	uint8_t dst;
-	uint8_t src0_is_temp;
-	uint8_t src1_is_temp;
-	uint8_t src0_index;
-	uint8_t src1_index;
+	uint8_t arity;
+	uint8_t src_is_temp[4];
+	uint8_t src_index[4];
 	};
 
 typedef struct lxs_functional_build_state lxs_functional_build_state;
@@ -2187,7 +2170,7 @@ struct lxs_functional_build_state
 	{
 	uint32_t gate_indices[8];
 	uint32_t gate_count;
-	uint32_t boundary_inputs[5];
+	uint32_t boundary_inputs[6];
 	uint32_t boundary_count;
 	uint8_t temp_count;
 	uint8_t op_count;
@@ -2208,7 +2191,7 @@ static int lxs_find_or_add_boundary_input(
 			}
 		}
 
-	if (state->boundary_count >= 5U)
+	if (state->boundary_count >= 6U)
 		{
 		return 0;
 		}
@@ -2256,10 +2239,8 @@ static int lxs_build_functional_cone_rooted_visit(
 	{
 	const lxs_gate_ir *gate = &nl->gates[gate_index];
 	lxs_functional_build_op *op;
-	uint8_t src0_is_temp = 0U;
-	uint8_t src1_is_temp = 0U;
-	uint8_t src0_index = 0U;
-	uint8_t src1_index = 0U;
+	uint8_t src_is_temp[4] = { 0 };
+	uint8_t src_index[4] = { 0 };
 
 	for (uint32_t i = 0; i < *gate_seen_count; ++i)
 		{
@@ -2276,6 +2257,11 @@ static int lxs_build_functional_cone_rooted_visit(
 
 	gate_seen[*gate_seen_count] = gate_index;
 	(*gate_seen_count)++;
+
+	if ((!is_root && gate->input_count > 2U) || gate->input_count == 0U || gate->input_count > 4U)
+		{
+		return 0;
+		}
 
 	for (uint32_t i = 0; i < gate->input_count; ++i)
 		{
@@ -2301,16 +2287,8 @@ static int lxs_build_functional_cone_rooted_visit(
 				return 0;
 				}
 
-			if (i == 0U)
-				{
-				src0_is_temp = child_is_temp;
-				src0_index = child_ref;
-				}
-			else
-				{
-				src1_is_temp = child_is_temp;
-				src1_index = child_ref;
-				}
+			src_is_temp[i] = child_is_temp;
+			src_index[i] = child_ref;
 			}
 		else
 			{
@@ -2321,25 +2299,20 @@ static int lxs_build_functional_cone_rooted_visit(
 				return 0;
 				}
 
-			if (i == 0U)
-				{
-				src0_is_temp = 0U;
-				src0_index = boundary_index;
-				}
-			else
-				{
-				src1_is_temp = 0U;
-				src1_index = boundary_index;
-				}
+			src_is_temp[i] = 0U;
+			src_index[i] = boundary_index;
 			}
 		}
 
 	op = &state->ops[state->op_count];
+	memset(op, 0, sizeof(*op));
 	op->type = lxs_gate_type_to_functional_op(gate->type);
-	op->src0_is_temp = src0_is_temp;
-	op->src0_index = src0_index;
-	op->src1_is_temp = src1_is_temp;
-	op->src1_index = src1_index;
+	op->arity = (uint8_t)gate->input_count;
+	for (uint32_t i = 0; i < gate->input_count; ++i)
+		{
+		op->src_is_temp[i] = src_is_temp[i];
+		op->src_index[i] = src_index[i];
+		}
 	if (is_root)
 		{
 		op->dst = 0xFFU;
@@ -2419,7 +2392,8 @@ static int lxs_try_match_functional_cone_rooted_visit(
 		}
 
 	gate = &nl->gates[gate_index];
-	if (!lxs_is_functional_gate_type(gate->type) || gate->input_count == 0U || gate->input_count > 2U)
+	if (!lxs_is_functional_gate_type(gate->type) || gate->input_count == 0U ||
+		(depth > 0U && gate->input_count > 2U) || gate->input_count > 4U)
 		{
 		lxs_record_recognition_abort(
 			family_abort_count,
@@ -2449,7 +2423,7 @@ static int lxs_try_match_functional_cone_rooted_visit(
 
 		if (driver < 0)
 			{
-			if (!lxs_add_unique_boundary_input(boundary_inputs, boundary_count, 5U, net_id))
+			if (!lxs_add_unique_boundary_input(boundary_inputs, boundary_count, 6U, net_id))
 				{
 				lxs_record_recognition_abort(
 					family_abort_count,
@@ -2517,7 +2491,7 @@ static int lxs_try_match_functional_cone_rooted(
 	{
 	uint32_t gate_seen[8];
 	uint32_t gate_seen_count = 0U;
-	uint32_t boundary_inputs[5];
+	uint32_t boundary_inputs[6];
 	uint32_t boundary_count = 0U;
 	const lxs_gate_ir *root = &nl->gates[gate_index];
 
@@ -2531,6 +2505,15 @@ static int lxs_try_match_functional_cone_rooted(
 			family_abort_count,
 			LXS_RECOGNITION_FAMILY_FUNCTIONAL,
 			LXS_RECOGNITION_ABORT_FANOUT);
+		return 0;
+		}
+
+	if (root->input_count < 2U || root->input_count > 3U)
+		{
+		lxs_record_recognition_abort(
+			family_abort_count,
+			LXS_RECOGNITION_FAMILY_FUNCTIONAL,
+			LXS_RECOGNITION_ABORT_SHAPE);
 		return 0;
 		}
 
@@ -2556,13 +2539,66 @@ static int lxs_try_match_functional_cone_rooted(
 		return 0;
 		}
 
-	if (*matched_gate_count < 3U || *matched_gate_count > 8U || boundary_count == 0U || boundary_count > 5U)
+	if (*matched_gate_count < 3U || *matched_gate_count > 8U || boundary_count == 0U || boundary_count > 6U)
 		{
 		lxs_record_recognition_abort(
 			family_abort_count,
 			LXS_RECOGNITION_FAMILY_FUNCTIONAL,
 			LXS_RECOGNITION_ABORT_SHAPE);
 		return 0;
+		}
+
+	return 1;
+	}
+
+static int lxs_functional_region_is_cache_local(
+	const lxs_functional_build_state *state)
+	{
+	uint8_t temp_use_count[8] = { 0 };
+	uint32_t root_index;
+
+	if (state->op_count < 3U || state->op_count > 3U)
+		{
+		return 0;
+		}
+
+	if (state->temp_count > 2U || state->boundary_count == 0U || state->boundary_count > 6U)
+		{
+		return 0;
+		}
+
+	root_index = (uint32_t)(state->op_count - 1U);
+	if (state->ops[root_index].arity < 2U || state->ops[root_index].arity > 3U)
+		{
+		return 0;
+		}
+
+	for (uint32_t i = 0; i < root_index; ++i)
+		{
+		if (state->ops[i].arity == 0U || state->ops[i].arity > 2U)
+			{
+			return 0;
+			}
+		}
+
+	for (uint32_t i = 0; i < state->op_count; ++i)
+		{
+		for (uint32_t src = 0; src < state->ops[i].arity; ++src)
+			{
+			if (state->ops[i].src_is_temp[src])
+				{
+				uint8_t temp_index = state->ops[i].src_index[src];
+				if (temp_index >= state->temp_count)
+					{
+					return 0;
+					}
+				temp_use_count[temp_index]++;
+				if (temp_use_count[temp_index] > 1U)
+					{
+					return 0;
+					}
+				}
+			}
 		}
 
 	return 1;
@@ -4515,8 +4551,11 @@ static uint32_t lxs_collect_source_functional_regions(
 				}
 			region.ops[j].type = source->op_type[j];
 			region.ops[j].dst = source->op_dst[j];
-			region.ops[j].src0 = source->op_src0[j];
-			region.ops[j].src1 = source->op_src1[j];
+			region.ops[j].arity = source->op_arity[j];
+			for (uint32_t src_index = 0; src_index < 4U; ++src_index)
+				{
+				region.ops[j].src[src_index] = source->op_src[j][src_index];
+				}
 			}
 
 		region.level = level;
@@ -4602,6 +4641,15 @@ static uint32_t lxs_collect_recognized_functional_regions(
 			continue;
 			}
 
+		if (!lxs_functional_region_is_cache_local(&state))
+			{
+			lxs_record_recognition_abort(
+				family_abort_count,
+				LXS_RECOGNITION_FAMILY_FUNCTIONAL,
+				LXS_RECOGNITION_ABORT_SHAPE);
+			continue;
+			}
+
 		region.exec_kind = lxs_choose_functional_exec_kind(state.op_count, state.temp_count);
 		region.level = nl->gates[i].level;
 		region.output = nl->gates[i].output;
@@ -4619,12 +4667,13 @@ static uint32_t lxs_collect_recognized_functional_regions(
 			{
 			region.ops[j].type = state.ops[j].type;
 			region.ops[j].dst = state.ops[j].dst;
-			region.ops[j].src0 = state.ops[j].src0_is_temp ?
-				(uint8_t)(state.boundary_count + state.ops[j].src0_index) :
-				state.ops[j].src0_index;
-			region.ops[j].src1 = state.ops[j].src1_is_temp ?
-				(uint8_t)(state.boundary_count + state.ops[j].src1_index) :
-				state.ops[j].src1_index;
+			region.ops[j].arity = state.ops[j].arity;
+			for (uint32_t src_index = 0; src_index < state.ops[j].arity; ++src_index)
+				{
+				region.ops[j].src[src_index] = state.ops[j].src_is_temp[src_index] ?
+					(uint8_t)(state.boundary_count + state.ops[j].src_index[src_index]) :
+					state.ops[j].src_index[src_index];
+				}
 			}
 
 		for (uint32_t j = 0; j < state.gate_count; ++j)
@@ -6595,8 +6644,8 @@ static lxs_netlist* lxs_load_bench(const char *path)
 				char *section_ctx = NULL;
 				char *section = strtok_s(open_paren + 1, ";", &section_ctx);
 				uint8_t op_types[8];
-				uint8_t op_src0[8];
-				uint8_t op_src1[8];
+				uint8_t op_arity[8];
+				uint8_t op_src[8][4];
 				uint32_t op_count = 0U;
 				uint32_t section_count = 0U;
 				uint32_t exec_kind;
@@ -6631,7 +6680,7 @@ static lxs_netlist* lxs_load_bench(const char *path)
 				char *input_ctx = NULL;
 				char *input_token = strtok_s(sections[0], ",", &input_ctx);
 
-				while (input_token && input_count < 5U)
+				while (input_token && input_count < 6U)
 					{
 					input_ids[input_count] = lxs_intern_net(nl, lxs_trim(input_token));
 					if (input_ids[input_count] == UINT32_MAX)
@@ -6657,9 +6706,9 @@ static lxs_netlist* lxs_load_bench(const char *path)
 					char *op_open;
 					char *op_close;
 					char *arg_ctx = NULL;
-					char *arg0;
-					char *arg1;
+					char *arg_token;
 					uint8_t op_type;
+					uint32_t arg_count = 0U;
 
 					if (op_count >= 8U)
 						{
@@ -6686,45 +6735,44 @@ static lxs_netlist* lxs_load_bench(const char *path)
 						return NULL;
 						}
 
-					arg0 = strtok_s(op_open + 1, ",", &arg_ctx);
-					arg1 = strtok_s(NULL, ",", &arg_ctx);
-					if (!arg0)
+					arg_token = strtok_s(op_open + 1, ",", &arg_ctx);
+					if (!arg_token)
 						{
 						lxs_free_netlist(nl);
 						fclose(stream);
 						return NULL;
 						}
 
-					arg0 = lxs_trim(arg0);
-					if (!lxs_parse_functional_ref(arg0, input_count, op_count, &op_src0[op_count]))
+					while (arg_token && arg_count < 4U)
+						{
+						arg_token = lxs_trim(arg_token);
+						if (!lxs_parse_functional_ref(arg_token, input_count, op_count, &op_src[op_count][arg_count]))
+							{
+							lxs_free_netlist(nl);
+							fclose(stream);
+							return NULL;
+							}
+						arg_count++;
+						arg_token = strtok_s(NULL, ",", &arg_ctx);
+						}
+					if ((op_type == LXS_FUNCTIONAL_REGION_OP_BUF || op_type == LXS_FUNCTIONAL_REGION_OP_NOT))
+						{
+						if (arg_count != 1U)
+							{
+							lxs_free_netlist(nl);
+							fclose(stream);
+							return NULL;
+							}
+						}
+					else if (arg_count < 2U || arg_count > 4U)
 						{
 						lxs_free_netlist(nl);
 						fclose(stream);
 						return NULL;
 						}
-
-					if (lxs_functional_op_arity(op_type) == 2)
-						{
-						if (!arg1)
-							{
-							lxs_free_netlist(nl);
-							fclose(stream);
-							return NULL;
-							}
-						arg1 = lxs_trim(arg1);
-						if (!lxs_parse_functional_ref(arg1, input_count, op_count, &op_src1[op_count]))
-							{
-							lxs_free_netlist(nl);
-							fclose(stream);
-							return NULL;
-							}
-						}
-					else
-						{
-						op_src1[op_count] = 0U;
-						}
-
-					op_types[op_count++] = op_type;
+					op_types[op_count] = op_type;
+					op_arity[op_count] = (uint8_t)arg_count;
+					op_count++;
 					}
 
 				if (strcmp(gate_name, "FUNC_REGION") == 0)
@@ -6739,8 +6787,8 @@ static lxs_netlist* lxs_load_bench(const char *path)
 						input_ids,
 						input_count,
 						op_types,
-						op_src0,
-						op_src1,
+						op_arity,
+						op_src,
 						op_count,
 						macro_serial++))
 					{
