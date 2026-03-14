@@ -2551,20 +2551,21 @@ static int lxs_try_match_functional_cone_rooted(
 	return 1;
 	}
 
-static int lxs_functional_region_is_cache_local(
+static int lxs_functional_region_is_cache_merge(
 	const lxs_functional_build_state *state)
 	{
 	uint8_t temp_use_count[8] = { 0 };
+	uint8_t temp_depth[8] = { 0 };
+	uint8_t root_temp_depths[4] = { 0 };
 	uint32_t root_index;
 	uint32_t root_temp_sources = 0U;
-	uint8_t highest_temp_index = 0U;
 
-	if (state->op_count != 4U)
+	if (state->op_count != 5U)
 		{
 		return 0;
 		}
 
-	if (state->temp_count > 3U || state->boundary_count == 0U || state->boundary_count > 6U)
+	if (state->temp_count != 4U || state->boundary_count == 0U || state->boundary_count > 6U)
 		{
 		return 0;
 		}
@@ -2577,14 +2578,12 @@ static int lxs_functional_region_is_cache_local(
 
 	for (uint32_t i = 0; i < root_index; ++i)
 		{
+		uint8_t depth = 1U;
 		if (state->ops[i].arity == 0U || state->ops[i].arity > 2U)
 			{
 			return 0;
 			}
-		}
 
-	for (uint32_t i = 0; i < state->op_count; ++i)
-		{
 		for (uint32_t src = 0; src < state->ops[i].arity; ++src)
 			{
 			if (state->ops[i].src_is_temp[src])
@@ -2595,39 +2594,46 @@ static int lxs_functional_region_is_cache_local(
 					return 0;
 					}
 				temp_use_count[temp_index]++;
-				if (temp_index > highest_temp_index)
+				if ((uint8_t)(temp_depth[temp_index] + 1U) > depth)
 					{
-					highest_temp_index = temp_index;
-					}
-				if (i == root_index)
-					{
-					root_temp_sources++;
-					}
-				if (temp_use_count[temp_index] > 2U)
-					{
-					return 0;
+					depth = (uint8_t)(temp_depth[temp_index] + 1U);
 					}
 				}
 			}
+		temp_depth[i] = depth;
 		}
 
-	if (root_temp_sources != 1U)
+	for (uint32_t src = 0; src < state->ops[root_index].arity; ++src)
 		{
-		return 0;
+		if (state->ops[root_index].src_is_temp[src])
+			{
+			uint8_t temp_index = state->ops[root_index].src_index[src];
+			if (temp_index >= state->temp_count)
+				{
+				return 0;
+				}
+			temp_use_count[temp_index]++;
+			root_temp_depths[root_temp_sources++] = temp_depth[temp_index];
+			}
 		}
 
-	if ((uint32_t)(highest_temp_index + 1U) != state->temp_count)
+	if (root_temp_sources != 2U)
 		{
 		return 0;
 		}
 
 	for (uint32_t i = 0; i < state->temp_count; ++i)
 		{
-		uint8_t expected_use = (i + 1U == state->temp_count) ? 1U : 2U;
-		if (temp_use_count[i] != expected_use)
+		if (temp_use_count[i] != 1U)
 			{
 			return 0;
 			}
+		}
+
+	if (!((root_temp_depths[0] == 1U && root_temp_depths[1] == 3U) ||
+	      (root_temp_depths[0] == 3U && root_temp_depths[1] == 1U)))
+		{
+		return 0;
 		}
 
 	return 1;
@@ -4670,7 +4676,7 @@ static uint32_t lxs_collect_recognized_functional_regions(
 			continue;
 			}
 
-		if (!lxs_functional_region_is_cache_local(&state))
+		if (!lxs_functional_region_is_cache_merge(&state))
 			{
 			lxs_record_recognition_abort(
 				family_abort_count,

@@ -1,0 +1,9 @@
+INPUT(a)
+INPUT(b)
+INPUT(c)
+INPUT(d)
+INPUT(e)
+INPUT(f)
+OUTPUT(y)
+
+y = FUNC_MICRO(a,b,c,d,e,f; AND(i0,i1); XOR(t0,i2); NOR(t1,i3); AND(i4,i5); OR(t2,t3))
