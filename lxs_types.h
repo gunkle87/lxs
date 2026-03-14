@@ -7,6 +7,11 @@
 #define LXS_TEST_PROBES 0
 #endif
 
+#define LXS_FUNCTIONAL_REGION_MAX_INPUTS 16U
+#define LXS_FUNCTIONAL_REGION_MAX_OUTPUTS 8U
+#define LXS_FUNCTIONAL_REGION_MAX_OPS 40U
+#define LXS_FUNCTIONAL_REGION_MAX_TEMPS 40U
+
 typedef enum lxs_gate_type
 	{
 	LXS_GATE_AND = 0,
@@ -274,20 +279,20 @@ struct lxs_source_multi_macro
 struct lxs_source_functional_region
 	{
 	uint32_t exec_kind;
-	uint32_t gate_indices[8];
+	uint32_t gate_indices[LXS_FUNCTIONAL_REGION_MAX_OPS];
 	uint32_t input_count;
 	uint32_t output_count;
 	uint8_t temp_count;
 	uint8_t op_count;
 	uint8_t node_budget;
 	uint8_t max_depth;
-	uint32_t inputs[6];
-	uint32_t outputs[8];
-	uint8_t op_type[8];
-	uint8_t op_dst_kind[8];
-	uint8_t op_dst[8];
-	uint8_t op_arity[8];
-	uint8_t op_src[8][4];
+	uint32_t inputs[LXS_FUNCTIONAL_REGION_MAX_INPUTS];
+	uint32_t outputs[LXS_FUNCTIONAL_REGION_MAX_OUTPUTS];
+	uint8_t op_type[LXS_FUNCTIONAL_REGION_MAX_OPS];
+	uint8_t op_dst_kind[LXS_FUNCTIONAL_REGION_MAX_OPS];
+	uint8_t op_dst[LXS_FUNCTIONAL_REGION_MAX_OPS];
+	uint8_t op_arity[LXS_FUNCTIONAL_REGION_MAX_OPS];
+	uint8_t op_src[LXS_FUNCTIONAL_REGION_MAX_OPS][4];
 	};
 
 struct lxs_source_register
@@ -412,13 +417,13 @@ struct lxs_functional_region_plan
 	uint32_t input_count;
 	uint32_t output_count;
 	uint32_t gate_equiv_count;
-	uint32_t inputs[6];
-	uint32_t outputs[8];
+	uint32_t inputs[LXS_FUNCTIONAL_REGION_MAX_INPUTS];
+	uint32_t outputs[LXS_FUNCTIONAL_REGION_MAX_OUTPUTS];
 	uint8_t temp_count;
 	uint8_t op_count;
 	uint8_t node_budget;
 	uint8_t max_depth;
-	lxs_functional_region_op ops[8];
+	lxs_functional_region_op ops[LXS_FUNCTIONAL_REGION_MAX_OPS];
 	};
 
 typedef struct lxs_io_plan lxs_io_plan;

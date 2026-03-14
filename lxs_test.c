@@ -1981,6 +1981,70 @@ static int lxs_test_reduce_propagate4_explicit(void)
 	return ok;
 	}
 
+static int lxs_test_functional_region_rowpair_reduce_propagate4_explicit(void)
+	{
+	lxs_loaded_case lhs;
+	lxs_loaded_case micro_case;
+	uint64_t values[12];
+	uint64_t masks[12];
+	uint64_t lhs_out_values[6];
+	uint64_t lhs_out_masks[6];
+	uint64_t micro_out_values[6];
+	uint64_t micro_out_masks[6];
+	int ok = 1;
+
+	if (!lxs_load_case("Tests\\Circuits\\reduce_propagate4_primitive.bench", &lhs))
+		{
+		fprintf(stderr, "FAIL functional_region_rowpair_reduce_propagate4_explicit: unable to load primitive circuit\n");
+		return 0;
+		}
+
+	if (!lxs_load_case("Tests\\Circuits\\functional_region_rowpair_reduce_propagate4.bench", &micro_case))
+		{
+		fprintf(stderr, "FAIL functional_region_rowpair_reduce_propagate4_explicit: unable to load functional circuit\n");
+		lxs_unload_case(&lhs);
+		return 0;
+		}
+
+	ok &= lxs_expect_u64("functional_region_rowpair_reduce_propagate4_explicit.count", micro_case.plan->functional_region_count, 1ULL);
+	ok &= lxs_expect_u64("functional_region_rowpair_reduce_propagate4_explicit.comb_gate_count", micro_case.plan->comb_gate_count, 0ULL);
+	ok &= lxs_expect_u64("functional_region_rowpair_reduce_propagate4_explicit.output_count",
+		micro_case.plan->functional_regions[0].output_count,
+		6ULL);
+
+	for (uint32_t combo = 0; combo < 4096U; ++combo)
+		{
+		char label[144];
+
+		for (uint32_t i = 0; i < 12U; ++i)
+			{
+			uint32_t bit = (combo >> i) & 1U;
+			values[i] = bit ? ~0ULL : 0ULL;
+			masks[i] = 0ULL;
+			}
+
+		lxs_apply_inputs(&lhs.ctx, lhs.plan, values, masks);
+		lxs_execute_plan(&lhs.ctx, lhs.plan);
+		lxs_read_outputs(&lhs.ctx, lhs.plan, lhs_out_values, lhs_out_masks);
+
+		lxs_apply_inputs(&micro_case.ctx, micro_case.plan, values, masks);
+		lxs_execute_plan(&micro_case.ctx, micro_case.plan);
+		lxs_read_outputs(&micro_case.ctx, micro_case.plan, micro_out_values, micro_out_masks);
+
+		for (uint32_t i = 0; i < 6U; ++i)
+			{
+			snprintf(label, sizeof(label), "functional_region_rowpair_reduce_propagate4_explicit.out%u.%u", i, combo);
+			ok &= lxs_expect_u64(label, micro_out_values[i], lhs_out_values[i]);
+			snprintf(label, sizeof(label), "functional_region_rowpair_reduce_propagate4_explicit.mask%u.%u", i, combo);
+			ok &= lxs_expect_u64(label, micro_out_masks[i], lhs_out_masks[i]);
+			}
+		}
+
+	lxs_unload_case(&lhs);
+	lxs_unload_case(&micro_case);
+	return ok;
+	}
+
 static int lxs_test_dff_not(void)
 	{
 	lxs_loaded_case loaded;
@@ -3590,6 +3654,7 @@ int main(void)
 	ok &= lxs_test_ripple_add4_explicit();
 	ok &= lxs_test_carry_save_row4_explicit();
 	ok &= lxs_test_reduce_propagate4_explicit();
+	ok &= lxs_test_functional_region_rowpair_reduce_propagate4_explicit();
 	ok &= lxs_test_dff_not();
 	ok &= lxs_test_register_descriptor();
 	ok &= lxs_test_rom_descriptor();

@@ -1989,9 +1989,9 @@ static void lxs_execute_functional_regions(
 		uint64_t out_mask[8] = { 0 };
 		if (region->exec_kind == LXS_FUNCTIONAL_REGION_EXEC_EXPR)
 			{
-			uint64_t memo_value[8] = { 0 };
-			uint64_t memo_mask[8] = { 0 };
-			uint8_t memo_valid[8] = { 0 };
+			uint64_t memo_value[LXS_FUNCTIONAL_REGION_MAX_TEMPS] = { 0 };
+			uint64_t memo_mask[LXS_FUNCTIONAL_REGION_MAX_TEMPS] = { 0 };
+			uint8_t memo_valid[LXS_FUNCTIONAL_REGION_MAX_TEMPS] = { 0 };
 			uint32_t root_index = region->op_count > 0U ? (region->op_count - 1U) : 0U;
 			uint64_t expr_value = 0ULL;
 			uint64_t expr_mask = 0ULL;
@@ -2010,8 +2010,8 @@ static void lxs_execute_functional_regions(
 			}
 		else
 			{
-			uint64_t temp_value[8] = { 0 };
-			uint64_t temp_mask[8] = { 0 };
+			uint64_t temp_value[LXS_FUNCTIONAL_REGION_MAX_TEMPS] = { 0 };
+			uint64_t temp_mask[LXS_FUNCTIONAL_REGION_MAX_TEMPS] = { 0 };
 
 			for (uint32_t op_index = 0; op_index < region->op_count; ++op_index)
 				{

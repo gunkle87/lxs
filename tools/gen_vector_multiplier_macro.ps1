@@ -1,14 +1,15 @@
 $ErrorActionPreference = "Stop"
 
-$inputPath = if ($args.Length -gt 0) { $args[0] } else { throw "usage: gen_vector_multiplier_macro.ps1 <input.bench> <output.bench> [anchor|packed|neighborhood|neighborhood2]" }
-$outputPath = if ($args.Length -gt 1) { $args[1] } else { throw "usage: gen_vector_multiplier_macro.ps1 <input.bench> <output.bench> [anchor|packed|neighborhood|neighborhood2]" }
+$inputPath = if ($args.Length -gt 0) { $args[0] } else { throw "usage: gen_vector_multiplier_macro.ps1 <input.bench> <output.bench> [anchor|packed|neighborhood|neighborhood2|region1]" }
+$outputPath = if ($args.Length -gt 1) { $args[1] } else { throw "usage: gen_vector_multiplier_macro.ps1 <input.bench> <output.bench> [anchor|packed|neighborhood|neighborhood2|region1]" }
 $mode = if ($args.Length -gt 2) { $args[2].ToLowerInvariant() } else { "packed" }
 $useSlices = $mode -eq "packed"
 $useNeighborhood = $mode -eq "neighborhood"
 $useNeighborhood2 = $mode -eq "neighborhood2"
+$useRegion1 = $mode -eq "region1"
 $toolDir = Split-Path -Parent $MyInvocation.MyCommand.Path
 . (Join-Path $toolDir "LxsRewriteLib.ps1")
-$usage = "usage: gen_vector_multiplier_macro.ps1 <input.bench> <output.bench> [anchor|packed|neighborhood|neighborhood2]"
+$usage = "usage: gen_vector_multiplier_macro.ps1 <input.bench> <output.bench> [anchor|packed|neighborhood|neighborhood2|region1]"
 
 Initialize-LxsRewrite $mode $outputPath $usage
 $io = Get-BenchIo $inputPath
@@ -48,7 +49,7 @@ for ($i = 0; $i -lt $aWidth; ++$i)
 
 $lines.Add("")
 
-if ($useNeighborhood -or $useNeighborhood2)
+if ($useNeighborhood -or $useNeighborhood2 -or $useRegion1)
 	{
 	$columnCount = $productWidth + 4
 	$columns = New-Object object[] $columnCount
@@ -113,7 +114,7 @@ if ($useNeighborhood -or $useNeighborhood2)
 		$bit += 1
 		}
 
-	if ($useNeighborhood2)
+	if ($useNeighborhood2 -or $useRegion1)
 		{
 		for ($bit = 0; $bit -lt ($columnCount - 1); ++$bit)
 			{
@@ -153,8 +154,16 @@ if ($useNeighborhood -or $useNeighborhood2)
 
 				$spill0 = "rp4_${serial}_spill0"
 				$spill1 = "rp4_${serial}_spill1"
-				$lines.Add(
-					"$($productOutputs[$bit]), $($productOutputs[$bit + 1]), $($productOutputs[$bit + 2]), $($productOutputs[$bit + 3]), $spill0, $spill1 = REDUCE_PROPAGATE4($($rpInputs[0]), $($rpInputs[1]), $($rpInputs[2]), $($rpInputs[3]), $($rpInputs[4]), $($rpInputs[5]), $($rpInputs[6]), $($rpInputs[7]), $($rpInputs[8]), $($rpInputs[9]), $($rpInputs[10]), $($rpInputs[11]))")
+				if ($useRegion1)
+					{
+					$lines.Add(
+						"$($productOutputs[$bit]), $($productOutputs[$bit + 1]), $($productOutputs[$bit + 2]), $($productOutputs[$bit + 3]), $spill0, $spill1 = FUNC_MICRO($($rpInputs[0]), $($rpInputs[1]), $($rpInputs[2]), $($rpInputs[3]), $($rpInputs[4]), $($rpInputs[5]), $($rpInputs[6]), $($rpInputs[7]), $($rpInputs[8]), $($rpInputs[9]), $($rpInputs[10]), $($rpInputs[11]); t0 = XOR(i0, i1); o0 = XOR(t0, i2); t1 = AND(i0, i1); t2 = AND(t0, i2); t3 = OR(t1, t2); t4 = XOR(i3, i4); t5 = XOR(t4, i5); o1 = XOR(t5, t3); t6 = AND(i3, i4); t7 = AND(t4, i5); t8 = OR(t6, t7); t9 = AND(t5, t3); t10 = XOR(i6, i7); t11 = XOR(t10, i8); t12 = XOR(t11, t8); o2 = XOR(t12, t9); t13 = AND(i6, i7); t14 = AND(t10, i8); t15 = OR(t13, t14); t16 = AND(t11, t8); t17 = AND(t12, t9); t18 = OR(t16, t17); t19 = XOR(i9, i10); t20 = XOR(t19, i11); t21 = XOR(t20, t15); o3 = XOR(t21, t18); t22 = AND(i9, i10); t23 = AND(t19, i11); t24 = OR(t22, t23); t25 = AND(t20, t15); t26 = AND(t21, t18); t27 = OR(t25, t26); o4 = XOR(t24, t27); o5 = AND(t24, t27))")
+					}
+				else
+					{
+					$lines.Add(
+						"$($productOutputs[$bit]), $($productOutputs[$bit + 1]), $($productOutputs[$bit + 2]), $($productOutputs[$bit + 3]), $spill0, $spill1 = REDUCE_PROPAGATE4($($rpInputs[0]), $($rpInputs[1]), $($rpInputs[2]), $($rpInputs[3]), $($rpInputs[4]), $($rpInputs[5]), $($rpInputs[6]), $($rpInputs[7]), $($rpInputs[8]), $($rpInputs[9]), $($rpInputs[10]), $($rpInputs[11]))")
+					}
 				$columns[$bit + 4].Add($spill0)
 				if (($bit + 5) -lt $columnCount)
 					{
@@ -209,7 +218,7 @@ if ($useNeighborhood -or $useNeighborhood2)
 					}
 				default
 					{
-					throw "unexpected unresolved column width $($inputsAtBit.Count) at bit $bit in neighborhood2 mode"
+					throw "unexpected unresolved column width $($inputsAtBit.Count) at bit $bit in $mode mode"
 					}
 				}
 

@@ -1080,21 +1080,21 @@ static int lxs_emit_functional_region(
 	const uint8_t *op_dst_kind,
 	const uint8_t *op_dst,
 	const uint8_t *op_arity,
-	const uint8_t op_src[8][4],
+	const uint8_t op_src[LXS_FUNCTIONAL_REGION_MAX_OPS][4],
 	uint32_t temp_count,
 	uint32_t op_count,
 	uint32_t serial)
 	{
 	lxs_source_functional_region region;
-	uint32_t temp_nets[8];
+	uint32_t temp_nets[LXS_FUNCTIONAL_REGION_MAX_TEMPS];
 
 	memset(&region, 0, sizeof(region));
 	memset(temp_nets, 0, sizeof(temp_nets));
 
-	if (input_count == 0U || input_count > 6U ||
-		output_count == 0U || output_count > 8U ||
-		op_count == 0U || op_count > 8U ||
-		temp_count > 8U)
+	if (input_count == 0U || input_count > LXS_FUNCTIONAL_REGION_MAX_INPUTS ||
+		output_count == 0U || output_count > LXS_FUNCTIONAL_REGION_MAX_OUTPUTS ||
+		op_count == 0U || op_count > LXS_FUNCTIONAL_REGION_MAX_OPS ||
+		temp_count > LXS_FUNCTIONAL_REGION_MAX_TEMPS)
 		{
 		return 0;
 		}
@@ -2064,7 +2064,7 @@ static int lxs_parse_functional_op_type(const char *name, uint8_t *type_out)
 static int lxs_parse_functional_ref(
 	const char *text,
 	uint32_t input_count,
-	uint32_t defined_temp_mask,
+	uint64_t defined_temp_mask,
 	uint8_t *ref_out)
 	{
 	char *end = NULL;
@@ -2096,7 +2096,7 @@ static int lxs_parse_functional_ref(
 		return 1;
 		}
 
-	if (index >= 8U || (defined_temp_mask & (1UL << index)) == 0U)
+	if (index >= LXS_FUNCTIONAL_REGION_MAX_TEMPS || (defined_temp_mask & (1ULL << index)) == 0ULL)
 		{
 		return 0;
 		}
@@ -2132,7 +2132,7 @@ static int lxs_parse_functional_dst(
 
 	if (text[0] == 't')
 		{
-		if (index >= 8U)
+		if (index >= LXS_FUNCTIONAL_REGION_MAX_TEMPS)
 			{
 			return 0;
 			}
@@ -6762,19 +6762,19 @@ static lxs_netlist* lxs_load_bench(const char *path)
 				strcmp(gate_name, "FUNC_EXPR") == 0 ||
 				strcmp(gate_name, "FUNC_MICRO") == 0)
 				{
-				char *sections[9];
+				char *sections[LXS_FUNCTIONAL_REGION_MAX_OPS + 1U];
 				char *section_ctx = NULL;
 				char *section = strtok_s(open_paren + 1, ";", &section_ctx);
-				uint8_t op_types[8];
-				uint8_t op_dst_kind[8];
-				uint8_t op_dst[8];
-				uint8_t op_arity[8];
-				uint8_t op_src[8][4];
+				uint8_t op_types[LXS_FUNCTIONAL_REGION_MAX_OPS];
+				uint8_t op_dst_kind[LXS_FUNCTIONAL_REGION_MAX_OPS];
+				uint8_t op_dst[LXS_FUNCTIONAL_REGION_MAX_OPS];
+				uint8_t op_arity[LXS_FUNCTIONAL_REGION_MAX_OPS];
+				uint8_t op_src[LXS_FUNCTIONAL_REGION_MAX_OPS][4];
 				uint32_t op_count = 0U;
 				uint32_t section_count = 0U;
 				uint32_t temp_count = 0U;
-				uint32_t defined_temp_mask = 0U;
-				uint8_t assigned_outputs[8] = { 0 };
+				uint64_t defined_temp_mask = 0ULL;
+				uint8_t assigned_outputs[LXS_FUNCTIONAL_REGION_MAX_OUTPUTS] = { 0 };
 				uint8_t saw_explicit_dst = 0U;
 				uint32_t exec_kind;
 
@@ -6791,7 +6791,7 @@ static lxs_netlist* lxs_load_bench(const char *path)
 					exec_kind = LXS_FUNCTIONAL_REGION_EXEC_MICROPROGRAM;
 					}
 
-				while (section && section_count < 9U)
+				while (section && section_count < (LXS_FUNCTIONAL_REGION_MAX_OPS + 1U))
 					{
 					sections[section_count++] = lxs_trim(section);
 					section = strtok_s(NULL, ";", &section_ctx);
@@ -6808,7 +6808,7 @@ static lxs_netlist* lxs_load_bench(const char *path)
 				char *input_ctx = NULL;
 				char *input_token = strtok_s(sections[0], ",", &input_ctx);
 
-				while (input_token && input_count < 6U)
+				while (input_token && input_count < LXS_FUNCTIONAL_REGION_MAX_INPUTS)
 					{
 					input_ids[input_count] = lxs_intern_net(nl, lxs_trim(input_token));
 					if (input_ids[input_count] == UINT32_MAX)
@@ -6842,7 +6842,7 @@ static lxs_netlist* lxs_load_bench(const char *path)
 					uint32_t arg_count = 0U;
 					char *assign = strchr(op_expr, '=');
 
-					if (op_count >= 8U)
+					if (op_count >= LXS_FUNCTIONAL_REGION_MAX_OPS)
 						{
 						lxs_free_netlist(nl);
 						fclose(stream);
@@ -6866,7 +6866,7 @@ static lxs_netlist* lxs_load_bench(const char *path)
 						saw_explicit_dst = 1U;
 						if (dst_kind == LXS_FUNCTIONAL_REGION_DST_TEMP)
 							{
-							if ((defined_temp_mask & (1UL << dst_index)) != 0U)
+							if ((defined_temp_mask & (1ULL << dst_index)) != 0ULL)
 								{
 								lxs_free_netlist(nl);
 								fclose(stream);
@@ -6969,7 +6969,7 @@ static lxs_netlist* lxs_load_bench(const char *path)
 					op_arity[op_count] = (uint8_t)arg_count;
 					if (dst_kind == LXS_FUNCTIONAL_REGION_DST_TEMP)
 						{
-						defined_temp_mask |= (1UL << dst_index);
+						defined_temp_mask |= (1ULL << dst_index);
 						}
 					op_count++;
 					}
