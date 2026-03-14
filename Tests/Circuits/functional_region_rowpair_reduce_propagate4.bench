@@ -17,4 +17,4 @@ OUTPUT(o3)
 OUTPUT(o4)
 OUTPUT(o5)
 
-o0, o1, o2, o3, o4, o5 = FUNC_MICRO(x0, y0, z0, x1, y1, z1, x2, y2, z2, x3, y3, z3; t0 = XOR(i0, i1); o0 = XOR(t0, i2); t1 = AND(i0, i1); t2 = AND(t0, i2); t3 = OR(t1, t2); t4 = XOR(i3, i4); t5 = XOR(t4, i5); o1 = XOR(t5, t3); t6 = AND(i3, i4); t7 = AND(t4, i5); t8 = OR(t6, t7); t9 = AND(t5, t3); t10 = XOR(i6, i7); t11 = XOR(t10, i8); t12 = XOR(t11, t8); o2 = XOR(t12, t9); t13 = AND(i6, i7); t14 = AND(t10, i8); t15 = OR(t13, t14); t16 = AND(t11, t8); t17 = AND(t12, t9); t18 = OR(t16, t17); t19 = XOR(i9, i10); t20 = XOR(t19, i11); t21 = XOR(t20, t15); o3 = XOR(t21, t18); t22 = AND(i9, i10); t23 = AND(t19, i11); t24 = OR(t22, t23); t25 = AND(t20, t15); t26 = AND(t21, t18); t27 = OR(t25, t26); o4 = XOR(t24, t27); o5 = AND(t24, t27))
+o0, o1, o2, o3, o4, o5 = FUNC_MICRO(x0, y0, z0, x1, y1, z1, x2, y2, z2, x3, y3, z3; o0, t0 = FA3(i0, i1, i2); t1, t3 = FA3(i3, i4, i5); o1, t2 = HA2(t1, t0); t4, t5 = FA3(i6, i7, i8); o2, t6 = FA3(t4, t3, t2); t7, t8 = FA3(i9, i10, i11); o3, t9 = FA3(t7, t5, t6); o4, o5 = HA2(t8, t9))

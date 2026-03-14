@@ -280,6 +280,7 @@ struct lxs_source_functional_region
 	{
 	uint32_t exec_kind;
 	uint32_t gate_indices[LXS_FUNCTIONAL_REGION_MAX_OPS];
+	uint32_t gate_count;
 	uint32_t input_count;
 	uint32_t output_count;
 	uint8_t temp_count;
@@ -289,8 +290,9 @@ struct lxs_source_functional_region
 	uint32_t inputs[LXS_FUNCTIONAL_REGION_MAX_INPUTS];
 	uint32_t outputs[LXS_FUNCTIONAL_REGION_MAX_OUTPUTS];
 	uint8_t op_type[LXS_FUNCTIONAL_REGION_MAX_OPS];
-	uint8_t op_dst_kind[LXS_FUNCTIONAL_REGION_MAX_OPS];
-	uint8_t op_dst[LXS_FUNCTIONAL_REGION_MAX_OPS];
+	uint8_t op_dst_count[LXS_FUNCTIONAL_REGION_MAX_OPS];
+	uint8_t op_dst_kind[LXS_FUNCTIONAL_REGION_MAX_OPS][2];
+	uint8_t op_dst[LXS_FUNCTIONAL_REGION_MAX_OPS][2];
 	uint8_t op_arity[LXS_FUNCTIONAL_REGION_MAX_OPS];
 	uint8_t op_src[LXS_FUNCTIONAL_REGION_MAX_OPS][4];
 	};
@@ -390,7 +392,10 @@ typedef enum lxs_functional_region_op_type
 	LXS_FUNCTIONAL_REGION_OP_XOR,
 	LXS_FUNCTIONAL_REGION_OP_NAND,
 	LXS_FUNCTIONAL_REGION_OP_NOR,
-	LXS_FUNCTIONAL_REGION_OP_XNOR
+	LXS_FUNCTIONAL_REGION_OP_XNOR,
+	LXS_FUNCTIONAL_REGION_OP_MAJ3,
+	LXS_FUNCTIONAL_REGION_OP_HA2,
+	LXS_FUNCTIONAL_REGION_OP_FA3
 	} lxs_functional_region_op_type;
 
 typedef enum lxs_functional_region_dst_kind
@@ -403,10 +408,11 @@ typedef struct lxs_functional_region_op lxs_functional_region_op;
 struct lxs_functional_region_op
 	{
 	uint8_t type;
-	uint8_t dst_kind;
-	uint8_t dst;
+	uint8_t dst_count;
 	uint8_t arity;
 	uint8_t src[4];
+	uint8_t dst_kind[2];
+	uint8_t dst[2];
 	};
 
 typedef struct lxs_functional_region_plan lxs_functional_region_plan;
