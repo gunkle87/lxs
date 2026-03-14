@@ -44,6 +44,16 @@ $carry = $zero
 $bit = 0
 while ($bit -lt $width)
 	{
+	if ($useSlices -and ($bit + 3) -lt $width)
+		{
+		$carryOutName = if (($bit + 3) -eq ($width - 1) -and $carryOut) { $carryOut } else { "carry_$($bit + 3)" }
+		$lines.Add(
+			"$($sumOutputs[$bit]), $($sumOutputs[$bit + 1]), $($sumOutputs[$bit + 2]), $($sumOutputs[$bit + 3]), $carryOutName = RIPPLE_ADD4($($aInputs[$bit]), $($bInputs[$bit]), $($aInputs[$bit + 1]), $($bInputs[$bit + 1]), $($aInputs[$bit + 2]), $($bInputs[$bit + 2]), $($aInputs[$bit + 3]), $($bInputs[$bit + 3]), $carry)")
+		$carry = $carryOutName
+		$bit += 4
+		continue
+		}
+
 	if ($useNeighborhood -and ($bit + 3) -lt $width)
 		{
 		$carryOutName = if (($bit + 3) -eq ($width - 1) -and $carryOut) { $carryOut } else { "carry_$($bit + 3)" }
