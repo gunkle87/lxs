@@ -7638,6 +7638,28 @@ lxs_plan* lxs_compile_to_plan(lxs_netlist *nl)
 			lxs_assign_net_group(net_remap, net_assigned, &nl->gates[i].inputs[0], 1U, &next_net_id);
 			}
 		}
+
+	if (nl->source_multi_macro_count >= 128U)
+		{
+		for (uint32_t i = 0; i < nl->source_multi_macro_count; ++i)
+			{
+			const lxs_source_multi_macro *macro = &nl->source_multi_macros[i];
+			switch (macro->type)
+				{
+				case LXS_SOURCE_MULTI_MACRO_HALF_ADDER:
+				case LXS_SOURCE_MULTI_MACRO_FULL_ADDER:
+				case LXS_SOURCE_MULTI_MACRO_RIPPLE_SLICE2:
+				case LXS_SOURCE_MULTI_MACRO_RIPPLE_ADD4:
+				case LXS_SOURCE_MULTI_MACRO_CARRY_SAVE_ROW4:
+				case LXS_SOURCE_MULTI_MACRO_REDUCE_PROPAGATE4:
+					lxs_assign_net_group(net_remap, net_assigned, macro->inputs, macro->input_count, &next_net_id);
+					lxs_assign_net_group(net_remap, net_assigned, macro->outputs, macro->output_count, &next_net_id);
+					break;
+				default:
+					break;
+				}
+			}
+		}
 	lxs_assign_remaining_nets(net_remap, net_assigned, nl->net_count, &next_net_id);
 
 	lxs_apply_net_remap_to_array(nl->inputs, nl->input_count, net_remap);

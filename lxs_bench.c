@@ -114,11 +114,37 @@ typedef struct lxs_plan_profile
 	uint64_t primitive_gate_equiv;
 	uint64_t macro_gate_equiv;
 	uint64_t total_gate_equiv;
+	uint32_t arithmetic_multi_macro_count;
+	uint32_t arithmetic_max_input_span;
+	uint32_t arithmetic_max_touch_span;
+	uint32_t arithmetic_temp_net_count;
+	uint32_t arithmetic_temp_max_lifetime;
 	double mean_chunk_size;
 	double macro_step_share;
 	double absorbed_work_share;
+	double arithmetic_mean_input_span;
+	double arithmetic_mean_touch_span;
+	double arithmetic_mean_temp_lifetime;
 	double recognition_absorbed_work_share[LXS_RECOGNITION_FAMILY_COUNT];
 	} lxs_plan_profile;
+
+static uint8_t lxs_is_arithmetic_multi_macro_type(uint32_t type)
+	{
+	switch (type)
+		{
+		case LXS_MULTI_MACRO_HALF_ADDER:
+		case LXS_MULTI_MACRO_FULL_ADDER:
+		case LXS_MULTI_MACRO_RIPPLE_SLICE2:
+		case LXS_MULTI_MACRO_RIPPLE_ADD4:
+		case LXS_MULTI_MACRO_CARRY_SAVE_ROW4:
+		case LXS_MULTI_MACRO_REDUCE_PROPAGATE4:
+		case LXS_MULTI_MACRO_FULL_ADDER_CINV:
+		case LXS_MULTI_MACRO_RIPPLE_SLICE2_CINV:
+			return 1U;
+		default:
+			return 0U;
+		}
+	}
 
 typedef struct lxs_trace_row
 	{
@@ -471,6 +497,12 @@ static void lxs_build_plan_profile(
 	lxs_plan_profile *profile)
 	{
 	uint32_t *chunk_sizes = NULL;
+	uint8_t *is_io_net = NULL;
+	int32_t *first_arith_touch = NULL;
+	int32_t *last_arith_touch = NULL;
+	uint64_t arithmetic_input_span_sum = 0ULL;
+	uint64_t arithmetic_touch_span_sum = 0ULL;
+	uint64_t arithmetic_temp_lifetime_sum = 0ULL;
 
 	memset(profile, 0, sizeof(*profile));
 	lxs_make_circuit_name(root, path, profile->circuit_name, sizeof(profile->circuit_name));
@@ -514,6 +546,31 @@ static void lxs_build_plan_profile(
 	if (plan->span_count > 0U)
 		{
 		chunk_sizes = calloc(plan->span_count, sizeof(uint32_t));
+		}
+	if (plan->net_count > 0U)
+		{
+		is_io_net = calloc(plan->net_count, sizeof(uint8_t));
+		first_arith_touch = malloc((size_t)plan->net_count * sizeof(int32_t));
+		last_arith_touch = malloc((size_t)plan->net_count * sizeof(int32_t));
+		if (first_arith_touch && last_arith_touch)
+			{
+			for (uint32_t i = 0; i < plan->net_count; ++i)
+				{
+				first_arith_touch[i] = -1;
+				last_arith_touch[i] = -1;
+				}
+			}
+		if (is_io_net)
+			{
+			for (uint32_t i = 0; i < plan->inputs.count; ++i)
+				{
+				is_io_net[plan->inputs.net_ids[i]] = 1U;
+				}
+			for (uint32_t i = 0; i < plan->outputs.count; ++i)
+				{
+				is_io_net[plan->outputs.net_ids[i]] = 1U;
+				}
+			}
 		}
 
 	for (uint32_t i = 0; i < plan->span_count; ++i)
@@ -563,6 +620,84 @@ static void lxs_build_plan_profile(
 	for (uint32_t i = 0; i < plan->multi_macro_count; ++i)
 		{
 		profile->macro_gate_equiv += plan->multi_macros[i].gate_equiv_count;
+		if (lxs_is_arithmetic_multi_macro_type(plan->multi_macros[i].type))
+			{
+			const lxs_multi_macro_plan *macro = &plan->multi_macros[i];
+			uint32_t min_input = UINT32_MAX;
+			uint32_t max_input = 0U;
+			uint32_t min_touch = UINT32_MAX;
+			uint32_t max_touch = 0U;
+			uint32_t arithmetic_step = profile->arithmetic_multi_macro_count;
+
+			for (uint32_t j = 0; j < macro->input_count; ++j)
+				{
+				uint32_t net_id = macro->inputs[j];
+				if (net_id < min_input)
+					{
+					min_input = net_id;
+					}
+				if (net_id > max_input)
+					{
+					max_input = net_id;
+					}
+				if (net_id < min_touch)
+					{
+					min_touch = net_id;
+					}
+				if (net_id > max_touch)
+					{
+					max_touch = net_id;
+					}
+				if (first_arith_touch && last_arith_touch && net_id < plan->net_count)
+					{
+					if (first_arith_touch[net_id] < 0)
+						{
+						first_arith_touch[net_id] = (int32_t)arithmetic_step;
+						}
+					last_arith_touch[net_id] = (int32_t)arithmetic_step;
+					}
+				}
+			for (uint32_t j = 0; j < macro->output_count; ++j)
+				{
+				uint32_t net_id = macro->outputs[j];
+				if (net_id < min_touch)
+					{
+					min_touch = net_id;
+					}
+				if (net_id > max_touch)
+					{
+					max_touch = net_id;
+					}
+				if (first_arith_touch && last_arith_touch && net_id < plan->net_count)
+					{
+					if (first_arith_touch[net_id] < 0)
+						{
+						first_arith_touch[net_id] = (int32_t)arithmetic_step;
+						}
+					last_arith_touch[net_id] = (int32_t)arithmetic_step;
+					}
+				}
+
+			if (macro->input_count > 0U)
+				{
+				uint32_t input_span = max_input - min_input;
+				arithmetic_input_span_sum += input_span;
+				if (input_span > profile->arithmetic_max_input_span)
+					{
+					profile->arithmetic_max_input_span = input_span;
+					}
+				}
+			if (macro->input_count > 0U || macro->output_count > 0U)
+				{
+				uint32_t touch_span = max_touch - min_touch;
+				arithmetic_touch_span_sum += touch_span;
+				if (touch_span > profile->arithmetic_max_touch_span)
+					{
+					profile->arithmetic_max_touch_span = touch_span;
+					}
+				}
+			profile->arithmetic_multi_macro_count++;
+			}
 		}
 	profile->total_gate_equiv = profile->primitive_gate_equiv + profile->macro_gate_equiv;
 	if (profile->total_step_count > 0U)
@@ -612,12 +747,47 @@ static void lxs_build_plan_profile(
 			}
 		}
 
+	if (profile->arithmetic_multi_macro_count > 0U)
+		{
+		profile->arithmetic_mean_input_span =
+			(double)arithmetic_input_span_sum / (double)profile->arithmetic_multi_macro_count;
+		profile->arithmetic_mean_touch_span =
+			(double)arithmetic_touch_span_sum / (double)profile->arithmetic_multi_macro_count;
+		}
+	if (first_arith_touch && last_arith_touch && is_io_net)
+		{
+		for (uint32_t i = 0; i < plan->net_count; ++i)
+			{
+			if (is_io_net[i] || first_arith_touch[i] < 0 || last_arith_touch[i] < 0)
+				{
+				continue;
+				}
+			{
+			uint32_t lifetime = (uint32_t)(last_arith_touch[i] - first_arith_touch[i] + 1);
+			arithmetic_temp_lifetime_sum += lifetime;
+			profile->arithmetic_temp_net_count++;
+			if (lifetime > profile->arithmetic_temp_max_lifetime)
+				{
+				profile->arithmetic_temp_max_lifetime = lifetime;
+				}
+			}
+			}
+		if (profile->arithmetic_temp_net_count > 0U)
+			{
+			profile->arithmetic_mean_temp_lifetime =
+				(double)arithmetic_temp_lifetime_sum / (double)profile->arithmetic_temp_net_count;
+			}
+		}
+
 	if (chunk_sizes)
 		{
 		qsort(chunk_sizes, plan->span_count, sizeof(uint32_t), lxs_compare_u32_values);
 		profile->median_chunk_size = chunk_sizes[plan->span_count / 2U];
 		free(chunk_sizes);
 		}
+	free(is_io_net);
+	free(first_arith_touch);
+	free(last_arith_touch);
 	}
 
 static void lxs_write_plan_profile(FILE *stream, const lxs_plan_profile *profile)
@@ -629,6 +799,9 @@ static void lxs_write_plan_profile(FILE *stream, const lxs_plan_profile *profile
 		"absorbed_work_share=%.6f,max_chunk=%u,median_chunk=%u,mean_chunk=%.3f,"
 		"tiny_chunks=%u,small_chunks=%u,large_chunks=%u,unary_gates=%u,binary_gates=%u,"
 		"max_level_gates=%u,max_level_chunks=%u,single_chunk_levels=%u,"
+		"arith_multi=%u,arith_mean_input_span=%.3f,arith_max_input_span=%u,"
+		"arith_mean_touch_span=%.3f,arith_max_touch_span=%u,"
+		"arith_temp_nets=%u,arith_mean_temp_lifetime=%.3f,arith_max_temp_lifetime=%u,"
 		"and=%u,or=%u,xor=%u,tri=%u,not=%u,nand=%u,nor=%u,xnor=%u,buf=%u\n",
 		profile->circuit_name,
 		profile->comb_gate_count,
@@ -653,6 +826,14 @@ static void lxs_write_plan_profile(FILE *stream, const lxs_plan_profile *profile
 		profile->max_level_gate_count,
 		profile->max_level_chunk_count,
 		profile->single_chunk_level_count,
+		profile->arithmetic_multi_macro_count,
+		profile->arithmetic_mean_input_span,
+		profile->arithmetic_max_input_span,
+		profile->arithmetic_mean_touch_span,
+		profile->arithmetic_max_touch_span,
+		profile->arithmetic_temp_net_count,
+		profile->arithmetic_mean_temp_lifetime,
+		profile->arithmetic_temp_max_lifetime,
 		profile->gate_type_count[LXS_GATE_AND],
 		profile->gate_type_count[LXS_GATE_OR],
 		profile->gate_type_count[LXS_GATE_XOR],
