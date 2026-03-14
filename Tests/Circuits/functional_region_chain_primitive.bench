@@ -1,0 +1,12 @@
+INPUT(a)
+INPUT(b)
+INPUT(c)
+INPUT(d)
+INPUT(e)
+INPUT(f)
+OUTPUT(y)
+
+t0 = AND(a,b)
+t1 = XOR(t0,c)
+t2 = NOR(t1,d)
+y = OR(t2,e,f)

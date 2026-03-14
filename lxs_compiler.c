@@ -2556,13 +2556,15 @@ static int lxs_functional_region_is_cache_local(
 	{
 	uint8_t temp_use_count[8] = { 0 };
 	uint32_t root_index;
+	uint32_t root_temp_sources = 0U;
+	uint8_t highest_temp_index = 0U;
 
-	if (state->op_count < 3U || state->op_count > 3U)
+	if (state->op_count != 4U)
 		{
 		return 0;
 		}
 
-	if (state->temp_count > 2U || state->boundary_count == 0U || state->boundary_count > 6U)
+	if (state->temp_count > 3U || state->boundary_count == 0U || state->boundary_count > 6U)
 		{
 		return 0;
 		}
@@ -2593,11 +2595,38 @@ static int lxs_functional_region_is_cache_local(
 					return 0;
 					}
 				temp_use_count[temp_index]++;
-				if (temp_use_count[temp_index] > 1U)
+				if (temp_index > highest_temp_index)
+					{
+					highest_temp_index = temp_index;
+					}
+				if (i == root_index)
+					{
+					root_temp_sources++;
+					}
+				if (temp_use_count[temp_index] > 2U)
 					{
 					return 0;
 					}
 				}
+			}
+		}
+
+	if (root_temp_sources != 1U)
+		{
+		return 0;
+		}
+
+	if ((uint32_t)(highest_temp_index + 1U) != state->temp_count)
+		{
+		return 0;
+		}
+
+	for (uint32_t i = 0; i < state->temp_count; ++i)
+		{
+		uint8_t expected_use = (i + 1U == state->temp_count) ? 1U : 2U;
+		if (temp_use_count[i] != expected_use)
+			{
+			return 0;
 			}
 		}
 
