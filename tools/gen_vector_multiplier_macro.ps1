@@ -303,6 +303,7 @@ else
 		$row = New-Object object[] $productWidth
 		$next = New-Object object[] $productWidth
 		$carry = $zero
+		$isFinalRow = $rowIndex -eq ($aWidth - 1)
 		$bit = 0
 
 		for ($j = 0; $j -lt $bWidth; ++$j)
@@ -326,9 +327,21 @@ else
 			if ($useSlices -and $bit -le ($productWidth - 2) -and
 				$acc[$bit] -and $row[$bit] -and $acc[$bit + 1] -and $row[$bit + 1] -and $hasCarryIn)
 				{
-				$sum0 = "add_${rowIndex}_sum_${bit}"
-				$sum1 = "add_${rowIndex}_sum_$($bit + 1)"
-				$carryOut = if (($bit + 1) -lt ($productWidth - 1)) { "add_${rowIndex}_carry_$($bit + 1)" } else { "add_${rowIndex}_carry_top" }
+				$sum0 = if ($isFinalRow) { $productOutputs[$bit] } else { "add_${rowIndex}_sum_${bit}" }
+				$sum1 = if ($isFinalRow) { $productOutputs[$bit + 1] } else { "add_${rowIndex}_sum_$($bit + 1)" }
+				$carryOut =
+					if ($isFinalRow -and (($bit + 1) -eq ($productWidth - 2)))
+						{
+						$productOutputs[$productWidth - 1]
+						}
+					elseif (($bit + 1) -lt ($productWidth - 1))
+						{
+						"add_${rowIndex}_carry_$($bit + 1)"
+						}
+					else
+						{
+						"add_${rowIndex}_carry_top"
+						}
 				$lines.Add("$sum0, $sum1, $carryOut = RIPPLE_SLICE2($($acc[$bit]), $($row[$bit]), $($acc[$bit + 1]), $($row[$bit + 1]), $carry)")
 				$next[$bit] = $sum0
 				$next[$bit + 1] = $sum1
@@ -368,8 +381,20 @@ else
 					}
 				2
 					{
-					$sum = "add_${rowIndex}_sum_${bit}"
-					$carryOut = if ($bit -lt ($productWidth - 1)) { "add_${rowIndex}_carry_${bit}" } else { "add_${rowIndex}_carry_top" }
+					$sum = if ($isFinalRow) { $productOutputs[$bit] } else { "add_${rowIndex}_sum_${bit}" }
+					$carryOut =
+						if ($isFinalRow -and ($bit -eq ($productWidth - 2)))
+							{
+							$productOutputs[$productWidth - 1]
+							}
+						elseif ($bit -lt ($productWidth - 1))
+							{
+							"add_${rowIndex}_carry_${bit}"
+							}
+						else
+							{
+							"add_${rowIndex}_carry_top"
+							}
 					$lines.Add("$sum, $carryOut = HALF_ADDER($($inputsAtBit[0]), $($inputsAtBit[1]))")
 					$next[$bit] = $sum
 					$carry = $carryOut
@@ -377,8 +402,20 @@ else
 					}
 				3
 					{
-					$sum = "add_${rowIndex}_sum_${bit}"
-					$carryOut = if ($bit -lt ($productWidth - 1)) { "add_${rowIndex}_carry_${bit}" } else { "add_${rowIndex}_carry_top" }
+					$sum = if ($isFinalRow) { $productOutputs[$bit] } else { "add_${rowIndex}_sum_${bit}" }
+					$carryOut =
+						if ($isFinalRow -and ($bit -eq ($productWidth - 2)))
+							{
+							$productOutputs[$productWidth - 1]
+							}
+						elseif ($bit -lt ($productWidth - 1))
+							{
+							"add_${rowIndex}_carry_${bit}"
+							}
+						else
+							{
+							"add_${rowIndex}_carry_top"
+							}
 					$lines.Add("$sum, $carryOut = FULL_ADDER($($inputsAtBit[0]), $($inputsAtBit[1]), $($inputsAtBit[2]))")
 					$next[$bit] = $sum
 					$carry = $carryOut
@@ -400,7 +437,10 @@ else
 	for ($bit = 0; $bit -lt $productWidth; ++$bit)
 		{
 		$source = if ($acc[$bit]) { $acc[$bit] } else { $zero }
-		$lines.Add("$($productOutputs[$bit]) = BUF($source)")
+		if ($source -ne $productOutputs[$bit])
+			{
+			$lines.Add("$($productOutputs[$bit]) = BUF($source)")
+			}
 		}
 	}
 
