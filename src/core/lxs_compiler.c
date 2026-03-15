@@ -211,6 +211,31 @@ static int lxs_reserve_source_multi_macros(
 	return *items != NULL;
 	}
 
+static int lxs_reserve_source_standard_muxes(
+	lxs_source_standard_mux **items,
+	uint32_t *cap,
+	uint32_t needed)
+	{
+	size_t old_size;
+
+	if (needed <= *cap)
+		{
+		return 1;
+		}
+
+	old_size = (size_t)(*cap) * sizeof(lxs_source_standard_mux);
+	while (*cap < needed)
+		{
+		*cap = (*cap == 0U) ? LXS_INITIAL_CAP : (*cap * 2U);
+		}
+
+	*items = lxs_realloc_aligned(
+		*items,
+		old_size,
+		(size_t)(*cap) * sizeof(lxs_source_standard_mux));
+	return *items != NULL;
+	}
+
 static int lxs_reserve_source_functional_regions(
 	lxs_source_functional_region **items,
 	uint32_t *cap,
@@ -397,6 +422,20 @@ static int lxs_push_source_multi_macro(lxs_netlist *nl, const lxs_source_multi_m
 		}
 
 	nl->source_multi_macros[nl->source_multi_macro_count++] = *macro;
+	return 1;
+	}
+
+static int lxs_push_source_standard_mux(lxs_netlist *nl, const lxs_source_standard_mux *mux)
+	{
+	if (!lxs_reserve_source_standard_muxes(
+		&nl->source_standard_muxes,
+		&nl->source_standard_mux_cap,
+		nl->source_standard_mux_count + 1U))
+		{
+		return 0;
+		}
+
+	nl->source_standard_muxes[nl->source_standard_mux_count++] = *mux;
 	return 1;
 	}
 
@@ -595,6 +634,355 @@ static int lxs_parse_literal_bits(const char *text, uint32_t width, uint64_t *va
 		}
 
 	return 1;
+	}
+
+static int lxs_parse_standard_mux_name(
+	const char *gate_name,
+	uint32_t *kind_out,
+	uint32_t *width_bits_out)
+	{
+	const char *width_text = NULL;
+	uint32_t kind = 0U;
+	uint32_t width_bits = 0U;
+
+	if (strncmp(gate_name, "MUX2_", 5) == 0)
+		{
+		kind = LXS_STANDARD_MUX_KIND_2;
+		width_text = gate_name + 5;
+		}
+	else if (strncmp(gate_name, "MUX4_", 5) == 0)
+		{
+		kind = LXS_STANDARD_MUX_KIND_4;
+		width_text = gate_name + 5;
+		}
+	else
+		{
+		return 0;
+		}
+
+	if (strcmp(width_text, "8") == 0)
+		{
+		width_bits = 8U;
+		}
+	else if (strcmp(width_text, "16") == 0)
+		{
+		width_bits = 16U;
+		}
+	else if (strcmp(width_text, "32") == 0)
+		{
+		width_bits = 32U;
+		}
+	else if (strcmp(width_text, "64") == 0)
+		{
+		width_bits = 64U;
+		}
+	else
+		{
+		return 0;
+		}
+
+	if (kind_out)
+		{
+		*kind_out = kind;
+		}
+	if (width_bits_out)
+		{
+		*width_bits_out = width_bits;
+		}
+	return 1;
+	}
+
+static int lxs_emit_standard_mux_descriptor(
+	lxs_netlist *nl,
+	const uint32_t *outputs,
+	const uint32_t *inputs,
+	uint32_t input_count,
+	uint32_t output_count,
+	uint32_t kind,
+	uint32_t width_bits,
+	uint32_t serial)
+	{
+	lxs_source_standard_mux mux;
+	uint32_t select_count;
+	uint32_t data_bus_count;
+
+	select_count = kind == LXS_STANDARD_MUX_KIND_2 ? 1U : 2U;
+	data_bus_count = kind == LXS_STANDARD_MUX_KIND_2 ? 2U : 4U;
+
+	if (width_bits == 0U || width_bits > LXS_STANDARD_MACRO_MAX_WIDTH)
+		{
+		return 0;
+		}
+	if (output_count != width_bits)
+		{
+		return 0;
+		}
+	if (input_count != (width_bits * data_bus_count) + select_count)
+		{
+		return 0;
+		}
+
+	memset(&mux, 0, sizeof(mux));
+	mux.kind = kind;
+	mux.width_bits = width_bits;
+	mux.data_start = nl->source_standard_mux_data_count;
+	mux.select_start = nl->source_standard_mux_select_count;
+	mux.output_start = nl->source_standard_mux_output_count;
+	mux.gate_index_start = nl->source_standard_mux_gate_index_count;
+
+	for (uint32_t i = 0; i < width_bits * data_bus_count; ++i)
+		{
+		if (!lxs_push_u32(
+				&nl->source_standard_mux_data_net_ids,
+				&nl->source_standard_mux_data_count,
+				&nl->source_standard_mux_data_cap,
+				inputs[i]))
+			{
+			return 0;
+			}
+		}
+
+	for (uint32_t i = 0; i < select_count; ++i)
+		{
+		if (!lxs_push_u32(
+				&nl->source_standard_mux_select_net_ids,
+				&nl->source_standard_mux_select_count,
+				&nl->source_standard_mux_select_cap,
+				inputs[width_bits * data_bus_count + i]))
+			{
+			return 0;
+			}
+		}
+
+	for (uint32_t i = 0; i < width_bits; ++i)
+		{
+		if (!lxs_push_u32(
+				&nl->source_standard_mux_output_net_ids,
+				&nl->source_standard_mux_output_count,
+				&nl->source_standard_mux_output_cap,
+				outputs[i]))
+			{
+			return 0;
+			}
+		}
+
+	if (kind == LXS_STANDARD_MUX_KIND_2)
+		{
+		uint32_t sel = inputs[width_bits * 2U];
+		uint32_t nsel;
+		uint32_t gate_inputs[3];
+		uint32_t gate_index;
+
+		nsel = lxs_intern_temp_net(nl, "smx2", serial, "nsel");
+		if (nsel == UINT32_MAX)
+			{
+			return 0;
+			}
+		gate_inputs[0] = sel;
+		if (!lxs_emit_gate_record(nl, LXS_GATE_NOT, nsel, gate_inputs, 1U, &gate_index) ||
+			!lxs_push_u32(
+				&nl->source_standard_mux_gate_indices,
+				&nl->source_standard_mux_gate_index_count,
+				&nl->source_standard_mux_gate_index_cap,
+				gate_index))
+			{
+			return 0;
+			}
+
+		for (uint32_t bit = 0; bit < width_bits; ++bit)
+			{
+			char suffix[32];
+			uint32_t lo_term;
+			uint32_t hi_term;
+
+			snprintf(suffix, sizeof(suffix), "b%u_lo", bit);
+			lo_term = lxs_intern_temp_net(nl, "smx2", serial, suffix);
+			snprintf(suffix, sizeof(suffix), "b%u_hi", bit);
+			hi_term = lxs_intern_temp_net(nl, "smx2", serial, suffix);
+			if (lo_term == UINT32_MAX || hi_term == UINT32_MAX)
+				{
+				return 0;
+				}
+
+			gate_inputs[0] = inputs[bit];
+			gate_inputs[1] = nsel;
+			if (!lxs_emit_gate_record(nl, LXS_GATE_AND, lo_term, gate_inputs, 2U, &gate_index) ||
+				!lxs_push_u32(
+					&nl->source_standard_mux_gate_indices,
+					&nl->source_standard_mux_gate_index_count,
+					&nl->source_standard_mux_gate_index_cap,
+					gate_index))
+				{
+				return 0;
+				}
+
+			gate_inputs[0] = inputs[width_bits + bit];
+			gate_inputs[1] = sel;
+			if (!lxs_emit_gate_record(nl, LXS_GATE_AND, hi_term, gate_inputs, 2U, &gate_index) ||
+				!lxs_push_u32(
+					&nl->source_standard_mux_gate_indices,
+					&nl->source_standard_mux_gate_index_count,
+					&nl->source_standard_mux_gate_index_cap,
+					gate_index))
+				{
+				return 0;
+				}
+
+			gate_inputs[0] = lo_term;
+			gate_inputs[1] = hi_term;
+			if (!lxs_emit_gate_record(nl, LXS_GATE_OR, outputs[bit], gate_inputs, 2U, &gate_index) ||
+				!lxs_push_u32(
+					&nl->source_standard_mux_gate_indices,
+					&nl->source_standard_mux_gate_index_count,
+					&nl->source_standard_mux_gate_index_cap,
+					gate_index))
+				{
+				return 0;
+				}
+			}
+		}
+	else
+		{
+		uint32_t s0 = inputs[width_bits * 4U + 0U];
+		uint32_t s1 = inputs[width_bits * 4U + 1U];
+		uint32_t ns0;
+		uint32_t ns1;
+		uint32_t gate_inputs[3];
+		uint32_t gate_index;
+
+		ns0 = lxs_intern_temp_net(nl, "smx4", serial, "ns0");
+		ns1 = lxs_intern_temp_net(nl, "smx4", serial, "ns1");
+		if (ns0 == UINT32_MAX || ns1 == UINT32_MAX)
+			{
+			return 0;
+			}
+
+		gate_inputs[0] = s0;
+		if (!lxs_emit_gate_record(nl, LXS_GATE_NOT, ns0, gate_inputs, 1U, &gate_index) ||
+			!lxs_push_u32(
+				&nl->source_standard_mux_gate_indices,
+				&nl->source_standard_mux_gate_index_count,
+				&nl->source_standard_mux_gate_index_cap,
+				gate_index))
+			{
+			return 0;
+			}
+		gate_inputs[0] = s1;
+		if (!lxs_emit_gate_record(nl, LXS_GATE_NOT, ns1, gate_inputs, 1U, &gate_index) ||
+			!lxs_push_u32(
+				&nl->source_standard_mux_gate_indices,
+				&nl->source_standard_mux_gate_index_count,
+				&nl->source_standard_mux_gate_index_cap,
+				gate_index))
+			{
+			return 0;
+			}
+
+		for (uint32_t bit = 0; bit < width_bits; ++bit)
+			{
+			char suffix[32];
+			uint32_t lo_a;
+			uint32_t lo_b;
+			uint32_t lo_mux;
+			uint32_t hi_a;
+			uint32_t hi_b;
+			uint32_t hi_mux;
+			uint32_t out_a;
+			uint32_t out_b;
+
+			snprintf(suffix, sizeof(suffix), "b%u_lo_a", bit);
+			lo_a = lxs_intern_temp_net(nl, "smx4", serial, suffix);
+			snprintf(suffix, sizeof(suffix), "b%u_lo_b", bit);
+			lo_b = lxs_intern_temp_net(nl, "smx4", serial, suffix);
+			snprintf(suffix, sizeof(suffix), "b%u_lo", bit);
+			lo_mux = lxs_intern_temp_net(nl, "smx4", serial, suffix);
+			snprintf(suffix, sizeof(suffix), "b%u_hi_a", bit);
+			hi_a = lxs_intern_temp_net(nl, "smx4", serial, suffix);
+			snprintf(suffix, sizeof(suffix), "b%u_hi_b", bit);
+			hi_b = lxs_intern_temp_net(nl, "smx4", serial, suffix);
+			snprintf(suffix, sizeof(suffix), "b%u_hi", bit);
+			hi_mux = lxs_intern_temp_net(nl, "smx4", serial, suffix);
+			snprintf(suffix, sizeof(suffix), "b%u_out_a", bit);
+			out_a = lxs_intern_temp_net(nl, "smx4", serial, suffix);
+			snprintf(suffix, sizeof(suffix), "b%u_out_b", bit);
+			out_b = lxs_intern_temp_net(nl, "smx4", serial, suffix);
+			if (lo_a == UINT32_MAX || lo_b == UINT32_MAX || lo_mux == UINT32_MAX ||
+				hi_a == UINT32_MAX || hi_b == UINT32_MAX || hi_mux == UINT32_MAX ||
+				out_a == UINT32_MAX || out_b == UINT32_MAX)
+				{
+				return 0;
+				}
+
+			gate_inputs[0] = inputs[bit];
+			gate_inputs[1] = ns0;
+			if (!lxs_emit_gate_record(nl, LXS_GATE_AND, lo_a, gate_inputs, 2U, &gate_index) ||
+				!lxs_push_u32(&nl->source_standard_mux_gate_indices, &nl->source_standard_mux_gate_index_count, &nl->source_standard_mux_gate_index_cap, gate_index))
+				{
+				return 0;
+				}
+			gate_inputs[0] = inputs[width_bits + bit];
+			gate_inputs[1] = s0;
+			if (!lxs_emit_gate_record(nl, LXS_GATE_AND, lo_b, gate_inputs, 2U, &gate_index) ||
+				!lxs_push_u32(&nl->source_standard_mux_gate_indices, &nl->source_standard_mux_gate_index_count, &nl->source_standard_mux_gate_index_cap, gate_index))
+				{
+				return 0;
+				}
+			gate_inputs[0] = lo_a;
+			gate_inputs[1] = lo_b;
+			if (!lxs_emit_gate_record(nl, LXS_GATE_OR, lo_mux, gate_inputs, 2U, &gate_index) ||
+				!lxs_push_u32(&nl->source_standard_mux_gate_indices, &nl->source_standard_mux_gate_index_count, &nl->source_standard_mux_gate_index_cap, gate_index))
+				{
+				return 0;
+				}
+
+			gate_inputs[0] = inputs[(width_bits * 2U) + bit];
+			gate_inputs[1] = ns0;
+			if (!lxs_emit_gate_record(nl, LXS_GATE_AND, hi_a, gate_inputs, 2U, &gate_index) ||
+				!lxs_push_u32(&nl->source_standard_mux_gate_indices, &nl->source_standard_mux_gate_index_count, &nl->source_standard_mux_gate_index_cap, gate_index))
+				{
+				return 0;
+				}
+			gate_inputs[0] = inputs[(width_bits * 3U) + bit];
+			gate_inputs[1] = s0;
+			if (!lxs_emit_gate_record(nl, LXS_GATE_AND, hi_b, gate_inputs, 2U, &gate_index) ||
+				!lxs_push_u32(&nl->source_standard_mux_gate_indices, &nl->source_standard_mux_gate_index_count, &nl->source_standard_mux_gate_index_cap, gate_index))
+				{
+				return 0;
+				}
+			gate_inputs[0] = hi_a;
+			gate_inputs[1] = hi_b;
+			if (!lxs_emit_gate_record(nl, LXS_GATE_OR, hi_mux, gate_inputs, 2U, &gate_index) ||
+				!lxs_push_u32(&nl->source_standard_mux_gate_indices, &nl->source_standard_mux_gate_index_count, &nl->source_standard_mux_gate_index_cap, gate_index))
+				{
+				return 0;
+				}
+
+			gate_inputs[0] = lo_mux;
+			gate_inputs[1] = ns1;
+			if (!lxs_emit_gate_record(nl, LXS_GATE_AND, out_a, gate_inputs, 2U, &gate_index) ||
+				!lxs_push_u32(&nl->source_standard_mux_gate_indices, &nl->source_standard_mux_gate_index_count, &nl->source_standard_mux_gate_index_cap, gate_index))
+				{
+				return 0;
+				}
+			gate_inputs[0] = hi_mux;
+			gate_inputs[1] = s1;
+			if (!lxs_emit_gate_record(nl, LXS_GATE_AND, out_b, gate_inputs, 2U, &gate_index) ||
+				!lxs_push_u32(&nl->source_standard_mux_gate_indices, &nl->source_standard_mux_gate_index_count, &nl->source_standard_mux_gate_index_cap, gate_index))
+				{
+				return 0;
+				}
+			gate_inputs[0] = out_a;
+			gate_inputs[1] = out_b;
+			if (!lxs_emit_gate_record(nl, LXS_GATE_OR, outputs[bit], gate_inputs, 2U, &gate_index) ||
+				!lxs_push_u32(&nl->source_standard_mux_gate_indices, &nl->source_standard_mux_gate_index_count, &nl->source_standard_mux_gate_index_cap, gate_index))
+				{
+				return 0;
+				}
+			}
+		}
+
+	mux.gate_count = nl->source_standard_mux_gate_index_count - mux.gate_index_start;
+	return lxs_push_source_standard_mux(nl, &mux);
 	}
 
 static int lxs_emit_register_descriptor(
@@ -3357,6 +3745,29 @@ static int lxs_compare_multi_macros(const void *lhs, const void *rhs)
 	return 0;
 	}
 
+static int lxs_compare_standard_muxes(const void *lhs, const void *rhs)
+	{
+	const lxs_standard_mux_plan *a = (const lxs_standard_mux_plan*)lhs;
+	const lxs_standard_mux_plan *b = (const lxs_standard_mux_plan*)rhs;
+
+	if (a->level != b->level)
+		{
+		return a->level < b->level ? -1 : 1;
+		}
+
+	if (a->output_start != b->output_start)
+		{
+		return a->output_start < b->output_start ? -1 : 1;
+		}
+
+	if (a->kind != b->kind)
+		{
+		return a->kind < b->kind ? -1 : 1;
+		}
+
+	return 0;
+	}
+
 static int lxs_compare_functional_regions(const void *lhs, const void *rhs)
 	{
 	const lxs_functional_region_plan *left = (const lxs_functional_region_plan*)lhs;
@@ -3459,6 +3870,24 @@ static void lxs_apply_net_remap_to_source_multi_macros(
 			macros[i].outputs[j] = remap[macros[i].outputs[j]];
 			}
 		}
+	}
+
+static void lxs_apply_net_remap_to_source_standard_muxes(
+	lxs_netlist *nl,
+	const uint32_t *remap)
+	{
+	lxs_apply_net_remap_to_array(
+		nl->source_standard_mux_data_net_ids,
+		nl->source_standard_mux_data_count,
+		remap);
+	lxs_apply_net_remap_to_array(
+		nl->source_standard_mux_select_net_ids,
+		nl->source_standard_mux_select_count,
+		remap);
+	lxs_apply_net_remap_to_array(
+		nl->source_standard_mux_output_net_ids,
+		nl->source_standard_mux_output_count,
+		remap);
 	}
 
 static void lxs_apply_net_remap_to_source_macros(
@@ -4834,6 +5263,48 @@ static uint32_t lxs_collect_source_macros(
 		}
 
 	return macro_count;
+	}
+
+static uint32_t lxs_collect_source_standard_muxes(
+	const lxs_netlist *nl,
+	uint8_t *matched_gates,
+	lxs_standard_mux_plan *muxes)
+	{
+	uint32_t mux_count = 0U;
+
+	for (uint32_t i = 0; i < nl->source_standard_mux_count; ++i)
+		{
+		const lxs_source_standard_mux *source = &nl->source_standard_muxes[i];
+		lxs_standard_mux_plan mux;
+		uint32_t level = 0U;
+
+		memset(&mux, 0, sizeof(mux));
+		mux.kind = source->kind;
+		mux.width_bits = source->width_bits;
+		mux.data_start = source->data_start;
+		mux.select_start = source->select_start;
+		mux.output_start = source->output_start;
+		mux.gate_equiv_count = source->gate_count;
+
+		for (uint32_t j = 0; j < source->gate_count; ++j)
+			{
+			uint32_t gate_index = nl->source_standard_mux_gate_indices[source->gate_index_start + j];
+			matched_gates[gate_index] = 1U;
+			if (nl->gates[gate_index].level > level)
+				{
+				level = nl->gates[gate_index].level;
+				}
+			}
+
+		mux.level = level;
+		if (muxes)
+			{
+			muxes[mux_count] = mux;
+			}
+		mux_count++;
+		}
+
+	return mux_count;
 	}
 
 static uint32_t lxs_collect_source_functional_regions(
@@ -6540,9 +7011,9 @@ static lxs_netlist* lxs_load_bench(const char *path)
 		char *close_paren;
 		char *output_ctx = NULL;
 		char *output_token;
-		char *output_names[64];
-		uint32_t output_ids[64];
-		uint32_t input_ids[64];
+		char *output_names[LXS_STANDARD_MACRO_MAX_WIDTH];
+		uint32_t output_ids[LXS_STANDARD_MACRO_MAX_WIDTH];
+		uint32_t input_ids[LXS_STANDARD_MACRO_MAX_INPUTS];
 		uint32_t output_count = 0U;
 		uint32_t input_count = 0U;
 		uint32_t is_special_macro = 0U;
@@ -6563,7 +7034,7 @@ static lxs_netlist* lxs_load_bench(const char *path)
 
 		*close_paren = '\0';
 		output_token = strtok_s(out_name, ",", &output_ctx);
-		while (output_token && output_count < 64U)
+		while (output_token && output_count < LXS_STANDARD_MACRO_MAX_WIDTH)
 			{
 			output_names[output_count++] = lxs_trim(output_token);
 			output_token = strtok_s(NULL, ",", &output_ctx);
@@ -6581,6 +7052,45 @@ static lxs_netlist* lxs_load_bench(const char *path)
 			}
 
 		gate_name = lxs_trim(gate_part);
+
+		{
+		uint32_t standard_mux_kind = 0U;
+		uint32_t standard_mux_width_bits = 0U;
+		if (lxs_parse_standard_mux_name(gate_name, &standard_mux_kind, &standard_mux_width_bits))
+			{
+			char *input_ctx = NULL;
+			char *input_token = strtok_s(open_paren + 1, ",", &input_ctx);
+
+			while (input_token && input_count < LXS_STANDARD_MACRO_MAX_INPUTS)
+				{
+				input_ids[input_count] = lxs_intern_net(nl, lxs_trim(input_token));
+				if (input_ids[input_count] == UINT32_MAX)
+					{
+					lxs_free_netlist(nl);
+					fclose(stream);
+					return NULL;
+					}
+				input_count++;
+				input_token = strtok_s(NULL, ",", &input_ctx);
+				}
+
+			if (!lxs_emit_standard_mux_descriptor(
+					nl,
+					output_ids,
+					input_ids,
+					input_count,
+					output_count,
+					standard_mux_kind,
+					standard_mux_width_bits,
+					macro_serial++))
+				{
+				lxs_free_netlist(nl);
+				fclose(stream);
+				return NULL;
+				}
+			is_special_macro = 1U;
+			}
+		}
 
 		if (strcmp(gate_name, "REGISTER") == 0)
 			{
@@ -7501,6 +8011,11 @@ void lxs_free_netlist(lxs_netlist *nl)
 	lxs_free_aligned(nl->gates);
 	lxs_free_aligned(nl->source_macros);
 	lxs_free_aligned(nl->source_multi_macros);
+	lxs_free_aligned(nl->source_standard_muxes);
+	lxs_free_aligned(nl->source_standard_mux_data_net_ids);
+	lxs_free_aligned(nl->source_standard_mux_select_net_ids);
+	lxs_free_aligned(nl->source_standard_mux_output_net_ids);
+	lxs_free_aligned(nl->source_standard_mux_gate_indices);
 	lxs_free_aligned(nl->source_functional_regions);
 	lxs_free_aligned(nl->source_registers);
 	lxs_free_aligned(nl->source_register_input_net_ids);
@@ -7537,8 +8052,10 @@ lxs_plan* lxs_compile_to_plan(lxs_netlist *nl)
 	uint32_t next_net_id = 0U;
 	uint32_t macro_fill = 0U;
 	uint32_t multi_macro_fill = 0U;
+	uint32_t standard_mux_fill = 0U;
 	uint32_t macro_level_fill = 0U;
 	uint32_t multi_macro_level_fill = 0U;
+	uint32_t standard_mux_level_fill = 0U;
 	uint32_t functional_region_level_fill = 0U;
 	uint32_t functional_region_fill = 0U;
 	uint32_t recognized_functional_count = 0U;
@@ -7673,6 +8190,7 @@ lxs_plan* lxs_compile_to_plan(lxs_netlist *nl)
 		nl->source_multi_macros,
 		nl->source_multi_macro_count,
 		net_remap);
+	lxs_apply_net_remap_to_source_standard_muxes(nl, net_remap);
 	lxs_apply_net_remap_to_source_registers(nl, net_remap);
 	lxs_apply_net_remap_to_source_roms(nl, net_remap);
 	lxs_apply_net_remap_to_source_rams(nl, net_remap);
@@ -7706,6 +8224,7 @@ lxs_plan* lxs_compile_to_plan(lxs_netlist *nl)
 	plan->recognition_mask = lxs_default_recognition_mask();
 	plan->recognition_mode = lxs_default_recognition_mode();
 	plan->multi_macro_count = lxs_collect_source_multi_macros(nl, comb_driver, multi_matched_gates, NULL);
+	plan->standard_mux_count = lxs_collect_source_standard_muxes(nl, matched_gates, NULL);
 	{
 	uint8_t *recognition_multi_marks = multi_matched_gates;
 	uint32_t recognized_multi_count;
@@ -7900,6 +8419,9 @@ lxs_plan* lxs_compile_to_plan(lxs_netlist *nl)
 	plan->register_count = nl->source_register_count;
 	plan->register_bit_count = nl->source_register_output_count;
 	plan->register_input_net_count = nl->source_register_input_count;
+	plan->standard_mux_data_net_count = nl->source_standard_mux_data_count;
+	plan->standard_mux_select_net_count = nl->source_standard_mux_select_count;
+	plan->standard_mux_output_net_count = nl->source_standard_mux_output_count;
 	plan->rom_count = nl->source_rom_count;
 	plan->rom_addr_net_count = nl->source_rom_addr_count;
 	plan->rom_output_net_count = nl->source_rom_output_count;
@@ -7923,9 +8445,13 @@ lxs_plan* lxs_compile_to_plan(lxs_netlist *nl)
 	plan->chunks = lxs_calloc_aligned(plan->comb_gate_count, sizeof(lxs_chunk_plan));
 	plan->macros = lxs_calloc_aligned(plan->macro_count, sizeof(lxs_macro_plan));
 	plan->multi_macros = lxs_calloc_aligned(plan->multi_macro_count, sizeof(lxs_multi_macro_plan));
+	plan->standard_muxes = lxs_calloc_aligned(plan->standard_mux_count, sizeof(lxs_standard_mux_plan));
 	plan->functional_regions = lxs_calloc_aligned(
 		plan->functional_region_count,
 		sizeof(lxs_functional_region_plan));
+	plan->standard_mux_data_net_ids = lxs_calloc_aligned(plan->standard_mux_data_net_count, sizeof(uint32_t));
+	plan->standard_mux_select_net_ids = lxs_calloc_aligned(plan->standard_mux_select_net_count, sizeof(uint32_t));
+	plan->standard_mux_output_net_ids = lxs_calloc_aligned(plan->standard_mux_output_net_count, sizeof(uint32_t));
 	plan->registers = lxs_calloc_aligned(plan->register_count, sizeof(lxs_register_plan));
 	plan->register_input_net_ids = lxs_calloc_aligned(plan->register_input_net_count, sizeof(uint32_t));
 	plan->register_output_net_ids = lxs_calloc_aligned(plan->register_bit_count, sizeof(uint32_t));
@@ -7951,7 +8477,11 @@ lxs_plan* lxs_compile_to_plan(lxs_netlist *nl)
 		(plan->comb_gate_count && (!plan->comb_gates || !plan->chunks)) ||
 		(plan->macro_count && !plan->macros) ||
 		(plan->multi_macro_count && !plan->multi_macros) ||
+		(plan->standard_mux_count && !plan->standard_muxes) ||
 		(plan->functional_region_count && !plan->functional_regions) ||
+		(plan->standard_mux_data_net_count && !plan->standard_mux_data_net_ids) ||
+		(plan->standard_mux_select_net_count && !plan->standard_mux_select_net_ids) ||
+		(plan->standard_mux_output_net_count && !plan->standard_mux_output_net_ids) ||
 		(plan->register_count && (!plan->registers || !plan->register_output_net_ids ||
 			!plan->register_init_value || !plan->register_init_mask)) ||
 		(plan->register_input_net_count && !plan->register_input_net_ids) ||
@@ -7973,6 +8503,9 @@ lxs_plan* lxs_compile_to_plan(lxs_netlist *nl)
 
 	memcpy(plan->inputs.net_ids, nl->inputs, (size_t)plan->inputs.count * sizeof(uint32_t));
 	memcpy(plan->outputs.net_ids, nl->outputs, (size_t)plan->outputs.count * sizeof(uint32_t));
+	memcpy(plan->standard_mux_data_net_ids, nl->source_standard_mux_data_net_ids, (size_t)plan->standard_mux_data_net_count * sizeof(uint32_t));
+	memcpy(plan->standard_mux_select_net_ids, nl->source_standard_mux_select_net_ids, (size_t)plan->standard_mux_select_net_count * sizeof(uint32_t));
+	memcpy(plan->standard_mux_output_net_ids, nl->source_standard_mux_output_net_ids, (size_t)plan->standard_mux_output_net_count * sizeof(uint32_t));
 	memcpy(plan->register_input_net_ids, nl->source_register_input_net_ids, (size_t)plan->register_input_net_count * sizeof(uint32_t));
 	memcpy(plan->register_output_net_ids, nl->source_register_output_net_ids, (size_t)plan->register_bit_count * sizeof(uint32_t));
 	memcpy(plan->rom_addr_net_ids, nl->source_rom_addr_net_ids, (size_t)plan->rom_addr_net_count * sizeof(uint32_t));
@@ -8082,6 +8615,14 @@ lxs_plan* lxs_compile_to_plan(lxs_netlist *nl)
 		}
 
 	memcpy(matched_gates, multi_matched_gates, (size_t)nl->gate_count * sizeof(uint8_t));
+	if (plan->standard_mux_count > 0U)
+		{
+		standard_mux_fill = lxs_collect_source_standard_muxes(
+			nl,
+			matched_gates,
+			plan->standard_muxes);
+		plan->standard_mux_count = standard_mux_fill;
+		}
 	if (plan->functional_region_count > 0U)
 		{
 		functional_region_fill = lxs_collect_source_functional_regions(
@@ -8191,6 +8732,15 @@ lxs_plan* lxs_compile_to_plan(lxs_netlist *nl)
 			lxs_compare_multi_macros);
 		}
 
+	if (plan->standard_mux_count > 1U)
+		{
+		qsort(
+			plan->standard_muxes,
+			plan->standard_mux_count,
+			sizeof(lxs_standard_mux_plan),
+			lxs_compare_standard_muxes);
+		}
+
 	if (plan->functional_region_count > 1U)
 		{
 		qsort(
@@ -8204,6 +8754,7 @@ lxs_plan* lxs_compile_to_plan(lxs_netlist *nl)
 		{
 		uint32_t level_chunk_start = chunk_fill;
 		uint32_t level_macro_start = macro_level_fill;
+		uint32_t level_standard_mux_start = standard_mux_level_fill;
 		uint32_t level_functional_region_start = functional_region_level_fill;
 
 		for (uint32_t type = 0; type < (uint32_t)LXS_GATE_DFF; ++type)
@@ -8264,6 +8815,15 @@ lxs_plan* lxs_compile_to_plan(lxs_netlist *nl)
 			}
 		plan->levels[level].multi_macro_count = multi_macro_level_fill - plan->levels[level].multi_macro_start;
 
+		plan->levels[level].standard_mux_start = level_standard_mux_start;
+		while (standard_mux_level_fill < plan->standard_mux_count &&
+			plan->standard_muxes[standard_mux_level_fill].level == level)
+			{
+			standard_mux_level_fill++;
+			}
+		plan->levels[level].standard_mux_count =
+			standard_mux_level_fill - level_standard_mux_start;
+
 		plan->levels[level].functional_region_start = level_functional_region_start;
 		while (functional_region_level_fill < plan->functional_region_count &&
 			plan->functional_regions[functional_region_level_fill].level == level)
@@ -8296,10 +8856,14 @@ void lxs_free_plan(lxs_plan *plan)
 	lxs_free_aligned(plan->chunks);
 	lxs_free_aligned(plan->macros);
 	lxs_free_aligned(plan->multi_macros);
+	lxs_free_aligned(plan->standard_muxes);
 	lxs_free_aligned(plan->functional_regions);
 	lxs_free_aligned(plan->levels);
 	lxs_free_aligned(plan->inputs.net_ids);
 	lxs_free_aligned(plan->outputs.net_ids);
+	lxs_free_aligned(plan->standard_mux_data_net_ids);
+	lxs_free_aligned(plan->standard_mux_select_net_ids);
+	lxs_free_aligned(plan->standard_mux_output_net_ids);
 	lxs_free_aligned(plan->state.d_inputs);
 	lxs_free_aligned(plan->state.q_outputs);
 	lxs_free_aligned(plan->registers);

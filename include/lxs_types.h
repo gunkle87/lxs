@@ -11,6 +11,8 @@
 #define LXS_FUNCTIONAL_REGION_MAX_OUTPUTS 8U
 #define LXS_FUNCTIONAL_REGION_MAX_OPS 40U
 #define LXS_FUNCTIONAL_REGION_MAX_TEMPS 40U
+#define LXS_STANDARD_MACRO_MAX_WIDTH 64U
+#define LXS_STANDARD_MACRO_MAX_INPUTS 320U
 
 typedef enum lxs_gate_type
 	{
@@ -172,6 +174,7 @@ struct lxs_gate_ir
 typedef struct lxs_netlist lxs_netlist;
 typedef struct lxs_source_macro lxs_source_macro;
 typedef struct lxs_source_multi_macro lxs_source_multi_macro;
+typedef struct lxs_source_standard_mux lxs_source_standard_mux;
 typedef struct lxs_source_functional_region lxs_source_functional_region;
 typedef struct lxs_source_register lxs_source_register;
 typedef struct lxs_source_rom lxs_source_rom;
@@ -201,6 +204,22 @@ struct lxs_netlist
 	lxs_source_multi_macro *source_multi_macros;
 	uint32_t source_multi_macro_count;
 	uint32_t source_multi_macro_cap;
+
+	lxs_source_standard_mux *source_standard_muxes;
+	uint32_t source_standard_mux_count;
+	uint32_t source_standard_mux_cap;
+	uint32_t *source_standard_mux_data_net_ids;
+	uint32_t source_standard_mux_data_count;
+	uint32_t source_standard_mux_data_cap;
+	uint32_t *source_standard_mux_select_net_ids;
+	uint32_t source_standard_mux_select_count;
+	uint32_t source_standard_mux_select_cap;
+	uint32_t *source_standard_mux_output_net_ids;
+	uint32_t source_standard_mux_output_count;
+	uint32_t source_standard_mux_output_cap;
+	uint32_t *source_standard_mux_gate_indices;
+	uint32_t source_standard_mux_gate_index_count;
+	uint32_t source_standard_mux_gate_index_cap;
 
 	lxs_source_functional_region *source_functional_regions;
 	uint32_t source_functional_region_count;
@@ -273,6 +292,23 @@ struct lxs_source_multi_macro
 	uint32_t gate_indices[40];
 	uint32_t input_count;
 	uint32_t output_count;
+	uint32_t gate_count;
+	};
+
+typedef enum lxs_standard_mux_kind
+	{
+	LXS_STANDARD_MUX_KIND_2 = 0,
+	LXS_STANDARD_MUX_KIND_4
+	} lxs_standard_mux_kind;
+
+struct lxs_source_standard_mux
+	{
+	uint32_t kind;
+	uint32_t width_bits;
+	uint32_t data_start;
+	uint32_t select_start;
+	uint32_t output_start;
+	uint32_t gate_index_start;
 	uint32_t gate_count;
 	};
 
@@ -350,6 +386,8 @@ struct lxs_level_plan
 	uint32_t macro_count;
 	uint32_t multi_macro_start;
 	uint32_t multi_macro_count;
+	uint32_t standard_mux_start;
+	uint32_t standard_mux_count;
 	uint32_t functional_region_start;
 	uint32_t functional_region_count;
 	};
@@ -375,6 +413,18 @@ struct lxs_multi_macro_plan
 	uint32_t output_count;
 	uint32_t gate_equiv_count;
 	uint32_t param0;
+	};
+
+typedef struct lxs_standard_mux_plan lxs_standard_mux_plan;
+struct lxs_standard_mux_plan
+	{
+	uint32_t kind;
+	uint32_t level;
+	uint32_t width_bits;
+	uint32_t data_start;
+	uint32_t select_start;
+	uint32_t output_start;
+	uint32_t gate_equiv_count;
 	};
 
 typedef enum lxs_functional_region_exec_kind
@@ -503,6 +553,7 @@ struct lxs_plan
 	uint32_t max_span_count;
 	uint32_t macro_count;
 	uint32_t multi_macro_count;
+	uint32_t standard_mux_count;
 	uint32_t functional_region_count;
 	uint32_t recognition_mask;
 	uint32_t recognition_mode;
@@ -518,6 +569,7 @@ struct lxs_plan
 	lxs_chunk_plan *chunks;
 	lxs_macro_plan *macros;
 	lxs_multi_macro_plan *multi_macros;
+	lxs_standard_mux_plan *standard_muxes;
 	lxs_functional_region_plan *functional_regions;
 	lxs_level_plan *levels;
 
@@ -558,6 +610,13 @@ struct lxs_plan
 	uint32_t *ram_output_net_ids;
 	uint64_t *ram_init_value;
 	uint64_t *ram_init_mask;
+
+	uint32_t standard_mux_data_net_count;
+	uint32_t standard_mux_select_net_count;
+	uint32_t standard_mux_output_net_count;
+	uint32_t *standard_mux_data_net_ids;
+	uint32_t *standard_mux_select_net_ids;
+	uint32_t *standard_mux_output_net_ids;
 	};
 
 typedef struct lxs_probes lxs_probes;

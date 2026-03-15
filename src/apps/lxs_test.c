@@ -116,6 +116,108 @@ static uint64_t lxs_next_rand(uint64_t *state)
 	return *state;
 	}
 
+static int lxs_test_standard_mux_equivalence(
+	const char *primitive_path,
+	const char *explicit_path,
+	const char *label_prefix,
+	uint32_t input_count,
+	uint32_t output_count,
+	uint32_t expected_kind,
+	uint8_t use_random_masks)
+	{
+	lxs_loaded_case lhs;
+	lxs_loaded_case rhs;
+	uint64_t values[40];
+	uint64_t masks[40];
+	uint64_t lhs_out_values[8];
+	uint64_t lhs_out_masks[8];
+	uint64_t rhs_out_values[8];
+	uint64_t rhs_out_masks[8];
+	uint64_t rng = 0x4D55585FULL;
+	int ok = 1;
+
+	if (!lxs_load_case(primitive_path, &lhs))
+		{
+		fprintf(stderr, "FAIL %s: unable to load primitive circuit\n", label_prefix);
+		return 0;
+		}
+
+	if (!lxs_load_case(explicit_path, &rhs))
+		{
+		fprintf(stderr, "FAIL %s: unable to load explicit circuit\n", label_prefix);
+		lxs_unload_case(&lhs);
+		return 0;
+		}
+
+	{
+	char label[96];
+	snprintf(label, sizeof(label), "%s.count", label_prefix);
+	ok &= lxs_expect_u64(label, rhs.plan->standard_mux_count, 1ULL);
+	snprintf(label, sizeof(label), "%s.comb_gate_count", label_prefix);
+	ok &= lxs_expect_u64(label, rhs.plan->comb_gate_count, 0ULL);
+	snprintf(label, sizeof(label), "%s.width_bits", label_prefix);
+	ok &= lxs_expect_u64(label, rhs.plan->standard_muxes[0].width_bits, output_count);
+	snprintf(label, sizeof(label), "%s.kind", label_prefix);
+	ok &= lxs_expect_u64(label, rhs.plan->standard_muxes[0].kind, expected_kind);
+	}
+
+	for (uint32_t iter = 0; iter < 256U; ++iter)
+		{
+		char label[128];
+
+		for (uint32_t i = 0; i < input_count; ++i)
+			{
+			values[i] = lxs_next_rand(&rng);
+			masks[i] = use_random_masks ? lxs_next_rand(&rng) : 0ULL;
+			values[i] &= ~masks[i];
+			}
+
+		lxs_apply_inputs(&lhs.ctx, lhs.plan, values, masks);
+		lxs_execute_plan(&lhs.ctx, lhs.plan);
+		lxs_read_outputs(&lhs.ctx, lhs.plan, lhs_out_values, lhs_out_masks);
+
+		lxs_apply_inputs(&rhs.ctx, rhs.plan, values, masks);
+		lxs_execute_plan(&rhs.ctx, rhs.plan);
+		lxs_read_outputs(&rhs.ctx, rhs.plan, rhs_out_values, rhs_out_masks);
+
+		for (uint32_t out = 0; out < output_count; ++out)
+			{
+			snprintf(label, sizeof(label), "%s.value.%u.%u", label_prefix, iter, out);
+			ok &= lxs_expect_u64(label, rhs_out_values[out], lhs_out_values[out]);
+			snprintf(label, sizeof(label), "%s.mask.%u.%u", label_prefix, iter, out);
+			ok &= lxs_expect_u64(label, rhs_out_masks[out], lhs_out_masks[out]);
+			}
+		}
+
+	lxs_unload_case(&lhs);
+	lxs_unload_case(&rhs);
+	return ok;
+	}
+
+static int lxs_test_mux2_8_explicit(void)
+	{
+	return lxs_test_standard_mux_equivalence(
+		"Tests\\Circuits\\mux2_8_primitive.bench",
+		"Tests\\Circuits\\mux2_8_explicit.bench",
+		"mux2_8_explicit",
+		17U,
+		8U,
+		LXS_STANDARD_MUX_KIND_2,
+		1U);
+	}
+
+static int lxs_test_mux4_8_explicit(void)
+	{
+	return lxs_test_standard_mux_equivalence(
+		"Tests\\Circuits\\mux4_8_primitive.bench",
+		"Tests\\Circuits\\mux4_8_explicit.bench",
+		"mux4_8_explicit",
+		34U,
+		8U,
+		LXS_STANDARD_MUX_KIND_4,
+		0U);
+	}
+
 static int lxs_test_multi_macro_full_adder_cinv(void)
 	{
 	lxs_plan plan;
@@ -3624,6 +3726,8 @@ int main(void)
 	ok &= lxs_test_canonical_basic();
 	ok &= lxs_test_multi_macro_full_adder_cinv();
 	ok &= lxs_test_mux2_macro();
+	ok &= lxs_test_mux2_8_explicit();
+	ok &= lxs_test_mux4_8_explicit();
 	ok &= lxs_test_xor2_macro();
 	ok &= lxs_test_xor2_nor_macro();
 	ok &= lxs_test_xnor2_macro();
