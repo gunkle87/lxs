@@ -15,6 +15,14 @@ All runs inherit the rules in:
 - [UI_REPO_STRUCTURE_BASELINE.md](/c:/DEV/LXS/docs/ui/UI_REPO_STRUCTURE_BASELINE.md)
 - [UI_RUN_DOCUMENTATION_PROTOCOL.md](/c:/DEV/LXS/docs/ui/UI_RUN_DOCUMENTATION_PROTOCOL.md)
 
+Implementation and audit sessions must start with:
+
+```cmd
+powershell -ExecutionPolicy Bypass -File C:\DEV\LXS_UI\scripts\preflight.ps1
+```
+
+A non-zero exit code is a hard stop for implementation sessions.
+
 At the start of every fresh session, the agent must read those four files before
 doing any work.
 
@@ -98,6 +106,15 @@ Audit and report only.
 
 ## Directive 02
 
+Appendix for Directive 02 (drift remediation required before starting):
+- Before any implementation, verify `docs/checkpoints/RUN_01.md` commit hash matches `C:\DEV\LXS_UI` `HEAD`.
+  - If it does not match, update only that checkpoint hash and note the correction in the current run notes.
+- If `C:\DEV\LXS_UI` has no configured remote, configure one from the existing project policy and push the current HEAD before starting Directive 02.
+- Any Directive 02 launch validation should write a proof artifact file under:
+  - `C:\DEV\LXS_UI\artifacts\run_02_launch.txt`
+  - include the command and success signal in the file.
+- If the previous run remains unpushed, treat this as a hard blocker and do not proceed with implementation changes until resolved.
+
 Implement the authoritative editor model and primitive registry in `C:\DEV\LXS_UI`.
 
 Hard requirements:
@@ -150,6 +167,8 @@ Validation required before commit:
 - model tests pass
 - primitive registry tests pass
 - `C:\DEV\LXS` remains unchanged
+- `run_01` hash and push state from the previous pass must be corrected and confirmed in the final run notes
+- launch proof artifact created at `artifacts/run_02_launch.txt`
 - update:
   - `docs/checkpoints/RUN_02.md`
   - `docs/UI_PHASE_STATUS.md`
