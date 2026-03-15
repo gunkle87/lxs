@@ -692,6 +692,47 @@ static int lxs_parse_standard_mux_name(
 	return 1;
 	}
 
+static int lxs_parse_standard_register_name(
+	const char *gate_name,
+	uint32_t *width_bits_out)
+	{
+	uint32_t width_bits = 0U;
+	const char *width_text = NULL;
+
+	if (strncmp(gate_name, "REG", 3) != 0)
+		{
+		return 0;
+		}
+
+	width_text = gate_name + 3;
+	if (strcmp(width_text, "8") == 0)
+		{
+		width_bits = 8U;
+		}
+	else if (strcmp(width_text, "16") == 0)
+		{
+		width_bits = 16U;
+		}
+	else if (strcmp(width_text, "32") == 0)
+		{
+		width_bits = 32U;
+		}
+	else if (strcmp(width_text, "64") == 0)
+		{
+		width_bits = 64U;
+		}
+	else
+		{
+		return 0;
+		}
+
+	if (width_bits_out)
+		{
+		*width_bits_out = width_bits;
+		}
+	return 1;
+	}
+
 static int lxs_emit_standard_mux_descriptor(
 	lxs_netlist *nl,
 	const uint32_t *outputs,
@@ -7092,7 +7133,9 @@ static lxs_netlist* lxs_load_bench(const char *path)
 			}
 		}
 
-		if (strcmp(gate_name, "REGISTER") == 0)
+		uint32_t standard_register_width_bits = 0U;
+		if (strcmp(gate_name, "REGISTER") == 0 ||
+			lxs_parse_standard_register_name(gate_name, &standard_register_width_bits))
 			{
 			char *input_ctx = NULL;
 			char *input_token = strtok_s(open_paren + 1, ",", &input_ctx);
@@ -7111,6 +7154,7 @@ static lxs_netlist* lxs_load_bench(const char *path)
 				}
 
 			if (output_count == 0U || output_count != input_count ||
+				(standard_register_width_bits != 0U && output_count != standard_register_width_bits) ||
 				!lxs_emit_register_descriptor(nl, output_ids, input_ids, output_count, UINT32_MAX, 0U))
 				{
 				lxs_free_netlist(nl);
