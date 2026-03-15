@@ -76,6 +76,30 @@ LXS_API_EXPORT void lxs_api_plan_free(lxs_api_plan *plan);
 LXS_API_EXPORT lxs_api_result lxs_api_plan_get_counts(
 	const lxs_api_plan *plan,
 	lxs_api_plan_counts *out_counts);
+LXS_API_EXPORT lxs_api_result lxs_api_plan_get_input_net_id(
+	const lxs_api_plan *plan,
+	uint32_t input_index,
+	uint32_t *out_net_id);
+LXS_API_EXPORT lxs_api_result lxs_api_plan_get_output_net_id(
+	const lxs_api_plan *plan,
+	uint32_t output_index,
+	uint32_t *out_net_id);
+LXS_API_EXPORT lxs_api_result lxs_api_plan_get_input_name(
+	const lxs_api_plan *plan,
+	uint32_t input_index,
+	const char **out_name);
+LXS_API_EXPORT lxs_api_result lxs_api_plan_get_output_name(
+	const lxs_api_plan *plan,
+	uint32_t output_index,
+	const char **out_name);
+LXS_API_EXPORT lxs_api_result lxs_api_plan_get_net_name(
+	const lxs_api_plan *plan,
+	uint32_t net_id,
+	const char **out_name);
+LXS_API_EXPORT lxs_api_result lxs_api_plan_find_net(
+	const lxs_api_plan *plan,
+	const char *name,
+	uint32_t *out_net_id);
 
 LXS_API_EXPORT lxs_api_result lxs_api_engine_create(
 	const lxs_api_plan *plan,

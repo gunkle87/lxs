@@ -5823,6 +5823,30 @@ static void lxs_apply_net_remap_to_array(uint32_t *items, uint32_t count, const 
 		}
 	}
 
+static void lxs_apply_net_remap_to_names(char **names, uint32_t count, const uint32_t *remap)
+	{
+	char **remapped_names;
+
+	if (!names || count == 0U)
+		{
+		return;
+		}
+
+	remapped_names = lxs_calloc_aligned(count, sizeof(char*));
+	if (!remapped_names)
+		{
+		return;
+		}
+
+	for (uint32_t old_id = 0; old_id < count; ++old_id)
+		{
+		remapped_names[remap[old_id]] = names[old_id];
+		}
+
+	memcpy(names, remapped_names, (size_t)count * sizeof(char*));
+	lxs_free_aligned(remapped_names);
+	}
+
 static void lxs_apply_net_remap_to_gates(lxs_gate_ir *gates, uint32_t count, const uint32_t *remap)
 	{
 	for (uint32_t i = 0; i < count; ++i)
@@ -10889,6 +10913,7 @@ lxs_plan* lxs_compile_to_plan(lxs_netlist *nl)
 
 	lxs_apply_net_remap_to_array(nl->inputs, nl->input_count, net_remap);
 	lxs_apply_net_remap_to_array(nl->outputs, nl->output_count, net_remap);
+	lxs_apply_net_remap_to_names(nl->net_names, nl->net_count, net_remap);
 	lxs_apply_net_remap_to_gates(nl->gates, nl->gate_count, net_remap);
 	lxs_apply_net_remap_to_source_macros(
 		nl->source_macros,

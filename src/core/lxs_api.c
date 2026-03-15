@@ -13,6 +13,8 @@ struct lxs_api_netlist
 struct lxs_api_plan
 	{
 	lxs_plan *plan;
+	char **net_names;
+	uint32_t net_name_count;
 	};
 
 struct lxs_api_engine
@@ -22,6 +24,11 @@ struct lxs_api_engine
 	};
 
 static _Thread_local char lxs_api_last_error[512];
+
+lxs_api_result lxs_api_plan_get_net_name(
+	const lxs_api_plan *plan,
+	uint32_t net_id,
+	const char **out_name);
 
 static lxs_api_result lxs_api_set_error(
 	lxs_api_result result,
@@ -52,6 +59,80 @@ static lxs_api_result lxs_api_set_printf_error(
 		lxs_api_last_error[0] = '\0';
 		}
 	return result;
+	}
+
+static char* lxs_api_strdup(const char *src)
+	{
+	size_t len;
+	char *copy;
+
+	if (!src)
+		{
+		return NULL;
+		}
+
+	len = strlen(src) + 1U;
+	copy = (char*)malloc(len);
+	if (!copy)
+		{
+		return NULL;
+		}
+
+	memcpy(copy, src, len);
+	return copy;
+	}
+
+static void lxs_api_free_name_table(char **names, uint32_t count)
+	{
+	if (!names)
+		{
+		return;
+		}
+
+	for (uint32_t i = 0; i < count; ++i)
+		{
+		free(names[i]);
+		}
+	free(names);
+	}
+
+static int lxs_api_copy_plan_names(
+	lxs_api_plan *api_plan,
+	const lxs_netlist *netlist)
+	{
+	if (!api_plan || !api_plan->plan || !netlist)
+		{
+		return 0;
+		}
+
+	api_plan->net_name_count = api_plan->plan->net_count;
+	if (api_plan->net_name_count == 0U)
+		{
+		return 1;
+		}
+
+	api_plan->net_names = (char**)calloc(api_plan->net_name_count, sizeof(char*));
+	if (!api_plan->net_names)
+		{
+		return 0;
+		}
+
+	for (uint32_t i = 0; i < api_plan->net_name_count; ++i)
+		{
+		if (i < netlist->net_count && netlist->net_names && netlist->net_names[i])
+			{
+			api_plan->net_names[i] = lxs_api_strdup(netlist->net_names[i]);
+			if (!api_plan->net_names[i])
+				{
+				lxs_api_free_name_table(api_plan->net_names, api_plan->net_name_count);
+				api_plan->net_names = NULL;
+				api_plan->net_name_count = 0U;
+				return 0;
+				}
+			}
+		}
+
+	return 1;
 	}
 
 const char* lxs_api_result_string(lxs_api_result result)
@@ -148,6 +229,12 @@ lxs_api_result lxs_api_plan_compile(
 		free(handle);
 		return lxs_api_set_error(LXS_API_ERR_COMPILE_FAILED, "plan_compile: compile failed");
 		}
+	if (!lxs_api_copy_plan_names(handle, netlist->nl))
+		{
+		lxs_free_plan(handle->plan);
+		free(handle);
+		return lxs_api_set_error(LXS_API_ERR_INTERNAL, "plan_compile: name table allocation failure");
+		}
 
 	*out_plan = handle;
 	return lxs_api_set_error(LXS_API_OK, NULL);
@@ -160,6 +247,7 @@ void lxs_api_plan_free(lxs_api_plan *plan)
 		return;
 		}
 
+	lxs_api_free_name_table(plan->net_names, plan->net_name_count);
 	lxs_free_plan(plan->plan);
 	free(plan);
 	}
@@ -191,6 +279,126 @@ lxs_api_result lxs_api_plan_get_counts(
 	out_counts->ram_count = plan->plan->ram_count;
 	out_counts->regfile_count = plan->plan->regfile_count;
 	return lxs_api_set_error(LXS_API_OK, NULL);
+	}
+
+lxs_api_result lxs_api_plan_get_input_net_id(
+	const lxs_api_plan *plan,
+	uint32_t input_index,
+	uint32_t *out_net_id)
+	{
+	if (!plan || !plan->plan || !out_net_id)
+		{
+		return lxs_api_set_error(LXS_API_ERR_INVALID_ARG, "plan_get_input_net_id: invalid argument");
+		}
+	if (input_index >= plan->plan->inputs.count)
+		{
+		return lxs_api_set_error(LXS_API_ERR_BOUNDS, "plan_get_input_net_id: input index out of bounds");
+		}
+
+	*out_net_id = plan->plan->inputs.net_ids[input_index];
+	return lxs_api_set_error(LXS_API_OK, NULL);
+	}
+
+lxs_api_result lxs_api_plan_get_output_net_id(
+	const lxs_api_plan *plan,
+	uint32_t output_index,
+	uint32_t *out_net_id)
+	{
+	if (!plan || !plan->plan || !out_net_id)
+		{
+		return lxs_api_set_error(LXS_API_ERR_INVALID_ARG, "plan_get_output_net_id: invalid argument");
+		}
+	if (output_index >= plan->plan->outputs.count)
+		{
+		return lxs_api_set_error(LXS_API_ERR_BOUNDS, "plan_get_output_net_id: output index out of bounds");
+		}
+
+	*out_net_id = plan->plan->outputs.net_ids[output_index];
+	return lxs_api_set_error(LXS_API_OK, NULL);
+	}
+
+lxs_api_result lxs_api_plan_get_input_name(
+	const lxs_api_plan *plan,
+	uint32_t input_index,
+	const char **out_name)
+	{
+	uint32_t net_id;
+	lxs_api_result result;
+
+	if (!out_name)
+		{
+		return lxs_api_set_error(LXS_API_ERR_INVALID_ARG, "plan_get_input_name: invalid argument");
+		}
+
+	result = lxs_api_plan_get_input_net_id(plan, input_index, &net_id);
+	if (result != LXS_API_OK)
+		{
+		return result;
+		}
+
+	return lxs_api_plan_get_net_name(plan, net_id, out_name);
+	}
+
+lxs_api_result lxs_api_plan_get_output_name(
+	const lxs_api_plan *plan,
+	uint32_t output_index,
+	const char **out_name)
+	{
+	uint32_t net_id;
+	lxs_api_result result;
+
+	if (!out_name)
+		{
+		return lxs_api_set_error(LXS_API_ERR_INVALID_ARG, "plan_get_output_name: invalid argument");
+		}
+
+	result = lxs_api_plan_get_output_net_id(plan, output_index, &net_id);
+	if (result != LXS_API_OK)
+		{
+		return result;
+		}
+
+	return lxs_api_plan_get_net_name(plan, net_id, out_name);
+	}
+
+lxs_api_result lxs_api_plan_get_net_name(
+	const lxs_api_plan *plan,
+	uint32_t net_id,
+	const char **out_name)
+	{
+	if (!plan || !plan->plan || !out_name)
+		{
+		return lxs_api_set_error(LXS_API_ERR_INVALID_ARG, "plan_get_net_name: invalid argument");
+		}
+	if (net_id >= plan->net_name_count)
+		{
+		return lxs_api_set_error(LXS_API_ERR_BOUNDS, "plan_get_net_name: net id out of bounds");
+		}
+
+	*out_name = plan->net_names ? plan->net_names[net_id] : NULL;
+	return lxs_api_set_error(LXS_API_OK, NULL);
+	}
+
+lxs_api_result lxs_api_plan_find_net(
+	const lxs_api_plan *plan,
+	const char *name,
+	uint32_t *out_net_id)
+	{
+	if (!plan || !plan->plan || !name || !out_net_id)
+		{
+		return lxs_api_set_error(LXS_API_ERR_INVALID_ARG, "plan_find_net: invalid argument");
+		}
+
+	for (uint32_t i = 0; i < plan->net_name_count; ++i)
+		{
+		if (plan->net_names && plan->net_names[i] && strcmp(plan->net_names[i], name) == 0)
+			{
+			*out_net_id = i;
+			return lxs_api_set_error(LXS_API_OK, NULL);
+			}
+		}
+
+	return lxs_api_set_printf_error(LXS_API_ERR_BOUNDS, "plan_find_net: net not found '%s'", name);
 	}
 
 lxs_api_result lxs_api_engine_create(

@@ -131,9 +131,11 @@ static int lxs_test_public_api_smoke(void)
 	uint64_t internal_out_masks[8];
 	uint64_t api_out_values[8];
 	uint64_t api_out_masks[8];
+	const char *api_name = NULL;
 	uint64_t rng = 0x4150495F534D4F4BULL;
 	uint32_t input_count = 0U;
 	uint32_t output_count = 0U;
+	uint32_t net_id = 0U;
 	int ok = 1;
 
 	if (!lxs_load_case("Tests\\Circuits\\mux2_8_explicit.bench", &internal_case))
@@ -161,6 +163,58 @@ static int lxs_test_public_api_smoke(void)
 	ok &= lxs_expect_u64("public_api_smoke.plan_outputs", counts.output_count, 8ULL);
 	ok &= lxs_expect_u64("public_api_smoke.engine_inputs", input_count, 17ULL);
 	ok &= lxs_expect_u64("public_api_smoke.engine_outputs", output_count, 8ULL);
+
+	for (uint32_t i = 0; i < input_count; ++i)
+		{
+		char label[128];
+
+		ok &= lxs_expect_u64("public_api_smoke.input_net_id_result",
+			lxs_api_plan_get_input_net_id(api_plan, i, &net_id),
+			LXS_API_OK);
+		snprintf(label, sizeof(label), "public_api_smoke.input_net_id.%u", i);
+		ok &= lxs_expect_u64(label, net_id, internal_case.plan->inputs.net_ids[i]);
+
+		ok &= lxs_expect_u64("public_api_smoke.input_name_result",
+			lxs_api_plan_get_input_name(api_plan, i, &api_name),
+			LXS_API_OK);
+		if (!api_name || strcmp(api_name, internal_case.nl->net_names[net_id]) != 0)
+			{
+			fprintf(stderr, "FAIL public_api_smoke.input_name.%u: expected '%s', got '%s'\n",
+				i,
+				internal_case.nl->net_names[net_id],
+				api_name ? api_name : "(null)");
+			ok = 0;
+			}
+
+		ok &= lxs_expect_u64("public_api_smoke.find_input_result",
+			lxs_api_plan_find_net(api_plan, api_name, &net_id),
+			LXS_API_OK);
+		snprintf(label, sizeof(label), "public_api_smoke.find_input.%u", i);
+		ok &= lxs_expect_u64(label, net_id, internal_case.plan->inputs.net_ids[i]);
+		}
+
+	for (uint32_t i = 0; i < output_count; ++i)
+		{
+		char label[128];
+
+		ok &= lxs_expect_u64("public_api_smoke.output_net_id_result",
+			lxs_api_plan_get_output_net_id(api_plan, i, &net_id),
+			LXS_API_OK);
+		snprintf(label, sizeof(label), "public_api_smoke.output_net_id.%u", i);
+		ok &= lxs_expect_u64(label, net_id, internal_case.plan->outputs.net_ids[i]);
+
+		ok &= lxs_expect_u64("public_api_smoke.output_name_result",
+			lxs_api_plan_get_output_name(api_plan, i, &api_name),
+			LXS_API_OK);
+		if (!api_name || strcmp(api_name, internal_case.nl->net_names[net_id]) != 0)
+			{
+			fprintf(stderr, "FAIL public_api_smoke.output_name.%u: expected '%s', got '%s'\n",
+				i,
+				internal_case.nl->net_names[net_id],
+				api_name ? api_name : "(null)");
+			ok = 0;
+			}
+		}
 
 	for (uint32_t iter = 0; iter < 64U; ++iter)
 		{
