@@ -100,6 +100,16 @@ typedef struct lxs_plan_profile
 	uint32_t max_level_gate_count;
 	uint32_t max_level_chunk_count;
 	uint32_t single_chunk_level_count;
+	uint32_t primitive_only_level_count;
+	uint32_t arithmetic_only_level_count;
+	uint32_t mixed_level_count;
+	uint32_t arithmetic_level_count;
+	uint32_t phase_transition_count;
+	uint32_t primitive_to_arithmetic_transition_count;
+	uint32_t arithmetic_to_primitive_transition_count;
+	uint32_t arithmetic_adjacent_primitive_level_count;
+	uint32_t arithmetic_adjacent_primitive_chunk_count;
+	uint32_t arithmetic_adjacent_primitive_tiny_chunk_count;
 	uint32_t gate_type_count[LXS_GATE_TYPE_COUNT];
 	uint32_t recognition_mask;
 	uint32_t recognition_mode;
@@ -114,6 +124,7 @@ typedef struct lxs_plan_profile
 	uint64_t primitive_gate_equiv;
 	uint64_t macro_gate_equiv;
 	uint64_t total_gate_equiv;
+	uint64_t arithmetic_adjacent_primitive_gate_equiv;
 	uint32_t arithmetic_multi_macro_count;
 	uint32_t arithmetic_max_input_span;
 	uint32_t arithmetic_max_touch_span;
@@ -498,6 +509,11 @@ static void lxs_build_plan_profile(
 	{
 	uint32_t *chunk_sizes = NULL;
 	uint8_t *is_io_net = NULL;
+	uint8_t *level_kind = NULL;
+	uint8_t *level_has_arithmetic = NULL;
+	uint32_t *level_chunk_counts = NULL;
+	uint32_t *level_tiny_chunk_counts = NULL;
+	uint64_t *level_primitive_gate_equiv = NULL;
 	int32_t *first_arith_touch = NULL;
 	int32_t *last_arith_touch = NULL;
 	uint64_t arithmetic_input_span_sum = 0ULL;
@@ -546,6 +562,14 @@ static void lxs_build_plan_profile(
 	if (plan->span_count > 0U)
 		{
 		chunk_sizes = calloc(plan->span_count, sizeof(uint32_t));
+		}
+	if (plan->level_count > 0U)
+		{
+		level_kind = calloc(plan->level_count, sizeof(uint8_t));
+		level_has_arithmetic = calloc(plan->level_count, sizeof(uint8_t));
+		level_chunk_counts = calloc(plan->level_count, sizeof(uint32_t));
+		level_tiny_chunk_counts = calloc(plan->level_count, sizeof(uint32_t));
+		level_primitive_gate_equiv = calloc(plan->level_count, sizeof(uint64_t));
 		}
 	if (plan->net_count > 0U)
 		{
@@ -725,6 +749,11 @@ static void lxs_build_plan_profile(
 		{
 		const lxs_level_plan *level_plan = &plan->levels[level];
 		uint32_t level_gate_count = 0U;
+		uint32_t level_tiny_chunk_count = 0U;
+		uint32_t level_arithmetic_multi_count = 0U;
+		uint64_t level_primitive_gate_equiv_total = 0ULL;
+		uint8_t has_primitive = level_plan->chunk_count > 0U ? 1U : 0U;
+		uint8_t kind = 0U;
 
 		if (level_plan->chunk_count == 1U)
 			{
@@ -738,12 +767,116 @@ static void lxs_build_plan_profile(
 
 		for (uint32_t i = 0; i < level_plan->chunk_count; ++i)
 			{
-			level_gate_count += plan->chunks[level_plan->chunk_start + i].count;
+			const lxs_chunk_plan *chunk = &plan->chunks[level_plan->chunk_start + i];
+			level_gate_count += chunk->count;
+			level_primitive_gate_equiv_total += chunk->gate_equiv_count;
+			if (chunk->count <= 2U)
+				{
+				level_tiny_chunk_count++;
+				}
+			}
+
+		for (uint32_t i = 0; i < level_plan->multi_macro_count; ++i)
+			{
+			const lxs_multi_macro_plan *macro = &plan->multi_macros[level_plan->multi_macro_start + i];
+			if (lxs_is_arithmetic_multi_macro_type(macro->type))
+				{
+				level_arithmetic_multi_count++;
+				}
 			}
 
 		if (level_gate_count > profile->max_level_gate_count)
 			{
 			profile->max_level_gate_count = level_gate_count;
+			}
+
+		if (level_arithmetic_multi_count > 0U)
+			{
+			profile->arithmetic_level_count++;
+			}
+
+		if (has_primitive && level_arithmetic_multi_count > 0U)
+			{
+			profile->mixed_level_count++;
+			kind = 3U;
+			}
+		else if (has_primitive && level_plan->macro_count == 0U &&
+			level_plan->multi_macro_count == 0U && level_plan->functional_region_count == 0U)
+			{
+			profile->primitive_only_level_count++;
+			kind = 1U;
+			}
+		else if (!has_primitive && level_arithmetic_multi_count > 0U &&
+			level_plan->macro_count == 0U &&
+			level_plan->functional_region_count == 0U &&
+			level_arithmetic_multi_count == level_plan->multi_macro_count)
+			{
+			profile->arithmetic_only_level_count++;
+			kind = 2U;
+			}
+		else if (has_primitive || level_plan->macro_count > 0U ||
+			level_plan->multi_macro_count > 0U || level_plan->functional_region_count > 0U)
+			{
+			kind = 4U;
+			}
+
+		if (level_kind)
+			{
+			level_kind[level] = kind;
+			}
+		if (level_has_arithmetic)
+			{
+			level_has_arithmetic[level] = level_arithmetic_multi_count > 0U ? 1U : 0U;
+			}
+		if (level_chunk_counts)
+			{
+			level_chunk_counts[level] = level_plan->chunk_count;
+			}
+		if (level_tiny_chunk_counts)
+			{
+			level_tiny_chunk_counts[level] = level_tiny_chunk_count;
+			}
+		if (level_primitive_gate_equiv)
+			{
+			level_primitive_gate_equiv[level] = level_primitive_gate_equiv_total;
+			}
+		}
+
+	for (uint32_t level = 0; level < plan->level_count; ++level)
+		{
+		uint8_t kind = level_kind ? level_kind[level] : 0U;
+		uint8_t prev_kind = (level > 0U && level_kind) ? level_kind[level - 1U] : 0U;
+		uint8_t prev_has_arith = (level > 0U && level_has_arithmetic) ? level_has_arithmetic[level - 1U] : 0U;
+		uint8_t next_has_arith = (level + 1U < plan->level_count && level_has_arithmetic) ? level_has_arithmetic[level + 1U] : 0U;
+
+		if (level > 0U && kind != 0U && prev_kind != 0U && kind != prev_kind)
+			{
+			profile->phase_transition_count++;
+			if (prev_kind == 1U && kind == 2U)
+				{
+				profile->primitive_to_arithmetic_transition_count++;
+				}
+			else if (prev_kind == 2U && kind == 1U)
+				{
+				profile->arithmetic_to_primitive_transition_count++;
+				}
+			}
+
+		if (kind == 1U && (prev_has_arith || next_has_arith))
+			{
+			profile->arithmetic_adjacent_primitive_level_count++;
+			if (level_chunk_counts)
+				{
+				profile->arithmetic_adjacent_primitive_chunk_count += level_chunk_counts[level];
+				}
+			if (level_tiny_chunk_counts)
+				{
+				profile->arithmetic_adjacent_primitive_tiny_chunk_count += level_tiny_chunk_counts[level];
+				}
+			if (level_primitive_gate_equiv)
+				{
+				profile->arithmetic_adjacent_primitive_gate_equiv += level_primitive_gate_equiv[level];
+				}
 			}
 		}
 
@@ -785,6 +918,11 @@ static void lxs_build_plan_profile(
 		profile->median_chunk_size = chunk_sizes[plan->span_count / 2U];
 		free(chunk_sizes);
 		}
+	free(level_kind);
+	free(level_has_arithmetic);
+	free(level_chunk_counts);
+	free(level_tiny_chunk_counts);
+	free(level_primitive_gate_equiv);
 	free(is_io_net);
 	free(first_arith_touch);
 	free(last_arith_touch);
@@ -799,6 +937,10 @@ static void lxs_write_plan_profile(FILE *stream, const lxs_plan_profile *profile
 		"absorbed_work_share=%.6f,max_chunk=%u,median_chunk=%u,mean_chunk=%.3f,"
 		"tiny_chunks=%u,small_chunks=%u,large_chunks=%u,unary_gates=%u,binary_gates=%u,"
 		"max_level_gates=%u,max_level_chunks=%u,single_chunk_levels=%u,"
+		"primitive_only_levels=%u,arithmetic_only_levels=%u,mixed_levels=%u,arith_levels=%u,"
+		"phase_transitions=%u,primitive_to_arith=%u,arith_to_primitive=%u,"
+		"arith_adj_prim_levels=%u,arith_adj_prim_chunks=%u,arith_adj_prim_tiny_chunks=%u,"
+		"arith_adj_prim_gate_equiv=%llu,"
 		"arith_multi=%u,arith_mean_input_span=%.3f,arith_max_input_span=%u,"
 		"arith_mean_touch_span=%.3f,arith_max_touch_span=%u,"
 		"arith_temp_nets=%u,arith_mean_temp_lifetime=%.3f,arith_max_temp_lifetime=%u,"
@@ -826,6 +968,17 @@ static void lxs_write_plan_profile(FILE *stream, const lxs_plan_profile *profile
 		profile->max_level_gate_count,
 		profile->max_level_chunk_count,
 		profile->single_chunk_level_count,
+		profile->primitive_only_level_count,
+		profile->arithmetic_only_level_count,
+		profile->mixed_level_count,
+		profile->arithmetic_level_count,
+		profile->phase_transition_count,
+		profile->primitive_to_arithmetic_transition_count,
+		profile->arithmetic_to_primitive_transition_count,
+		profile->arithmetic_adjacent_primitive_level_count,
+		profile->arithmetic_adjacent_primitive_chunk_count,
+		profile->arithmetic_adjacent_primitive_tiny_chunk_count,
+		(unsigned long long)profile->arithmetic_adjacent_primitive_gate_equiv,
 		profile->arithmetic_multi_macro_count,
 		profile->arithmetic_mean_input_span,
 		profile->arithmetic_max_input_span,

@@ -11,6 +11,10 @@
 #define LXS_ASSUME_ALIGNED_64(ptr) (ptr)
 #endif
 
+#ifndef LXS_MIXED_LEVEL_EXEC_MODE
+#define LXS_MIXED_LEVEL_EXEC_MODE 2
+#endif
+
 static void* lxs_malloc_aligned(size_t size)
 	{
 	if (size == 0U)
@@ -2388,38 +2392,128 @@ void lxs_begin_tick(lxs_engine_ctx *ctx)
 	ctx->probes.tick_count++;
 	}
 
+static void lxs_execute_level_chunks(
+	lxs_engine_ctx *ctx,
+	const lxs_plan *plan,
+	const lxs_level_plan *level_plan)
+	{
+	for (uint32_t i = 0; i < level_plan->chunk_count; ++i)
+		{
+		const lxs_chunk_plan *chunk = &plan->chunks[level_plan->chunk_start + i];
+		lxs_execute_chunk(ctx, chunk, plan->comb_gates + chunk->start);
+		}
+	}
+
+static uint8_t lxs_chunk_is_tiny(const lxs_chunk_plan *chunk)
+	{
+	return (uint8_t)(chunk->count <= 2U);
+	}
+
+static void lxs_execute_level_chunks_by_size(
+	lxs_engine_ctx *ctx,
+	const lxs_plan *plan,
+	const lxs_level_plan *level_plan,
+	uint8_t execute_tiny)
+	{
+	for (uint32_t i = 0; i < level_plan->chunk_count; ++i)
+		{
+		const lxs_chunk_plan *chunk = &plan->chunks[level_plan->chunk_start + i];
+		if (lxs_chunk_is_tiny(chunk) != execute_tiny)
+			{
+			continue;
+			}
+		lxs_execute_chunk(ctx, chunk, plan->comb_gates + chunk->start);
+		}
+	}
+
+static void lxs_execute_level_macros_only(
+	lxs_engine_ctx *ctx,
+	const lxs_plan *plan,
+	const lxs_level_plan *level_plan)
+	{
+	if (level_plan->macro_count > 0U)
+		{
+		lxs_execute_macros(
+			ctx,
+			plan->macros + level_plan->macro_start,
+			level_plan->macro_count);
+		}
+	}
+
+static void lxs_execute_level_multi_macros_only(
+	lxs_engine_ctx *ctx,
+	const lxs_plan *plan,
+	const lxs_level_plan *level_plan)
+	{
+	if (level_plan->multi_macro_count > 0U)
+		{
+		lxs_execute_multi_macros(
+			ctx,
+			plan->multi_macros + level_plan->multi_macro_start,
+			level_plan->multi_macro_count);
+		}
+	}
+
+static void lxs_execute_level_functional_regions_only(
+	lxs_engine_ctx *ctx,
+	const lxs_plan *plan,
+	const lxs_level_plan *level_plan)
+	{
+	if (level_plan->functional_region_count > 0U)
+		{
+		lxs_execute_functional_regions(
+			ctx,
+			plan->functional_regions + level_plan->functional_region_start,
+			level_plan->functional_region_count);
+		}
+	}
+
+static uint8_t lxs_level_is_mixed_boundary(const lxs_level_plan *level_plan)
+	{
+	return (uint8_t)(
+		level_plan->chunk_count > 0U &&
+		(level_plan->macro_count > 0U ||
+		 level_plan->multi_macro_count > 0U ||
+		 level_plan->functional_region_count > 0U));
+	}
+
 void lxs_execute_levels(lxs_engine_ctx *ctx, const lxs_plan *plan)
 	{
 	for (uint32_t level = 0; level < plan->level_count; ++level)
 		{
 		const lxs_level_plan *level_plan = &plan->levels[level];
-		for (uint32_t i = 0; i < level_plan->chunk_count; ++i)
+		if (lxs_level_is_mixed_boundary(level_plan))
 			{
-			const lxs_chunk_plan *chunk = &plan->chunks[level_plan->chunk_start + i];
-			const lxs_gate_ir *gates = plan->comb_gates + chunk->start;
-			lxs_execute_chunk(ctx, chunk, gates);
+#if LXS_MIXED_LEVEL_EXEC_MODE == 1
+			lxs_execute_level_macros_only(ctx, plan, level_plan);
+			lxs_execute_level_multi_macros_only(ctx, plan, level_plan);
+			lxs_execute_level_functional_regions_only(ctx, plan, level_plan);
+			lxs_execute_level_chunks(ctx, plan, level_plan);
+#elif LXS_MIXED_LEVEL_EXEC_MODE == 2
+			lxs_execute_level_chunks_by_size(ctx, plan, level_plan, 0U);
+			lxs_execute_level_macros_only(ctx, plan, level_plan);
+			lxs_execute_level_multi_macros_only(ctx, plan, level_plan);
+			lxs_execute_level_functional_regions_only(ctx, plan, level_plan);
+			lxs_execute_level_chunks_by_size(ctx, plan, level_plan, 1U);
+#elif LXS_MIXED_LEVEL_EXEC_MODE == 3
+			lxs_execute_level_multi_macros_only(ctx, plan, level_plan);
+			lxs_execute_level_macros_only(ctx, plan, level_plan);
+			lxs_execute_level_functional_regions_only(ctx, plan, level_plan);
+			lxs_execute_level_chunks_by_size(ctx, plan, level_plan, 0U);
+			lxs_execute_level_chunks_by_size(ctx, plan, level_plan, 1U);
+#else
+			lxs_execute_level_chunks(ctx, plan, level_plan);
+			lxs_execute_level_macros_only(ctx, plan, level_plan);
+			lxs_execute_level_multi_macros_only(ctx, plan, level_plan);
+			lxs_execute_level_functional_regions_only(ctx, plan, level_plan);
+#endif
+			continue;
 			}
-		if (level_plan->macro_count > 0U)
-			{
-			lxs_execute_macros(
-				ctx,
-				plan->macros + level_plan->macro_start,
-				level_plan->macro_count);
-			}
-		if (level_plan->multi_macro_count > 0U)
-			{
-			lxs_execute_multi_macros(
-				ctx,
-				plan->multi_macros + level_plan->multi_macro_start,
-				level_plan->multi_macro_count);
-			}
-		if (level_plan->functional_region_count > 0U)
-			{
-			lxs_execute_functional_regions(
-				ctx,
-				plan->functional_regions + level_plan->functional_region_start,
-				level_plan->functional_region_count);
-			}
+
+		lxs_execute_level_chunks(ctx, plan, level_plan);
+		lxs_execute_level_macros_only(ctx, plan, level_plan);
+		lxs_execute_level_multi_macros_only(ctx, plan, level_plan);
+		lxs_execute_level_functional_regions_only(ctx, plan, level_plan);
 		}
 	}
 
