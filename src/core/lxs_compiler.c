@@ -1071,6 +1071,22 @@ static int lxs_parse_standard_rom_name(
 	return 1;
 	}
 
+static int lxs_parse_standard_ram_name(
+	const char *gate_name,
+	uint32_t *data_width_out)
+	{
+	if (strcmp(gate_name, "RAM8") != 0)
+		{
+		return 0;
+		}
+
+	if (data_width_out)
+		{
+		*data_width_out = 8U;
+		}
+	return 1;
+	}
+
 static int lxs_emit_tracked_gate(
 	lxs_netlist *nl,
 	uint32_t gate_type,
@@ -9053,6 +9069,7 @@ static lxs_netlist* lxs_load_bench(const char *path)
 		uint32_t standard_register_en_width_bits = 0U;
 		uint32_t standard_register_en_rst_width_bits = 0U;
 		uint32_t standard_rom_data_width = 0U;
+		uint32_t standard_ram_data_width = 0U;
 		uint8_t is_standard_register_en = lxs_parse_standard_register_en_name(
 			gate_name,
 			&standard_register_en_width_bits);
@@ -9357,6 +9374,118 @@ static lxs_netlist* lxs_load_bench(const char *path)
 				}
 
 			if (!lxs_emit_rom_descriptor(nl, output_ids, output_count, input_ids, input_count, data_tokens, data_token_count))
+				{
+				lxs_free_netlist(nl);
+				fclose(stream);
+				return NULL;
+				}
+			is_special_macro = 1U;
+			}
+		else if (lxs_parse_standard_ram_name(gate_name, &standard_ram_data_width))
+			{
+			char *section_ctx = NULL;
+			char *sections[5];
+			uint32_t section_count = 0U;
+			char *section = strtok_s(open_paren + 1, ";", &section_ctx);
+			char *read_ctx = NULL;
+			char *write_ctx = NULL;
+			char *data_ctx = NULL;
+			char *init_ctx = NULL;
+			char *token;
+			char *data_tokens[256];
+			uint32_t read_ids[16];
+			uint32_t write_ids[16];
+			uint32_t data_ids[64];
+			uint32_t read_count = 0U;
+			uint32_t write_count = 0U;
+			uint32_t data_count = 0U;
+			uint32_t data_token_count = 0U;
+			uint32_t we_net;
+
+			while (section && section_count < 5U)
+				{
+				sections[section_count++] = lxs_trim(section);
+				section = strtok_s(NULL, ";", &section_ctx);
+				}
+
+			if (section_count != 5U || output_count != standard_ram_data_width)
+				{
+				lxs_free_netlist(nl);
+				fclose(stream);
+				return NULL;
+				}
+
+			token = strtok_s(sections[0], ",", &read_ctx);
+			while (token && read_count < 16U)
+				{
+				read_ids[read_count] = lxs_intern_net(nl, lxs_trim(token));
+				if (read_ids[read_count] == UINT32_MAX)
+					{
+					lxs_free_netlist(nl);
+					fclose(stream);
+					return NULL;
+					}
+				read_count++;
+				token = strtok_s(NULL, ",", &read_ctx);
+				}
+
+			token = strtok_s(sections[1], ",", &write_ctx);
+			while (token && write_count < 16U)
+				{
+				write_ids[write_count] = lxs_intern_net(nl, lxs_trim(token));
+				if (write_ids[write_count] == UINT32_MAX)
+					{
+					lxs_free_netlist(nl);
+					fclose(stream);
+					return NULL;
+					}
+				write_count++;
+				token = strtok_s(NULL, ",", &write_ctx);
+				}
+
+			token = strtok_s(sections[2], ",", &data_ctx);
+			while (token && data_count < 64U)
+				{
+				data_ids[data_count] = lxs_intern_net(nl, lxs_trim(token));
+				if (data_ids[data_count] == UINT32_MAX)
+					{
+					lxs_free_netlist(nl);
+					fclose(stream);
+					return NULL;
+					}
+				data_count++;
+				token = strtok_s(NULL, ",", &data_ctx);
+				}
+
+			we_net = lxs_intern_net(nl, sections[3]);
+			if (we_net == UINT32_MAX)
+				{
+				lxs_free_netlist(nl);
+				fclose(stream);
+				return NULL;
+				}
+
+			token = strtok_s(sections[4], ",", &init_ctx);
+			while (token && data_token_count < 256U)
+				{
+				data_tokens[data_token_count++] = lxs_trim(token);
+				token = strtok_s(NULL, ",", &init_ctx);
+				}
+
+			if (data_count != standard_ram_data_width ||
+				!lxs_emit_ram_descriptor(
+					nl,
+					output_ids,
+					output_count,
+					read_ids,
+					read_count,
+					write_ids,
+					write_count,
+					data_ids,
+					data_count,
+					we_net,
+					data_tokens,
+					data_token_count))
 				{
 				lxs_free_netlist(nl);
 				fclose(stream);

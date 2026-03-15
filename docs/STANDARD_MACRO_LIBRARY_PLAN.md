@@ -278,12 +278,19 @@ for direct end-user CPU and system construction.
     - avoid feature creep in the first wave
 
     RAM
-    - define:
-      - width
-      - address width
-      - sync versus async read
-      - write edge semantics
-      - read/write conflict behavior
+    - first admitted RAM contract:
+      - fixed family:
+        - `RAM8`
+      - data output width is fixed at 8 bits
+      - address width is inferred from the explicit read/write address input lists
+      - read address width must equal write address width
+      - initialization words must match:
+        - `2^addr_width`
+      - read behavior is combinational over current committed storage contents
+      - write behavior is synchronous and becomes visible only after commit
+      - write-enable is active-high
+      - same-cycle read-during-write returns the pre-commit stored value
+      - unknown address and control behavior follows the existing RAM descriptor semantics
 
     ROM
     - first admitted ROM contract:

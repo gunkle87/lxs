@@ -675,6 +675,118 @@ static int lxs_test_standard_rom_equivalence(
 	return ok;
 	}
 
+static int lxs_test_standard_ram_equivalence(
+	const char *reference_path,
+	const char *explicit_path,
+	const char *label_prefix,
+	uint32_t data_width,
+	uint32_t expected_depth)
+	{
+	lxs_loaded_case lhs;
+	lxs_loaded_case rhs;
+	uint64_t values[128];
+	uint64_t masks[128];
+	uint64_t lhs_out_values[64];
+	uint64_t lhs_out_masks[64];
+	uint64_t rhs_out_values[64];
+	uint64_t rhs_out_masks[64];
+	int ok = 1;
+
+	if (!lxs_load_case(reference_path, &lhs))
+		{
+		fprintf(stderr, "FAIL %s: unable to load reference circuit\n", label_prefix);
+		return 0;
+		}
+
+	if (!lxs_load_case(explicit_path, &rhs))
+		{
+		fprintf(stderr, "FAIL %s: unable to load explicit circuit\n", label_prefix);
+		lxs_unload_case(&lhs);
+		return 0;
+		}
+
+	ok &= lxs_expect_u64(label_prefix, rhs.plan->ram_count, 1ULL);
+	ok &= lxs_expect_u64("standard_ram.data_width", rhs.plan->rams[0].data_width, data_width);
+	ok &= lxs_expect_u64("standard_ram.depth", rhs.plan->rams[0].depth, expected_depth);
+	ok &= lxs_expect_u64("standard_ram.output_count", rhs.plan->outputs.count, data_width);
+
+	memset(values, 0, sizeof(values));
+	memset(masks, 0, sizeof(masks));
+
+	lxs_set_scalar_bits(values + 0U, masks + 0U, rhs.plan->rams[0].addr_width, 0U);
+	lxs_set_scalar_bits(values + rhs.plan->rams[0].addr_width, masks + rhs.plan->rams[0].addr_width, rhs.plan->rams[0].addr_width, 1U);
+	lxs_set_scalar_bits(values + (rhs.plan->rams[0].addr_width * 2U), masks + (rhs.plan->rams[0].addr_width * 2U), data_width, 0xA5U);
+	values[(rhs.plan->rams[0].addr_width * 2U) + data_width] = ~0ULL;
+	masks[(rhs.plan->rams[0].addr_width * 2U) + data_width] = 0ULL;
+
+	lxs_apply_inputs(&lhs.ctx, lhs.plan, values, masks);
+	lxs_execute_plan(&lhs.ctx, lhs.plan);
+	lxs_read_outputs(&lhs.ctx, lhs.plan, lhs_out_values, lhs_out_masks);
+
+	lxs_apply_inputs(&rhs.ctx, rhs.plan, values, masks);
+	lxs_execute_plan(&rhs.ctx, rhs.plan);
+	lxs_read_outputs(&rhs.ctx, rhs.plan, rhs_out_values, rhs_out_masks);
+
+	for (uint32_t bit = 0; bit < data_width; ++bit)
+		{
+		char label[128];
+		snprintf(label, sizeof(label), "%s.cycle1.value.%u", label_prefix, bit);
+		ok &= lxs_expect_u64(label, rhs_out_values[bit], lhs_out_values[bit]);
+		snprintf(label, sizeof(label), "%s.cycle1.mask.%u", label_prefix, bit);
+		ok &= lxs_expect_u64(label, rhs_out_masks[bit], lhs_out_masks[bit]);
+		}
+
+	memset(values, 0, sizeof(values));
+	memset(masks, 0, sizeof(masks));
+	lxs_set_scalar_bits(values + 0U, masks + 0U, rhs.plan->rams[0].addr_width, 1U);
+
+	lxs_apply_inputs(&lhs.ctx, lhs.plan, values, masks);
+	lxs_execute_plan(&lhs.ctx, lhs.plan);
+	lxs_read_outputs(&lhs.ctx, lhs.plan, lhs_out_values, lhs_out_masks);
+
+	lxs_apply_inputs(&rhs.ctx, rhs.plan, values, masks);
+	lxs_execute_plan(&rhs.ctx, rhs.plan);
+	lxs_read_outputs(&rhs.ctx, rhs.plan, rhs_out_values, rhs_out_masks);
+
+	for (uint32_t bit = 0; bit < data_width; ++bit)
+		{
+		char label[128];
+		snprintf(label, sizeof(label), "%s.cycle2.value.%u", label_prefix, bit);
+		ok &= lxs_expect_u64(label, rhs_out_values[bit], lhs_out_values[bit]);
+		snprintf(label, sizeof(label), "%s.cycle2.mask.%u", label_prefix, bit);
+		ok &= lxs_expect_u64(label, rhs_out_masks[bit], lhs_out_masks[bit]);
+		}
+
+	memset(values, 0, sizeof(values));
+	memset(masks, 0, sizeof(masks));
+	for (uint32_t bit = 0; bit < rhs.plan->rams[0].addr_width; ++bit)
+		{
+		masks[bit] = ~0ULL;
+		values[bit] = 0ULL;
+		}
+
+	lxs_apply_inputs(&lhs.ctx, lhs.plan, values, masks);
+	lxs_execute_plan(&lhs.ctx, lhs.plan);
+	lxs_read_outputs(&lhs.ctx, lhs.plan, lhs_out_values, lhs_out_masks);
+
+	lxs_apply_inputs(&rhs.ctx, rhs.plan, values, masks);
+	lxs_execute_plan(&rhs.ctx, rhs.plan);
+	lxs_read_outputs(&rhs.ctx, rhs.plan, rhs_out_values, rhs_out_masks);
+
+	for (uint32_t bit = 0; bit < data_width; ++bit)
+		{
+		char label[128];
+		snprintf(label, sizeof(label), "%s.unknown.value.%u", label_prefix, bit);
+		ok &= lxs_expect_u64(label, rhs_out_values[bit], lhs_out_values[bit]);
+		snprintf(label, sizeof(label), "%s.unknown.mask.%u", label_prefix, bit);
+		ok &= lxs_expect_u64(label, rhs_out_masks[bit], lhs_out_masks[bit]);
+		}
+
+	lxs_unload_case(&lhs);
+	lxs_unload_case(&rhs);
+	return ok;
+	}
+
 static int lxs_test_mux2_8_explicit(void)
 	{
 	return lxs_test_standard_mux_equivalence(
@@ -814,6 +926,16 @@ static int lxs_test_rom16_explicit(void)
 		"Tests\\Circuits\\rom16_explicit.bench",
 		"rom16_explicit",
 		16U,
+		4U);
+	}
+
+static int lxs_test_ram8_explicit(void)
+	{
+	return lxs_test_standard_ram_equivalence(
+		"Tests\\Circuits\\ram8_reference.bench",
+		"Tests\\Circuits\\ram8_explicit.bench",
+		"ram8_explicit",
+		8U,
 		4U);
 	}
 
@@ -4340,6 +4462,7 @@ int main(void)
 	ok &= lxs_test_alu8_explicit();
 	ok &= lxs_test_alu16_explicit();
 	ok &= lxs_test_rom16_explicit();
+	ok &= lxs_test_ram8_explicit();
 	ok &= lxs_test_xor2_macro();
 	ok &= lxs_test_xor2_nor_macro();
 	ok &= lxs_test_xnor2_macro();
