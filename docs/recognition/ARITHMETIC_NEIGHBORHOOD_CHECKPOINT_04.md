@@ -19,10 +19,10 @@ What was implemented
   - neighborhood2
 
 Files
-- [lxs_types.h](/c:/DEV/LXS/lxs_types.h)
-- [lxs_compiler.c](/c:/DEV/LXS/lxs_compiler.c)
-- [lxs_engine.c](/c:/DEV/LXS/lxs_engine.c)
-- [lxs_test.c](/c:/DEV/LXS/lxs_test.c)
+- [lxs_types.h](/c:/DEV/LXS/include/lxs_types.h)
+- [lxs_compiler.c](/c:/DEV/LXS/src/core/lxs_compiler.c)
+- [lxs_engine.c](/c:/DEV/LXS/src/core/lxs_engine.c)
+- [lxs_test.c](/c:/DEV/LXS/src/apps/lxs_test.c)
 - [Tests/Circuits/reduce_propagate4_explicit.bench](/c:/DEV/LXS/Tests/Circuits/reduce_propagate4_explicit.bench)
 - [Tests/Circuits/reduce_propagate4_primitive.bench](/c:/DEV/LXS/Tests/Circuits/reduce_propagate4_primitive.bench)
 - [tools/gen_vector_multiplier_macro.ps1](/c:/DEV/LXS/tools/gen_vector_multiplier_macro.ps1)

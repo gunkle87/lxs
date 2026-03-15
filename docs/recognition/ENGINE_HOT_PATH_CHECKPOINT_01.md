@@ -15,7 +15,7 @@ Baseline
 Targeted bottleneck class
 - engine-side arithmetic multi-macro execution
 - specifically repeated input-rail fetches inside `RIPPLE_SLICE2` and related
-  arithmetic kernels in [lxs_engine.c](/c:/DEV/LXS/lxs_engine.c)
+  arithmetic kernels in [lxs_engine.c](/c:/DEV/LXS/src/core/lxs_engine.c)
 
 Candidate family
 

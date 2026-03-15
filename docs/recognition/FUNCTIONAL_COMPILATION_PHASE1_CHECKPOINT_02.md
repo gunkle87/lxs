@@ -21,10 +21,10 @@ What was implemented
   - region1
 
 Files
-- [lxs_types.h](/c:/DEV/LXS/lxs_types.h)
-- [lxs_compiler.c](/c:/DEV/LXS/lxs_compiler.c)
-- [lxs_engine.c](/c:/DEV/LXS/lxs_engine.c)
-- [lxs_test.c](/c:/DEV/LXS/lxs_test.c)
+- [lxs_types.h](/c:/DEV/LXS/include/lxs_types.h)
+- [lxs_compiler.c](/c:/DEV/LXS/src/core/lxs_compiler.c)
+- [lxs_engine.c](/c:/DEV/LXS/src/core/lxs_engine.c)
+- [lxs_test.c](/c:/DEV/LXS/src/apps/lxs_test.c)
 - [Tests/Circuits/functional_region_rowpair_reduce_propagate4.bench](/c:/DEV/LXS/Tests/Circuits/functional_region_rowpair_reduce_propagate4.bench)
 - [tools/gen_vector_multiplier_macro.ps1](/c:/DEV/LXS/tools/gen_vector_multiplier_macro.ps1)
 - [tools/LxsRewriteLib.ps1](/c:/DEV/LXS/tools/LxsRewriteLib.ps1)

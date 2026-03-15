@@ -33,10 +33,10 @@ What changed
   - microprogram execution
 
 Files
-- [lxs_types.h](/c:/DEV/LXS/lxs_types.h)
-- [lxs_compiler.c](/c:/DEV/LXS/lxs_compiler.c)
-- [lxs_engine.c](/c:/DEV/LXS/lxs_engine.c)
-- [lxs_test.c](/c:/DEV/LXS/lxs_test.c)
+- [lxs_types.h](/c:/DEV/LXS/include/lxs_types.h)
+- [lxs_compiler.c](/c:/DEV/LXS/src/core/lxs_compiler.c)
+- [lxs_engine.c](/c:/DEV/LXS/src/core/lxs_engine.c)
+- [lxs_test.c](/c:/DEV/LXS/src/apps/lxs_test.c)
 - [functional_region_wide_primitive.bench](/c:/DEV/LXS/Tests/Circuits/functional_region_wide_primitive.bench)
 - [functional_region_wide_explicit.bench](/c:/DEV/LXS/Tests/Circuits/functional_region_wide_explicit.bench)
 - [functional_region_wide_micro.bench](/c:/DEV/LXS/Tests/Circuits/functional_region_wide_micro.bench)

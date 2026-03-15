@@ -6,6 +6,30 @@ The goal is not to preserve the current kernel-only benchmark number. The goal i
 
 `GEPS = total gate evaluations / total elapsed seconds`
 
+## Source Layout
+
+The repo now keeps engine code in a structured source layout:
+
+- `src/core`
+  - compiler and engine implementation
+- `src/apps`
+  - bench, compare, and test entrypoints
+- `include`
+  - shared public headers used by the engine and app entrypoints
+
+The rest of the repo remains organized by function:
+
+- `docs`
+  - architecture, protocol, and checkpoint records
+- `tools`
+  - generators, rewrite utilities, and benchmark helpers
+- `Tests`
+  - explicit correctness fixtures
+- `Benchmarks`
+  - default benchmark path
+- `BenchSuites`
+  - extended research corpus
+
 ## 1. Design Target
 
 LXS should be:

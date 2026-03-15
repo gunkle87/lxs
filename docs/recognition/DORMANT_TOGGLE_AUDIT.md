@@ -23,7 +23,7 @@ Current live toggles and paths
 
 1. `LXS_MIXED_LEVEL_EXEC_MODE`
 - location:
-  - [lxs_engine.c](/c:/DEV/LXS/lxs_engine.c)
+  - [lxs_engine.c](/c:/DEV/LXS/src/core/lxs_engine.c)
 - current default:
   - `2`
 - role:
@@ -40,7 +40,7 @@ Current live toggles and paths
 
 2. `LXS_LOGIC_CHUNK_FAST_MODE`
 - location:
-  - [lxs_engine.c](/c:/DEV/LXS/lxs_engine.c)
+  - [lxs_engine.c](/c:/DEV/LXS/src/core/lxs_engine.c)
 - current default:
   - `1`
 - role:
@@ -56,7 +56,7 @@ Current live toggles and paths
 
 3. `LXS_LOGIC_CHUNK_FAST_MIN_COUNT`
 - location:
-  - [lxs_engine.c](/c:/DEV/LXS/lxs_engine.c)
+  - [lxs_engine.c](/c:/DEV/LXS/src/core/lxs_engine.c)
 - current default:
   - `0`
 - role:
@@ -71,7 +71,7 @@ Current live toggles and paths
 
 4. `LXS_RECOGNITION_MASK`
 - location:
-  - [lxs_compiler.c](/c:/DEV/LXS/lxs_compiler.c)
+  - [lxs_compiler.c](/c:/DEV/LXS/src/core/lxs_compiler.c)
   - recognition helper scripts in `tools\`
 - role:
   - env-driven family selection for recognition scans and controlled runs
@@ -83,7 +83,7 @@ Current live toggles and paths
 
 5. `LXS_RECOGNITION_MODE`
 - location:
-  - [lxs_compiler.c](/c:/DEV/LXS/lxs_compiler.c)
+  - [lxs_compiler.c](/c:/DEV/LXS/src/core/lxs_compiler.c)
   - recognition helper scripts in `tools\`
 - role:
   - env-driven selection between `replace` and `report_only`
@@ -95,8 +95,8 @@ Current live toggles and paths
 
 6. `LXS_TEST_PROBES`
 - location:
-  - [lxs_types.h](/c:/DEV/LXS/lxs_types.h)
-  - [lxs_engine.c](/c:/DEV/LXS/lxs_engine.c)
+  - [lxs_types.h](/c:/DEV/LXS/include/lxs_types.h)
+  - [lxs_engine.c](/c:/DEV/LXS/src/core/lxs_engine.c)
   - [docs/PROBE_PROTOCOL.md](/c:/DEV/LXS/docs/PROBE_PROTOCOL.md)
 - role:
   - compile-time test/probe instrumentation gate
@@ -108,7 +108,7 @@ Current live toggles and paths
 
 7. `LXS_REVISION`
 - location:
-  - [lxs_bench.c](/c:/DEV/LXS/lxs_bench.c)
+  - [lxs_bench.c](/c:/DEV/LXS/src/apps/lxs_bench.c)
 - role:
   - metadata stamp for recorded benchmark output
 - audit read:

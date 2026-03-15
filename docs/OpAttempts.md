@@ -132,7 +132,7 @@ Ending restored confirmation after reverting all four:
 
 ## Latest SIMD Attempt
 
-- `Reverted` Narrow AVX2 `AND` chunk executor in [lxs_engine.c](/c:/DEV/LXS/lxs_engine.c).
+- `Reverted` Narrow AVX2 `AND` chunk executor in [lxs_engine.c](/c:/DEV/LXS/src/core/lxs_engine.c).
   Shape: 4-lane `_mm256_i64gather_epi64` loads for `value` and `mask`, vector 4-state `AND` math, scalar scatter to the destination nets, scalar fallback for the tail and all non-`AND` chunks.
   Outcome: weighted `TOTAL GEPS = 403,146,505.657127`
   Result: correct and test-backed, but substantially slower than the scalar baseline because gather/scatter cost dominated the small per-gate arithmetic savings.
@@ -143,7 +143,7 @@ Restored confirmation after reverting the SIMD pass:
 
 ## Latest Macro Retest
 
-- `Kept` Canonical `XNOR2` macro-kernel retest across [lxs_types.h](/c:/DEV/LXS/lxs_types.h), [lxs_compiler.c](/c:/DEV/LXS/lxs_compiler.c), [lxs_engine.c](/c:/DEV/LXS/lxs_engine.c), and [lxs_test.c](/c:/DEV/LXS/lxs_test.c).
+- `Kept` Canonical `XNOR2` macro-kernel retest across [lxs_types.h](/c:/DEV/LXS/include/lxs_types.h), [lxs_compiler.c](/c:/DEV/LXS/src/core/lxs_compiler.c), [lxs_engine.c](/c:/DEV/LXS/src/core/lxs_engine.c), and [lxs_test.c](/c:/DEV/LXS/src/apps/lxs_test.c).
   Shape: recognize `XNOR(a,b)` lowered as `OR(AND(a,b), AND(NOT(a), NOT(b)))`, replace the five primitive gates with one macro record, execute via `LXS_EVAL_XNOR`, and preserve `gate_eval` comparability with `gate_equiv_count = 5`.
   Standardized A/B result against the `MUX2 + XOR2` control using three full all-suite sweeps at `--samples 5 --sample-select median --iterations 1 --cycles 10000`:
   - Control mean weighted `TOTAL GEPS = 419,344,191.248965`
@@ -153,7 +153,7 @@ Restored confirmation after reverting the SIMD pass:
 
 ## Latest Arithmetic Macro
 
-- `Kept` Inverted-carry step macro across [lxs_types.h](/c:/DEV/LXS/lxs_types.h), [lxs_compiler.c](/c:/DEV/LXS/lxs_compiler.c), [lxs_engine.c](/c:/DEV/LXS/lxs_engine.c), and [lxs_test.c](/c:/DEV/LXS/lxs_test.c).
+- `Kept` Inverted-carry step macro across [lxs_types.h](/c:/DEV/LXS/include/lxs_types.h), [lxs_compiler.c](/c:/DEV/LXS/src/core/lxs_compiler.c), [lxs_engine.c](/c:/DEV/LXS/src/core/lxs_engine.c), and [lxs_test.c](/c:/DEV/LXS/src/apps/lxs_test.c).
   Shape: recognize the recurring arithmetic carry motif `NOR(and_ab, NOR(carry_inv_in, nor_ab))`, replace the two chained `NOR` gates with one macro record, leave the shared `AND(a,b)` and `NOR(a,b)` producers in place for sum-path reuse, and execute the step with `gate_equiv_count = 2`.
   Standardized A/B result against the `MUX2 + XOR2 + XNOR2` control using three full all-suite sweeps at `--samples 5 --sample-select median --iterations 1 --cycles 10000`:
   - Control mean weighted `TOTAL GEPS = 419,649,533.339037`
@@ -163,7 +163,7 @@ Restored confirmation after reverting the SIMD pass:
 
 ## Failed Full-Adder Macro
 
-- `Reverted` Inverted-carry 1-bit full-adder macro across [lxs_types.h](/c:/DEV/LXS/lxs_types.h), [lxs_compiler.c](/c:/DEV/LXS/lxs_compiler.c), [lxs_engine.c](/c:/DEV/LXS/lxs_engine.c), and [lxs_test.c](/c:/DEV/LXS/lxs_test.c).
+- `Reverted` Inverted-carry 1-bit full-adder macro across [lxs_types.h](/c:/DEV/LXS/include/lxs_types.h), [lxs_compiler.c](/c:/DEV/LXS/src/core/lxs_compiler.c), [lxs_engine.c](/c:/DEV/LXS/src/core/lxs_engine.c), and [lxs_test.c](/c:/DEV/LXS/src/apps/lxs_test.c).
   Shape: recognize `sum = XNOR(cin_n, NOR(nor_ab, and_ab))` together with `cout_n = NOR(and_ab, NOR(cin_n, nor_ab))`, consume the shared `AND/NOR` producers, and emit one two-output macro record with `gate_equiv_count = 6`.
   Standardized all-suite result using three full sweeps at `--samples 5 --sample-select median --iterations 1 --cycles 10000`:
   - Mean weighted `TOTAL GEPS = 402,589,305.758347`
@@ -177,7 +177,7 @@ Restored-code confirmation after reverting the full-adder pass:
 
 ## Latest Sum-Side Arithmetic Macro
 
-- `Kept` Inverted-carry sum-step macro across [lxs_types.h](/c:/DEV/LXS/lxs_types.h), [lxs_compiler.c](/c:/DEV/LXS/lxs_compiler.c), [lxs_engine.c](/c:/DEV/LXS/lxs_engine.c), and [lxs_test.c](/c:/DEV/LXS/lxs_test.c).
+- `Kept` Inverted-carry sum-step macro across [lxs_types.h](/c:/DEV/LXS/include/lxs_types.h), [lxs_compiler.c](/c:/DEV/LXS/src/core/lxs_compiler.c), [lxs_engine.c](/c:/DEV/LXS/src/core/lxs_engine.c), and [lxs_test.c](/c:/DEV/LXS/src/apps/lxs_test.c).
   Shape: recognize `sum = XNOR(cin_n, NOR(nor_ab, and_ab))`, leave the shared `AND(a,b)` and `NOR(a,b)` producers in place for carry reuse, replace the `xor_ab + sum` tail with one single-output macro record, and execute it with `gate_equiv_count = 2`.
   Standardized all-suite result using three full sweeps at `--samples 5 --sample-select median --iterations 1 --cycles 10000`:
   - Mean weighted `TOTAL GEPS = 418,050,641.782011`
@@ -201,7 +201,7 @@ Restored-code confirmation after reverting the full-adder pass:
   Shape: recognize two consecutive inverted-carry full-adder cells chained by `carry_n`, replace the full 12-gate pair with one dedicated two-bit slice record, and execute both sum bits plus the final `cout_n` in the multi-output executor while leaving the single-output primitive hot path unchanged.
   Validation:
   - Added [ripple_slice2_macro.bench](/c:/DEV/LXS/Tests/Circuits/ripple_slice2_macro.bench)
-  - Added dedicated compiled recognition/correctness coverage in [lxs_test.c](/c:/DEV/LXS/lxs_test.c)
+  - Added dedicated compiled recognition/correctness coverage in [lxs_test.c](/c:/DEV/LXS/src/apps/lxs_test.c)
   - Fixed a compiler bug where `comb_driver` was not rebuilt after net remap, which had prevented post-remap structural recognition from firing
   Standardized all-suite result using three full sweeps at `--samples 5 --sample-select median --iterations 1 --cycles 10000`:
   - Run 1 weighted `TOTAL GEPS = 395,651,015.119928`
