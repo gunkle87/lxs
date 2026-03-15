@@ -70,3 +70,11 @@ Recommended Next Phase
     - admitted recognizer parity as the live compiler recognition baseline
     - deferred recognizers as future candidates only if their legality
       boundaries or structural preservation conditions change materially
+
+Recognition maintenance follow-up
+    Recognition is now maintained as a parked subsystem rather than an active
+    exploration branch.
+
+    See:
+    - [RECOGNITION_MAINTENANCE_CLOSE.md](/c:/DEV/LXS/docs/recognition/RECOGNITION_MAINTENANCE_CLOSE.md)
+    - [RECOGNITION_REENTRY_CRITERIA.md](/c:/DEV/LXS/docs/recognition/RECOGNITION_REENTRY_CRITERIA.md)
