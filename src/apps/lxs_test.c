@@ -1,3 +1,4 @@
+#include "lxs_api.h"
 #include "lxs_types.h"
 #include <stdio.h>
 #include <stdlib.h>
@@ -114,6 +115,107 @@ static uint64_t lxs_next_rand(uint64_t *state)
 	{
 	*state = (*state * 6364136223846793005ULL) + 1ULL;
 	return *state;
+	}
+
+static int lxs_test_public_api_smoke(void)
+	{
+	lxs_loaded_case internal_case;
+	lxs_api_netlist *api_netlist = NULL;
+	lxs_api_plan *api_plan = NULL;
+	lxs_api_engine *api_engine = NULL;
+	lxs_api_plan_counts counts;
+	lxs_api_probes probes;
+	uint64_t values[17];
+	uint64_t masks[17];
+	uint64_t internal_out_values[8];
+	uint64_t internal_out_masks[8];
+	uint64_t api_out_values[8];
+	uint64_t api_out_masks[8];
+	uint64_t rng = 0x4150495F534D4F4BULL;
+	uint32_t input_count = 0U;
+	uint32_t output_count = 0U;
+	int ok = 1;
+
+	if (!lxs_load_case("Tests\\Circuits\\mux2_8_explicit.bench", &internal_case))
+		{
+		fprintf(stderr, "FAIL public_api_smoke: unable to load internal reference\n");
+		return 0;
+		}
+
+	if (lxs_api_netlist_load_bench("Tests\\Circuits\\mux2_8_explicit.bench", &api_netlist) != LXS_API_OK ||
+		lxs_api_plan_compile(api_netlist, &api_plan) != LXS_API_OK ||
+		lxs_api_plan_get_counts(api_plan, &counts) != LXS_API_OK ||
+		lxs_api_engine_create(api_plan, &api_engine) != LXS_API_OK ||
+		lxs_api_engine_get_input_count(api_engine, &input_count) != LXS_API_OK ||
+		lxs_api_engine_get_output_count(api_engine, &output_count) != LXS_API_OK)
+		{
+		fprintf(stderr, "FAIL public_api_smoke: api setup failed: %s\n", lxs_api_get_last_error());
+		lxs_unload_case(&internal_case);
+		lxs_api_engine_free(api_engine);
+		lxs_api_plan_free(api_plan);
+		lxs_api_netlist_free(api_netlist);
+		return 0;
+		}
+
+	ok &= lxs_expect_u64("public_api_smoke.plan_inputs", counts.input_count, 17ULL);
+	ok &= lxs_expect_u64("public_api_smoke.plan_outputs", counts.output_count, 8ULL);
+	ok &= lxs_expect_u64("public_api_smoke.engine_inputs", input_count, 17ULL);
+	ok &= lxs_expect_u64("public_api_smoke.engine_outputs", output_count, 8ULL);
+
+	for (uint32_t iter = 0; iter < 64U; ++iter)
+		{
+		char label[128];
+
+		for (uint32_t i = 0; i < input_count; ++i)
+			{
+			values[i] = lxs_next_rand(&rng);
+			masks[i] = 0ULL;
+			}
+
+		lxs_apply_inputs(&internal_case.ctx, internal_case.plan, values, masks);
+		lxs_execute_plan(&internal_case.ctx, internal_case.plan);
+		lxs_read_outputs(&internal_case.ctx, internal_case.plan, internal_out_values, internal_out_masks);
+
+		ok &= lxs_expect_u64("public_api_smoke.apply",
+			lxs_api_engine_apply_inputs(api_engine, values, masks, input_count),
+			LXS_API_OK);
+		ok &= lxs_expect_u64("public_api_smoke.tick",
+			lxs_api_engine_tick(api_engine),
+			LXS_API_OK);
+		ok &= lxs_expect_u64("public_api_smoke.read_outputs",
+			lxs_api_engine_read_outputs(api_engine, api_out_values, api_out_masks, output_count),
+			LXS_API_OK);
+
+		for (uint32_t out = 0; out < output_count; ++out)
+			{
+			snprintf(label, sizeof(label), "public_api_smoke.value.%u.%u", iter, out);
+			ok &= lxs_expect_u64(label, api_out_values[out], internal_out_values[out]);
+			snprintf(label, sizeof(label), "public_api_smoke.mask.%u.%u", iter, out);
+			ok &= lxs_expect_u64(label, api_out_masks[out], internal_out_masks[out]);
+			}
+		}
+
+	ok &= lxs_expect_u64("public_api_smoke.read_probes",
+		lxs_api_engine_read_probes(api_engine, &probes),
+		LXS_API_OK);
+	ok &= lxs_expect_u64("public_api_smoke.tick_count", probes.tick_count, 64ULL);
+
+	ok &= lxs_expect_u64("public_api_smoke.reset",
+		lxs_api_engine_reset(api_engine),
+		LXS_API_OK);
+	ok &= lxs_expect_u64("public_api_smoke.tick_many",
+		lxs_api_engine_tick_many(api_engine, 2U),
+		LXS_API_OK);
+	ok &= lxs_expect_u64("public_api_smoke.read_probes_after_tick_many",
+		lxs_api_engine_read_probes(api_engine, &probes),
+		LXS_API_OK);
+	ok &= lxs_expect_u64("public_api_smoke.tick_many.tick_count", probes.tick_count, 2ULL);
+
+	lxs_api_engine_free(api_engine);
+	lxs_api_plan_free(api_plan);
+	lxs_api_netlist_free(api_netlist);
+	lxs_unload_case(&internal_case);
+	return ok;
 	}
 
 static int lxs_test_standard_mux_equivalence(
@@ -4737,6 +4839,7 @@ int main(void)
 	ok &= lxs_test_comb_chain();
 	ok &= lxs_test_mask_and();
 	ok &= lxs_test_canonical_basic();
+	ok &= lxs_test_public_api_smoke();
 	ok &= lxs_test_multi_macro_full_adder_cinv();
 	ok &= lxs_test_mux2_macro();
 	ok &= lxs_test_mux2_8_explicit();

@@ -1,0 +1,357 @@
+#include "lxs_api.h"
+#include "lxs_types.h"
+
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+
+struct lxs_api_netlist
+	{
+	lxs_netlist *nl;
+	};
+
+struct lxs_api_plan
+	{
+	lxs_plan *plan;
+	};
+
+struct lxs_api_engine
+	{
+	const lxs_plan *plan;
+	lxs_engine_ctx ctx;
+	};
+
+static _Thread_local char lxs_api_last_error[512];
+
+static lxs_api_result lxs_api_set_error(
+	lxs_api_result result,
+	const char *message)
+	{
+	if (message)
+		{
+		snprintf(lxs_api_last_error, sizeof(lxs_api_last_error), "%s", message);
+		}
+	else
+		{
+		lxs_api_last_error[0] = '\0';
+		}
+	return result;
+	}
+
+static lxs_api_result lxs_api_set_printf_error(
+	lxs_api_result result,
+	const char *fmt,
+	const char *arg)
+	{
+	if (fmt)
+		{
+		snprintf(lxs_api_last_error, sizeof(lxs_api_last_error), fmt, arg ? arg : "");
+		}
+	else
+		{
+		lxs_api_last_error[0] = '\0';
+		}
+	return result;
+	}
+
+const char* lxs_api_result_string(lxs_api_result result)
+	{
+	switch (result)
+		{
+		case LXS_API_OK:
+			return "ok";
+		case LXS_API_ERR_INVALID_ARG:
+			return "invalid_arg";
+		case LXS_API_ERR_INVALID_HANDLE:
+			return "invalid_handle";
+		case LXS_API_ERR_LOAD_FAILED:
+			return "load_failed";
+		case LXS_API_ERR_COMPILE_FAILED:
+			return "compile_failed";
+		case LXS_API_ERR_INIT_FAILED:
+			return "init_failed";
+		case LXS_API_ERR_BOUNDS:
+			return "bounds";
+		case LXS_API_ERR_INTERNAL:
+			return "internal";
+		default:
+			return "unknown";
+		}
+	}
+
+const char* lxs_api_get_last_error(void)
+	{
+	return lxs_api_last_error;
+	}
+
+lxs_api_result lxs_api_netlist_load_bench(
+	const char *path,
+	lxs_api_netlist **out_netlist)
+	{
+	lxs_api_netlist *handle;
+
+	if (!path || !out_netlist)
+		{
+		return lxs_api_set_error(LXS_API_ERR_INVALID_ARG, "netlist_load_bench: invalid argument");
+		}
+
+	*out_netlist = NULL;
+	handle = (lxs_api_netlist*)calloc(1U, sizeof(*handle));
+	if (!handle)
+		{
+		return lxs_api_set_error(LXS_API_ERR_INTERNAL, "netlist_load_bench: allocation failure");
+		}
+
+	handle->nl = lxs_load_iscas(path);
+	if (!handle->nl)
+		{
+		free(handle);
+		return lxs_api_set_printf_error(LXS_API_ERR_LOAD_FAILED, "netlist_load_bench: failed to load '%s'", path);
+		}
+
+	*out_netlist = handle;
+	return lxs_api_set_error(LXS_API_OK, NULL);
+	}
+
+void lxs_api_netlist_free(lxs_api_netlist *netlist)
+	{
+	if (!netlist)
+		{
+		return;
+		}
+
+	lxs_free_netlist(netlist->nl);
+	free(netlist);
+	}
+
+lxs_api_result lxs_api_plan_compile(
+	const lxs_api_netlist *netlist,
+	lxs_api_plan **out_plan)
+	{
+	lxs_api_plan *handle;
+
+	if (!netlist || !netlist->nl || !out_plan)
+		{
+		return lxs_api_set_error(LXS_API_ERR_INVALID_ARG, "plan_compile: invalid argument");
+		}
+
+	*out_plan = NULL;
+	handle = (lxs_api_plan*)calloc(1U, sizeof(*handle));
+	if (!handle)
+		{
+		return lxs_api_set_error(LXS_API_ERR_INTERNAL, "plan_compile: allocation failure");
+		}
+
+	handle->plan = lxs_compile_to_plan(netlist->nl);
+	if (!handle->plan)
+		{
+		free(handle);
+		return lxs_api_set_error(LXS_API_ERR_COMPILE_FAILED, "plan_compile: compile failed");
+		}
+
+	*out_plan = handle;
+	return lxs_api_set_error(LXS_API_OK, NULL);
+	}
+
+void lxs_api_plan_free(lxs_api_plan *plan)
+	{
+	if (!plan)
+		{
+		return;
+		}
+
+	lxs_free_plan(plan->plan);
+	free(plan);
+	}
+
+lxs_api_result lxs_api_plan_get_counts(
+	const lxs_api_plan *plan,
+	lxs_api_plan_counts *out_counts)
+	{
+	if (!plan || !plan->plan || !out_counts)
+		{
+		return lxs_api_set_error(LXS_API_ERR_INVALID_ARG, "plan_get_counts: invalid argument");
+		}
+
+	memset(out_counts, 0, sizeof(*out_counts));
+	out_counts->input_count = plan->plan->inputs.count;
+	out_counts->output_count = plan->plan->outputs.count;
+	out_counts->net_count = plan->plan->net_count;
+	out_counts->level_count = plan->plan->level_count;
+	out_counts->chunk_count = plan->plan->span_count;
+	out_counts->macro_count = plan->plan->macro_count;
+	out_counts->multi_macro_count = plan->plan->multi_macro_count;
+	out_counts->standard_mux_count = plan->plan->standard_mux_count;
+	out_counts->standard_add_count = plan->plan->standard_add_count;
+	out_counts->standard_cmp_count = plan->plan->standard_cmp_count;
+	out_counts->standard_alu_count = plan->plan->standard_alu_count;
+	out_counts->functional_region_count = plan->plan->functional_region_count;
+	out_counts->register_count = plan->plan->register_count;
+	out_counts->rom_count = plan->plan->rom_count;
+	out_counts->ram_count = plan->plan->ram_count;
+	out_counts->regfile_count = plan->plan->regfile_count;
+	return lxs_api_set_error(LXS_API_OK, NULL);
+	}
+
+lxs_api_result lxs_api_engine_create(
+	const lxs_api_plan *plan,
+	lxs_api_engine **out_engine)
+	{
+	lxs_api_engine *handle;
+
+	if (!plan || !plan->plan || !out_engine)
+		{
+		return lxs_api_set_error(LXS_API_ERR_INVALID_ARG, "engine_create: invalid argument");
+		}
+
+	*out_engine = NULL;
+	handle = (lxs_api_engine*)calloc(1U, sizeof(*handle));
+	if (!handle)
+		{
+		return lxs_api_set_error(LXS_API_ERR_INTERNAL, "engine_create: allocation failure");
+		}
+
+	handle->plan = plan->plan;
+	if (!lxs_init_engine(&handle->ctx, handle->plan))
+		{
+		free(handle);
+		return lxs_api_set_error(LXS_API_ERR_INIT_FAILED, "engine_create: init failed");
+		}
+
+	*out_engine = handle;
+	return lxs_api_set_error(LXS_API_OK, NULL);
+	}
+
+void lxs_api_engine_free(lxs_api_engine *engine)
+	{
+	if (!engine)
+		{
+		return;
+		}
+
+	lxs_free_engine(&engine->ctx);
+	free(engine);
+	}
+
+lxs_api_result lxs_api_engine_reset(lxs_api_engine *engine)
+	{
+	if (!engine || !engine->plan)
+		{
+		return lxs_api_set_error(LXS_API_ERR_INVALID_HANDLE, "engine_reset: invalid engine");
+		}
+
+	lxs_reset_engine(&engine->ctx, engine->plan);
+	return lxs_api_set_error(LXS_API_OK, NULL);
+	}
+
+lxs_api_result lxs_api_engine_apply_inputs(
+	lxs_api_engine *engine,
+	const uint64_t *values,
+	const uint64_t *masks,
+	uint32_t count)
+	{
+	if (!engine || !engine->plan)
+		{
+		return lxs_api_set_error(LXS_API_ERR_INVALID_HANDLE, "engine_apply_inputs: invalid engine");
+		}
+	if (count != engine->plan->inputs.count)
+		{
+		return lxs_api_set_error(LXS_API_ERR_BOUNDS, "engine_apply_inputs: input count mismatch");
+		}
+
+	lxs_apply_inputs(&engine->ctx, engine->plan, values, masks);
+	return lxs_api_set_error(LXS_API_OK, NULL);
+	}
+
+lxs_api_result lxs_api_engine_tick(lxs_api_engine *engine)
+	{
+	if (!engine || !engine->plan)
+		{
+		return lxs_api_set_error(LXS_API_ERR_INVALID_HANDLE, "engine_tick: invalid engine");
+		}
+
+	lxs_execute_plan(&engine->ctx, engine->plan);
+	return lxs_api_set_error(LXS_API_OK, NULL);
+	}
+
+lxs_api_result lxs_api_engine_tick_many(
+	lxs_api_engine *engine,
+	uint32_t tick_count)
+	{
+	if (!engine || !engine->plan)
+		{
+		return lxs_api_set_error(LXS_API_ERR_INVALID_HANDLE, "engine_tick_many: invalid engine");
+		}
+
+	for (uint32_t i = 0; i < tick_count; ++i)
+		{
+		lxs_execute_plan(&engine->ctx, engine->plan);
+		}
+	return lxs_api_set_error(LXS_API_OK, NULL);
+	}
+
+lxs_api_result lxs_api_engine_read_outputs(
+	const lxs_api_engine *engine,
+	uint64_t *values,
+	uint64_t *masks,
+	uint32_t count)
+	{
+	if (!engine || !engine->plan)
+		{
+		return lxs_api_set_error(LXS_API_ERR_INVALID_HANDLE, "engine_read_outputs: invalid engine");
+		}
+	if (count != engine->plan->outputs.count)
+		{
+		return lxs_api_set_error(LXS_API_ERR_BOUNDS, "engine_read_outputs: output count mismatch");
+		}
+
+	lxs_read_outputs(&engine->ctx, engine->plan, values, masks);
+	return lxs_api_set_error(LXS_API_OK, NULL);
+	}
+
+lxs_api_result lxs_api_engine_read_probes(
+	const lxs_api_engine *engine,
+	lxs_api_probes *out_probes)
+	{
+	lxs_probes probes;
+
+	if (!engine || !engine->plan || !out_probes)
+		{
+		return lxs_api_set_error(LXS_API_ERR_INVALID_ARG, "engine_read_probes: invalid argument");
+		}
+
+	probes = lxs_get_probes(&engine->ctx);
+	out_probes->input_apply = probes.input_apply;
+	out_probes->chunk_exec = probes.chunk_exec;
+	out_probes->gate_eval = probes.gate_eval;
+	out_probes->dff_exec = probes.dff_exec;
+	out_probes->tick_count = probes.tick_count;
+	out_probes->state_commit_count = probes.state_commit_count;
+	return lxs_api_set_error(LXS_API_OK, NULL);
+	}
+
+lxs_api_result lxs_api_engine_get_input_count(
+	const lxs_api_engine *engine,
+	uint32_t *out_count)
+	{
+	if (!engine || !engine->plan || !out_count)
+		{
+		return lxs_api_set_error(LXS_API_ERR_INVALID_ARG, "engine_get_input_count: invalid argument");
+		}
+
+	*out_count = engine->plan->inputs.count;
+	return lxs_api_set_error(LXS_API_OK, NULL);
+	}
+
+lxs_api_result lxs_api_engine_get_output_count(
+	const lxs_api_engine *engine,
+	uint32_t *out_count)
+	{
+	if (!engine || !engine->plan || !out_count)
+		{
+		return lxs_api_set_error(LXS_API_ERR_INVALID_ARG, "engine_get_output_count: invalid argument");
+		}
+
+	*out_count = engine->plan->outputs.count;
+	return lxs_api_set_error(LXS_API_OK, NULL);
+	}

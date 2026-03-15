@@ -39,6 +39,7 @@ else
 	}
 
 $coreSources = @(
+	(Join-Path $coreDir "lxs_api.c"),
 	(Join-Path $coreDir "lxs_compiler.c"),
 	(Join-Path $coreDir "lxs_engine.c")
 )
