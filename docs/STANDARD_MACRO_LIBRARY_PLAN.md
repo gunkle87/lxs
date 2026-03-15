@@ -251,14 +251,30 @@ for direct end-user CPU and system construction.
 ## 11. Family-Specific Semantic Expectations
     ALU
     - define supported operations explicitly
-    - first-wave recommendation:
-      - add
-      - sub
-      - and
-      - or
-      - xor
-      - pass-through
-      - compare/equality flags if chosen
+    - first admitted ALU contract:
+      - inputs:
+        - `a[W]`
+        - `b[W]`
+        - `op0`
+        - `op1`
+        - `op2`
+      - outputs:
+        - `y[W]`
+        - `cout`
+        - `eq`
+        - `lt`
+        - `gt`
+      - op encoding:
+        - `000` = add
+        - `001` = sub
+        - `010` = and
+        - `011` = or
+        - `100` = xor
+        - `101` = pass `a`
+        - `110` = pass `b`
+        - `111` = zero
+      - `eq/lt/gt` are always the unsigned compare flags for `a` versus `b`
+      - `cout` is meaningful for add/sub and forced to zero for the other ops
     - avoid feature creep in the first wave
 
     RAM

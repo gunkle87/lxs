@@ -536,6 +536,79 @@ static int lxs_test_standard_cmp_equivalence(
 	return ok;
 	}
 
+static int lxs_test_standard_alu_equivalence(
+	const char *reference_path,
+	const char *explicit_path,
+	const char *label_prefix,
+	uint32_t width_bits)
+	{
+	lxs_loaded_case lhs;
+	lxs_loaded_case rhs;
+	uint64_t values[131];
+	uint64_t masks[131];
+	uint64_t lhs_out_values[68];
+	uint64_t lhs_out_masks[68];
+	uint64_t rhs_out_values[68];
+	uint64_t rhs_out_masks[68];
+	uint64_t rng = 0x414C555F535444ULL;
+	int ok = 1;
+
+	if (!lxs_load_case(reference_path, &lhs))
+		{
+		fprintf(stderr, "FAIL %s: unable to load reference circuit\n", label_prefix);
+		return 0;
+		}
+
+	if (!lxs_load_case(explicit_path, &rhs))
+		{
+		fprintf(stderr, "FAIL %s: unable to load explicit circuit\n", label_prefix);
+		lxs_unload_case(&lhs);
+		return 0;
+		}
+
+	ok &= lxs_expect_u64(label_prefix, rhs.plan->standard_alu_count, 1ULL);
+	ok &= lxs_expect_u64("standard_alu.width_bits", rhs.plan->standard_alus[0].width_bits, width_bits);
+	ok &= lxs_expect_u64("standard_alu.comb_gate_count", rhs.plan->comb_gate_count, 0ULL);
+
+	memset(values, 0, sizeof(values));
+	memset(masks, 0, sizeof(masks));
+
+	for (uint32_t iter = 0; iter < 128U; ++iter)
+		{
+		char label[128];
+		uint32_t op = (uint32_t)(lxs_next_rand(&rng) & 7U);
+
+		lxs_set_scalar_bits(values, masks, width_bits, lxs_next_rand(&rng));
+		lxs_set_scalar_bits(values + width_bits, masks + width_bits, width_bits, lxs_next_rand(&rng));
+		values[width_bits * 2U + 0U] = (op & 1U) ? ~0ULL : 0ULL;
+		values[width_bits * 2U + 1U] = (op & 2U) ? ~0ULL : 0ULL;
+		values[width_bits * 2U + 2U] = (op & 4U) ? ~0ULL : 0ULL;
+		masks[width_bits * 2U + 0U] = 0ULL;
+		masks[width_bits * 2U + 1U] = 0ULL;
+		masks[width_bits * 2U + 2U] = 0ULL;
+
+		lxs_apply_inputs(&lhs.ctx, lhs.plan, values, masks);
+		lxs_execute_plan(&lhs.ctx, lhs.plan);
+		lxs_read_outputs(&lhs.ctx, lhs.plan, lhs_out_values, lhs_out_masks);
+
+		lxs_apply_inputs(&rhs.ctx, rhs.plan, values, masks);
+		lxs_execute_plan(&rhs.ctx, rhs.plan);
+		lxs_read_outputs(&rhs.ctx, rhs.plan, rhs_out_values, rhs_out_masks);
+
+		for (uint32_t out = 0; out < (width_bits + 4U); ++out)
+			{
+			snprintf(label, sizeof(label), "%s.value.%u.%u", label_prefix, iter, out);
+			ok &= lxs_expect_u64(label, rhs_out_values[out], lhs_out_values[out]);
+			snprintf(label, sizeof(label), "%s.mask.%u.%u", label_prefix, iter, out);
+			ok &= lxs_expect_u64(label, rhs_out_masks[out], lhs_out_masks[out]);
+			}
+		}
+
+	lxs_unload_case(&lhs);
+	lxs_unload_case(&rhs);
+	return ok;
+	}
+
 static int lxs_test_mux2_8_explicit(void)
 	{
 	return lxs_test_standard_mux_equivalence(
@@ -647,6 +720,24 @@ static int lxs_test_cmp16_explicit(void)
 		"Tests\\Circuits\\cmp16_reference.bench",
 		"Tests\\Circuits\\cmp16_explicit.bench",
 		"cmp16_explicit",
+		16U);
+	}
+
+static int lxs_test_alu8_explicit(void)
+	{
+	return lxs_test_standard_alu_equivalence(
+		"Tests\\Circuits\\alu8_reference.bench",
+		"Tests\\Circuits\\alu8_explicit.bench",
+		"alu8_explicit",
+		8U);
+	}
+
+static int lxs_test_alu16_explicit(void)
+	{
+	return lxs_test_standard_alu_equivalence(
+		"Tests\\Circuits\\alu16_reference.bench",
+		"Tests\\Circuits\\alu16_explicit.bench",
+		"alu16_explicit",
 		16U);
 	}
 
@@ -4170,6 +4261,8 @@ int main(void)
 	ok &= lxs_test_add16_explicit();
 	ok &= lxs_test_cmp8_explicit();
 	ok &= lxs_test_cmp16_explicit();
+	ok &= lxs_test_alu8_explicit();
+	ok &= lxs_test_alu16_explicit();
 	ok &= lxs_test_xor2_macro();
 	ok &= lxs_test_xor2_nor_macro();
 	ok &= lxs_test_xnor2_macro();

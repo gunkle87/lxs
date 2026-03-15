@@ -12,6 +12,7 @@
 #define LXS_FUNCTIONAL_REGION_MAX_OPS 40U
 #define LXS_FUNCTIONAL_REGION_MAX_TEMPS 40U
 #define LXS_STANDARD_MACRO_MAX_WIDTH 64U
+#define LXS_STANDARD_MACRO_MAX_OUTPUTS 80U
 #define LXS_STANDARD_MACRO_MAX_INPUTS 320U
 
 typedef enum lxs_gate_type
@@ -178,6 +179,7 @@ typedef struct lxs_source_multi_macro lxs_source_multi_macro;
 typedef struct lxs_source_standard_mux lxs_source_standard_mux;
 typedef struct lxs_source_standard_add lxs_source_standard_add;
 typedef struct lxs_source_standard_cmp lxs_source_standard_cmp;
+typedef struct lxs_source_standard_alu lxs_source_standard_alu;
 typedef struct lxs_source_functional_region lxs_source_functional_region;
 typedef struct lxs_source_register lxs_source_register;
 typedef struct lxs_source_rom lxs_source_rom;
@@ -249,6 +251,19 @@ struct lxs_netlist
 	uint32_t *source_standard_cmp_gate_indices;
 	uint32_t source_standard_cmp_gate_index_count;
 	uint32_t source_standard_cmp_gate_index_cap;
+
+	lxs_source_standard_alu *source_standard_alus;
+	uint32_t source_standard_alu_count;
+	uint32_t source_standard_alu_cap;
+	uint32_t *source_standard_alu_input_net_ids;
+	uint32_t source_standard_alu_input_count;
+	uint32_t source_standard_alu_input_cap;
+	uint32_t *source_standard_alu_output_net_ids;
+	uint32_t source_standard_alu_output_count;
+	uint32_t source_standard_alu_output_cap;
+	uint32_t *source_standard_alu_gate_indices;
+	uint32_t source_standard_alu_gate_index_count;
+	uint32_t source_standard_alu_gate_index_cap;
 
 	lxs_source_functional_region *source_functional_regions;
 	uint32_t source_functional_region_count;
@@ -340,6 +355,11 @@ typedef enum lxs_standard_cmp_kind
 	LXS_STANDARD_CMP_KIND_UNSIGNED = 0
 	} lxs_standard_cmp_kind;
 
+typedef enum lxs_standard_alu_kind
+	{
+	LXS_STANDARD_ALU_KIND_CORE = 0
+	} lxs_standard_alu_kind;
+
 struct lxs_source_standard_mux
 	{
 	uint32_t kind;
@@ -362,6 +382,16 @@ struct lxs_source_standard_add
 	};
 
 struct lxs_source_standard_cmp
+	{
+	uint32_t kind;
+	uint32_t width_bits;
+	uint32_t input_start;
+	uint32_t output_start;
+	uint32_t gate_index_start;
+	uint32_t gate_count;
+	};
+
+struct lxs_source_standard_alu
 	{
 	uint32_t kind;
 	uint32_t width_bits;
@@ -451,6 +481,8 @@ struct lxs_level_plan
 	uint32_t standard_add_count;
 	uint32_t standard_cmp_start;
 	uint32_t standard_cmp_count;
+	uint32_t standard_alu_start;
+	uint32_t standard_alu_count;
 	uint32_t functional_region_start;
 	uint32_t functional_region_count;
 	};
@@ -503,6 +535,17 @@ struct lxs_standard_add_plan
 
 typedef struct lxs_standard_cmp_plan lxs_standard_cmp_plan;
 struct lxs_standard_cmp_plan
+	{
+	uint32_t kind;
+	uint32_t level;
+	uint32_t width_bits;
+	uint32_t input_start;
+	uint32_t output_start;
+	uint32_t gate_equiv_count;
+	};
+
+typedef struct lxs_standard_alu_plan lxs_standard_alu_plan;
+struct lxs_standard_alu_plan
 	{
 	uint32_t kind;
 	uint32_t level;
@@ -641,6 +684,7 @@ struct lxs_plan
 	uint32_t standard_mux_count;
 	uint32_t standard_add_count;
 	uint32_t standard_cmp_count;
+	uint32_t standard_alu_count;
 	uint32_t functional_region_count;
 	uint32_t recognition_mask;
 	uint32_t recognition_mode;
@@ -659,6 +703,7 @@ struct lxs_plan
 	lxs_standard_mux_plan *standard_muxes;
 	lxs_standard_add_plan *standard_adders;
 	lxs_standard_cmp_plan *standard_cmps;
+	lxs_standard_alu_plan *standard_alus;
 	lxs_functional_region_plan *functional_regions;
 	lxs_level_plan *levels;
 
@@ -714,6 +759,10 @@ struct lxs_plan
 	uint32_t standard_cmp_output_net_count;
 	uint32_t *standard_cmp_input_net_ids;
 	uint32_t *standard_cmp_output_net_ids;
+	uint32_t standard_alu_input_net_count;
+	uint32_t standard_alu_output_net_count;
+	uint32_t *standard_alu_input_net_ids;
+	uint32_t *standard_alu_output_net_ids;
 	};
 
 typedef struct lxs_probes lxs_probes;

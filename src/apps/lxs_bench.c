@@ -561,7 +561,8 @@ static void lxs_build_plan_profile(
 		plan->multi_macro_count +
 		plan->standard_mux_count +
 		plan->standard_add_count +
-		plan->standard_cmp_count;
+		plan->standard_cmp_count +
+		plan->standard_alu_count;
 	profile->total_step_count = profile->primitive_step_count + profile->macro_step_count;
 
 	if (plan->span_count > 0U)
@@ -740,6 +741,10 @@ static void lxs_build_plan_profile(
 		{
 		profile->macro_gate_equiv += plan->standard_cmps[i].gate_equiv_count;
 		}
+	for (uint32_t i = 0; i < plan->standard_alu_count; ++i)
+		{
+		profile->macro_gate_equiv += plan->standard_alus[i].gate_equiv_count;
+		}
 	profile->total_gate_equiv = profile->primitive_gate_equiv + profile->macro_gate_equiv;
 	if (profile->total_step_count > 0U)
 		{
@@ -769,6 +774,7 @@ static void lxs_build_plan_profile(
 		uint32_t level_tiny_chunk_count = 0U;
 		uint32_t level_arithmetic_multi_count = 0U;
 		uint32_t level_arithmetic_standard_add_count = level_plan->standard_add_count;
+		uint32_t level_arithmetic_standard_alu_count = level_plan->standard_alu_count;
 		uint64_t level_primitive_gate_equiv_total = 0ULL;
 		uint8_t has_primitive = level_plan->chunk_count > 0U ? 1U : 0U;
 		uint8_t kind = 0U;
@@ -808,12 +814,12 @@ static void lxs_build_plan_profile(
 			profile->max_level_gate_count = level_gate_count;
 			}
 
-		if ((level_arithmetic_multi_count + level_arithmetic_standard_add_count) > 0U)
+		if ((level_arithmetic_multi_count + level_arithmetic_standard_add_count + level_arithmetic_standard_alu_count) > 0U)
 			{
 			profile->arithmetic_level_count++;
 			}
 
-		if (has_primitive && (level_arithmetic_multi_count + level_arithmetic_standard_add_count) > 0U)
+		if (has_primitive && (level_arithmetic_multi_count + level_arithmetic_standard_add_count + level_arithmetic_standard_alu_count) > 0U)
 			{
 			profile->mixed_level_count++;
 			kind = 3U;
@@ -822,17 +828,19 @@ static void lxs_build_plan_profile(
 			level_plan->multi_macro_count == 0U && level_plan->standard_mux_count == 0U &&
 			level_plan->standard_add_count == 0U &&
 			level_plan->standard_cmp_count == 0U &&
+			level_plan->standard_alu_count == 0U &&
 			level_plan->functional_region_count == 0U)
 			{
 			profile->primitive_only_level_count++;
 			kind = 1U;
 			}
-		else if (!has_primitive && (level_arithmetic_multi_count + level_arithmetic_standard_add_count) > 0U &&
+		else if (!has_primitive && (level_arithmetic_multi_count + level_arithmetic_standard_add_count + level_arithmetic_standard_alu_count) > 0U &&
 			level_plan->macro_count == 0U &&
 			level_plan->standard_mux_count == 0U &&
 			level_plan->standard_cmp_count == 0U &&
 			level_plan->functional_region_count == 0U &&
 			level_plan->standard_add_count == level_arithmetic_standard_add_count &&
+			level_plan->standard_alu_count == level_arithmetic_standard_alu_count &&
 			level_arithmetic_multi_count == level_plan->multi_macro_count)
 			{
 			profile->arithmetic_only_level_count++;
@@ -842,6 +850,7 @@ static void lxs_build_plan_profile(
 			level_plan->multi_macro_count > 0U || level_plan->standard_mux_count > 0U ||
 			level_plan->standard_add_count > 0U ||
 			level_plan->standard_cmp_count > 0U ||
+			level_plan->standard_alu_count > 0U ||
 			level_plan->functional_region_count > 0U)
 			{
 			kind = 4U;
@@ -854,7 +863,7 @@ static void lxs_build_plan_profile(
 		if (level_has_arithmetic)
 			{
 			level_has_arithmetic[level] =
-				(level_arithmetic_multi_count + level_arithmetic_standard_add_count) > 0U ? 1U : 0U;
+				(level_arithmetic_multi_count + level_arithmetic_standard_add_count + level_arithmetic_standard_alu_count) > 0U ? 1U : 0U;
 			}
 		if (level_chunk_counts)
 			{

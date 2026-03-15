@@ -2288,6 +2288,263 @@ static void lxs_execute_standard_cmps(
 		}
 	}
 
+static void lxs_eval_mux2_word(
+	uint64_t d0_value,
+	uint64_t d0_mask,
+	uint64_t d1_value,
+	uint64_t d1_mask,
+	uint64_t sel_value,
+	uint64_t sel_mask,
+	uint64_t *out_value,
+	uint64_t *out_mask)
+	{
+	uint64_t nsel_value;
+	uint64_t nsel_mask;
+	uint64_t lo_value;
+	uint64_t lo_mask;
+	uint64_t hi_value;
+	uint64_t hi_mask;
+
+	LXS_EVAL_NOT(sel_value, sel_mask, nsel_value, nsel_mask);
+	LXS_EVAL_AND(d0_value, d0_mask, nsel_value, nsel_mask, lo_value, lo_mask);
+	LXS_EVAL_AND(d1_value, d1_mask, sel_value, sel_mask, hi_value, hi_mask);
+	LXS_EVAL_OR(lo_value, lo_mask, hi_value, hi_mask, *out_value, *out_mask);
+	}
+
+static void lxs_eval_mux4_word(
+	uint64_t d0_value,
+	uint64_t d0_mask,
+	uint64_t d1_value,
+	uint64_t d1_mask,
+	uint64_t d2_value,
+	uint64_t d2_mask,
+	uint64_t d3_value,
+	uint64_t d3_mask,
+	uint64_t s0_value,
+	uint64_t s0_mask,
+	uint64_t s1_value,
+	uint64_t s1_mask,
+	uint64_t *out_value,
+	uint64_t *out_mask)
+	{
+	uint64_t low_value;
+	uint64_t low_mask;
+	uint64_t high_value;
+	uint64_t high_mask;
+
+	lxs_eval_mux2_word(d0_value, d0_mask, d1_value, d1_mask, s0_value, s0_mask, &low_value, &low_mask);
+	lxs_eval_mux2_word(d2_value, d2_mask, d3_value, d3_mask, s0_value, s0_mask, &high_value, &high_mask);
+	lxs_eval_mux2_word(low_value, low_mask, high_value, high_mask, s1_value, s1_mask, out_value, out_mask);
+	}
+
+static void lxs_execute_standard_alus(
+	lxs_engine_ctx *ctx,
+	const lxs_plan *plan,
+	const lxs_standard_alu_plan *alus,
+	uint32_t count)
+	{
+	uint64_t *restrict net_value = (uint64_t*)LXS_ASSUME_ALIGNED_64(ctx->net_value);
+	uint64_t *restrict net_mask = (uint64_t*)LXS_ASSUME_ALIGNED_64(ctx->net_mask);
+
+	for (uint32_t i = 0; i < count; ++i)
+		{
+		const lxs_standard_alu_plan *alu = &alus[i];
+		uint32_t base = alu->input_start;
+		uint64_t s0_value = net_value[plan->standard_alu_input_net_ids[base + (alu->width_bits * 2U) + 0U]];
+		uint64_t s0_mask = net_mask[plan->standard_alu_input_net_ids[base + (alu->width_bits * 2U) + 0U]];
+		uint64_t s1_value = net_value[plan->standard_alu_input_net_ids[base + (alu->width_bits * 2U) + 1U]];
+		uint64_t s1_mask = net_mask[plan->standard_alu_input_net_ids[base + (alu->width_bits * 2U) + 1U]];
+		uint64_t s2_value = net_value[plan->standard_alu_input_net_ids[base + (alu->width_bits * 2U) + 2U]];
+		uint64_t s2_mask = net_mask[plan->standard_alu_input_net_ids[base + (alu->width_bits * 2U) + 2U]];
+		uint64_t add_carry_value = 0ULL;
+		uint64_t add_carry_mask = 0ULL;
+		uint64_t sub_carry_value = ~0ULL;
+		uint64_t sub_carry_mask = 0ULL;
+		uint64_t eq_value = ~0ULL;
+		uint64_t eq_mask = 0ULL;
+		uint64_t lt_value = 0ULL;
+		uint64_t lt_mask = 0ULL;
+		uint64_t gt_value = 0ULL;
+		uint64_t gt_mask = 0ULL;
+
+		for (uint32_t bit = 0; bit < alu->width_bits; ++bit)
+			{
+			uint32_t a_net = plan->standard_alu_input_net_ids[base + bit];
+			uint32_t b_net = plan->standard_alu_input_net_ids[base + alu->width_bits + bit];
+			uint32_t out_net = plan->standard_alu_output_net_ids[alu->output_start + bit];
+			uint64_t a_value = net_value[a_net];
+			uint64_t a_mask = net_mask[a_net];
+			uint64_t b_value = net_value[b_net];
+			uint64_t b_mask = net_mask[b_net];
+			uint64_t not_b_value;
+			uint64_t not_b_mask;
+			uint64_t add_xor_value;
+			uint64_t add_xor_mask;
+			uint64_t add_sum_value;
+			uint64_t add_sum_mask;
+			uint64_t add_ab_value;
+			uint64_t add_ab_mask;
+			uint64_t add_ac_value;
+			uint64_t add_ac_mask;
+			uint64_t next_add_carry_value;
+			uint64_t next_add_carry_mask;
+			uint64_t sub_xor_value;
+			uint64_t sub_xor_mask;
+			uint64_t sub_sum_value;
+			uint64_t sub_sum_mask;
+			uint64_t sub_ab_value;
+			uint64_t sub_ab_mask;
+			uint64_t sub_ac_value;
+			uint64_t sub_ac_mask;
+			uint64_t next_sub_carry_value;
+			uint64_t next_sub_carry_mask;
+			uint64_t and_value;
+			uint64_t and_mask;
+			uint64_t or_value;
+			uint64_t or_mask;
+			uint64_t xor_value;
+			uint64_t xor_mask;
+			uint64_t group0_value;
+			uint64_t group0_mask;
+			uint64_t group1_value;
+			uint64_t group1_mask;
+			uint64_t out_value;
+			uint64_t out_mask;
+
+			LXS_EVAL_NOT(b_value, b_mask, not_b_value, not_b_mask);
+			LXS_EVAL_XOR(a_value, a_mask, b_value, b_mask, add_xor_value, add_xor_mask);
+			LXS_EVAL_XOR(add_xor_value, add_xor_mask, add_carry_value, add_carry_mask, add_sum_value, add_sum_mask);
+			LXS_EVAL_AND(a_value, a_mask, b_value, b_mask, add_ab_value, add_ab_mask);
+			LXS_EVAL_AND(add_xor_value, add_xor_mask, add_carry_value, add_carry_mask, add_ac_value, add_ac_mask);
+			LXS_EVAL_OR(add_ab_value, add_ab_mask, add_ac_value, add_ac_mask, next_add_carry_value, next_add_carry_mask);
+
+			LXS_EVAL_XOR(a_value, a_mask, not_b_value, not_b_mask, sub_xor_value, sub_xor_mask);
+			LXS_EVAL_XOR(sub_xor_value, sub_xor_mask, sub_carry_value, sub_carry_mask, sub_sum_value, sub_sum_mask);
+			LXS_EVAL_AND(a_value, a_mask, not_b_value, not_b_mask, sub_ab_value, sub_ab_mask);
+			LXS_EVAL_AND(sub_xor_value, sub_xor_mask, sub_carry_value, sub_carry_mask, sub_ac_value, sub_ac_mask);
+			LXS_EVAL_OR(sub_ab_value, sub_ab_mask, sub_ac_value, sub_ac_mask, next_sub_carry_value, next_sub_carry_mask);
+
+			LXS_EVAL_AND(a_value, a_mask, b_value, b_mask, and_value, and_mask);
+			LXS_EVAL_OR(a_value, a_mask, b_value, b_mask, or_value, or_mask);
+			LXS_EVAL_XOR(a_value, a_mask, b_value, b_mask, xor_value, xor_mask);
+
+			lxs_eval_mux4_word(
+				add_sum_value, add_sum_mask,
+				sub_sum_value, sub_sum_mask,
+				and_value, and_mask,
+				or_value, or_mask,
+				s0_value, s0_mask,
+				s1_value, s1_mask,
+				&group0_value, &group0_mask);
+			lxs_eval_mux4_word(
+				xor_value, xor_mask,
+				a_value, a_mask,
+				b_value, b_mask,
+				0ULL, 0ULL,
+				s0_value, s0_mask,
+				s1_value, s1_mask,
+				&group1_value, &group1_mask);
+			lxs_eval_mux2_word(
+				group0_value, group0_mask,
+				group1_value, group1_mask,
+				s2_value, s2_mask,
+				&out_value, &out_mask);
+
+			net_value[out_net] = out_value;
+			net_mask[out_net] = out_mask;
+			add_carry_value = next_add_carry_value;
+			add_carry_mask = next_add_carry_mask;
+			sub_carry_value = next_sub_carry_value;
+			sub_carry_mask = next_sub_carry_mask;
+			}
+
+		for (uint32_t step = 0; step < alu->width_bits; ++step)
+			{
+			uint32_t bit = alu->width_bits - 1U - step;
+			uint32_t a_net = plan->standard_alu_input_net_ids[base + bit];
+			uint32_t b_net = plan->standard_alu_input_net_ids[base + alu->width_bits + bit];
+			uint64_t not_a_value;
+			uint64_t not_a_mask;
+			uint64_t not_b_value;
+			uint64_t not_b_mask;
+			uint64_t xor_ab_value;
+			uint64_t xor_ab_mask;
+			uint64_t bit_eq_value;
+			uint64_t bit_eq_mask;
+			uint64_t lt_raw_value;
+			uint64_t lt_raw_mask;
+			uint64_t gt_raw_value;
+			uint64_t gt_raw_mask;
+			uint64_t lt_candidate_value;
+			uint64_t lt_candidate_mask;
+			uint64_t gt_candidate_value;
+			uint64_t gt_candidate_mask;
+			uint64_t next_eq_value;
+			uint64_t next_eq_mask;
+			uint64_t next_lt_value;
+			uint64_t next_lt_mask;
+			uint64_t next_gt_value;
+			uint64_t next_gt_mask;
+
+			LXS_EVAL_NOT(net_value[a_net], net_mask[a_net], not_a_value, not_a_mask);
+			LXS_EVAL_NOT(net_value[b_net], net_mask[b_net], not_b_value, not_b_mask);
+			LXS_EVAL_XOR(net_value[a_net], net_mask[a_net], net_value[b_net], net_mask[b_net], xor_ab_value, xor_ab_mask);
+			LXS_EVAL_NOT(xor_ab_value, xor_ab_mask, bit_eq_value, bit_eq_mask);
+			LXS_EVAL_AND(not_a_value, not_a_mask, net_value[b_net], net_mask[b_net], lt_raw_value, lt_raw_mask);
+			LXS_EVAL_AND(net_value[a_net], net_mask[a_net], not_b_value, not_b_mask, gt_raw_value, gt_raw_mask);
+			LXS_EVAL_AND(eq_value, eq_mask, lt_raw_value, lt_raw_mask, lt_candidate_value, lt_candidate_mask);
+			LXS_EVAL_AND(eq_value, eq_mask, gt_raw_value, gt_raw_mask, gt_candidate_value, gt_candidate_mask);
+			LXS_EVAL_AND(eq_value, eq_mask, bit_eq_value, bit_eq_mask, next_eq_value, next_eq_mask);
+			LXS_EVAL_OR(lt_value, lt_mask, lt_candidate_value, lt_candidate_mask, next_lt_value, next_lt_mask);
+			LXS_EVAL_OR(gt_value, gt_mask, gt_candidate_value, gt_candidate_mask, next_gt_value, next_gt_mask);
+
+			eq_value = next_eq_value;
+			eq_mask = next_eq_mask;
+			lt_value = next_lt_value;
+			lt_mask = next_lt_mask;
+			gt_value = next_gt_value;
+			gt_mask = next_gt_mask;
+			}
+
+		{
+		uint64_t low0_value;
+		uint64_t low0_mask;
+		uint64_t group0_value;
+		uint64_t group0_mask;
+		uint64_t cout_value;
+		uint64_t cout_mask;
+
+		lxs_eval_mux2_word(
+			add_carry_value, add_carry_mask,
+			sub_carry_value, sub_carry_mask,
+			s0_value, s0_mask,
+			&low0_value, &low0_mask);
+		lxs_eval_mux2_word(
+			low0_value, low0_mask,
+			0ULL, 0ULL,
+			s1_value, s1_mask,
+			&group0_value, &group0_mask);
+		lxs_eval_mux2_word(
+			group0_value, group0_mask,
+			0ULL, 0ULL,
+			s2_value, s2_mask,
+			&cout_value, &cout_mask);
+
+		net_value[plan->standard_alu_output_net_ids[alu->output_start + alu->width_bits]] = cout_value;
+		net_mask[plan->standard_alu_output_net_ids[alu->output_start + alu->width_bits]] = cout_mask;
+		}
+
+		net_value[plan->standard_alu_output_net_ids[alu->output_start + alu->width_bits + 1U]] = eq_value;
+		net_mask[plan->standard_alu_output_net_ids[alu->output_start + alu->width_bits + 1U]] = eq_mask;
+		net_value[plan->standard_alu_output_net_ids[alu->output_start + alu->width_bits + 2U]] = lt_value;
+		net_mask[plan->standard_alu_output_net_ids[alu->output_start + alu->width_bits + 2U]] = lt_mask;
+		net_value[plan->standard_alu_output_net_ids[alu->output_start + alu->width_bits + 3U]] = gt_value;
+		net_mask[plan->standard_alu_output_net_ids[alu->output_start + alu->width_bits + 3U]] = gt_mask;
+		ctx->probes.chunk_exec++;
+		ctx->probes.gate_eval += alu->gate_equiv_count;
+		}
+	}
+
 static void lxs_eval_functional_op(
 	uint8_t type,
 	const uint64_t *src_value,
@@ -2942,6 +3199,21 @@ static void lxs_execute_level_standard_cmps_only(
 		}
 	}
 
+static void lxs_execute_level_standard_alus_only(
+	lxs_engine_ctx *ctx,
+	const lxs_plan *plan,
+	const lxs_level_plan *level_plan)
+	{
+	if (level_plan->standard_alu_count > 0U)
+		{
+		lxs_execute_standard_alus(
+			ctx,
+			plan,
+			plan->standard_alus + level_plan->standard_alu_start,
+			level_plan->standard_alu_count);
+		}
+	}
+
 static void lxs_execute_level_functional_regions_only(
 	lxs_engine_ctx *ctx,
 	const lxs_plan *plan,
@@ -2964,6 +3236,7 @@ static uint8_t lxs_level_is_mixed_boundary(const lxs_level_plan *level_plan)
 		 level_plan->multi_macro_count > 0U ||
 		 level_plan->standard_add_count > 0U ||
 		 level_plan->standard_cmp_count > 0U ||
+		 level_plan->standard_alu_count > 0U ||
 		 level_plan->standard_mux_count > 0U ||
 		 level_plan->functional_region_count > 0U));
 	}
@@ -2987,6 +3260,7 @@ void lxs_execute_levels(lxs_engine_ctx *ctx, const lxs_plan *plan)
 			lxs_execute_level_multi_macros_only(ctx, plan, level_plan);
 			lxs_execute_level_standard_adders_only(ctx, plan, level_plan);
 			lxs_execute_level_standard_cmps_only(ctx, plan, level_plan);
+			lxs_execute_level_standard_alus_only(ctx, plan, level_plan);
 			lxs_execute_level_standard_muxes_only(ctx, plan, level_plan);
 			lxs_execute_level_functional_regions_only(ctx, plan, level_plan);
 			lxs_execute_level_chunks_by_size(ctx, plan, level_plan, 1U);
@@ -2995,6 +3269,7 @@ void lxs_execute_levels(lxs_engine_ctx *ctx, const lxs_plan *plan)
 			lxs_execute_level_macros_only(ctx, plan, level_plan);
 			lxs_execute_level_standard_adders_only(ctx, plan, level_plan);
 			lxs_execute_level_standard_cmps_only(ctx, plan, level_plan);
+			lxs_execute_level_standard_alus_only(ctx, plan, level_plan);
 			lxs_execute_level_standard_muxes_only(ctx, plan, level_plan);
 			lxs_execute_level_functional_regions_only(ctx, plan, level_plan);
 			lxs_execute_level_chunks_by_size(ctx, plan, level_plan, 0U);
@@ -3005,6 +3280,7 @@ void lxs_execute_levels(lxs_engine_ctx *ctx, const lxs_plan *plan)
 			lxs_execute_level_multi_macros_only(ctx, plan, level_plan);
 			lxs_execute_level_standard_adders_only(ctx, plan, level_plan);
 			lxs_execute_level_standard_cmps_only(ctx, plan, level_plan);
+			lxs_execute_level_standard_alus_only(ctx, plan, level_plan);
 			lxs_execute_level_standard_muxes_only(ctx, plan, level_plan);
 			lxs_execute_level_functional_regions_only(ctx, plan, level_plan);
 #endif
@@ -3016,6 +3292,7 @@ void lxs_execute_levels(lxs_engine_ctx *ctx, const lxs_plan *plan)
 		lxs_execute_level_multi_macros_only(ctx, plan, level_plan);
 		lxs_execute_level_standard_adders_only(ctx, plan, level_plan);
 		lxs_execute_level_standard_cmps_only(ctx, plan, level_plan);
+		lxs_execute_level_standard_alus_only(ctx, plan, level_plan);
 		lxs_execute_level_standard_muxes_only(ctx, plan, level_plan);
 		lxs_execute_level_functional_regions_only(ctx, plan, level_plan);
 		}
