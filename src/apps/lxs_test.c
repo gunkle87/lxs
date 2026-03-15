@@ -523,6 +523,87 @@ static int lxs_test_public_api_state_smoke(void)
 	return ok;
 	}
 
+static int lxs_test_public_api_diag_smoke(void)
+	{
+	lxs_api_netlist *api_netlist = NULL;
+	lxs_api_plan *api_plan = NULL;
+	lxs_api_engine *api_engine = NULL;
+	lxs_api_probes probes;
+	uint64_t values[17];
+	uint64_t masks[17];
+	uint32_t net_id = 0U;
+	uint64_t rng = 0x444941475F415049ULL;
+	const char *last_error = NULL;
+	int ok = 1;
+
+	if (lxs_api_netlist_load_bench("Tests\\Circuits\\mux2_8_explicit.bench", &api_netlist) != LXS_API_OK ||
+		lxs_api_plan_compile(api_netlist, &api_plan) != LXS_API_OK ||
+		lxs_api_engine_create(api_plan, &api_engine) != LXS_API_OK)
+		{
+		fprintf(stderr, "FAIL public_api_diag_smoke: api setup failed: %s\n", lxs_api_get_last_error());
+		lxs_api_engine_free(api_engine);
+		lxs_api_plan_free(api_plan);
+		lxs_api_netlist_free(api_netlist);
+		return 0;
+		}
+
+	ok &= lxs_expect_u64("public_api_diag_smoke.find_missing",
+		lxs_api_plan_find_net(api_plan, "does_not_exist", &net_id),
+		LXS_API_ERR_BOUNDS);
+	ok &= lxs_expect_u64("public_api_diag_smoke.last_error_code",
+		lxs_api_diag_get_last_error_code(),
+		LXS_API_ERR_BOUNDS);
+	last_error = lxs_api_get_last_error();
+	if (!last_error || strstr(last_error, "does_not_exist") == NULL)
+		{
+		fprintf(stderr, "FAIL public_api_diag_smoke.last_error_message: expected missing-net detail, got '%s'\n",
+			last_error ? last_error : "(null)");
+		ok = 0;
+		}
+
+	lxs_api_diag_clear_last_error();
+	ok &= lxs_expect_u64("public_api_diag_smoke.last_error_code_cleared",
+		lxs_api_diag_get_last_error_code(),
+		LXS_API_OK);
+	last_error = lxs_api_get_last_error();
+	if (!last_error || last_error[0] != '\0')
+		{
+		fprintf(stderr, "FAIL public_api_diag_smoke.last_error_message_cleared: expected empty message\n");
+		ok = 0;
+		}
+
+	for (uint32_t i = 0; i < 17U; ++i)
+		{
+		values[i] = lxs_next_rand(&rng);
+		masks[i] = 0ULL;
+		}
+	ok &= lxs_expect_u64("public_api_diag_smoke.apply",
+		lxs_api_engine_apply_inputs(api_engine, values, masks, 17U),
+		LXS_API_OK);
+	ok &= lxs_expect_u64("public_api_diag_smoke.tick_many",
+		lxs_api_engine_tick_many(api_engine, 3U),
+		LXS_API_OK);
+	ok &= lxs_expect_u64("public_api_diag_smoke.read_probes",
+		lxs_api_engine_read_probes(api_engine, &probes),
+		LXS_API_OK);
+	ok &= lxs_expect_u64("public_api_diag_smoke.tick_count_before_clear", probes.tick_count, 3ULL);
+
+	ok &= lxs_expect_u64("public_api_diag_smoke.clear_probes",
+		lxs_api_engine_clear_probes(api_engine),
+		LXS_API_OK);
+	ok &= lxs_expect_u64("public_api_diag_smoke.read_probes_after_clear",
+		lxs_api_engine_read_probes(api_engine, &probes),
+		LXS_API_OK);
+	ok &= lxs_expect_u64("public_api_diag_smoke.tick_count_after_clear", probes.tick_count, 0ULL);
+	ok &= lxs_expect_u64("public_api_diag_smoke.state_commit_after_clear", probes.state_commit_count, 0ULL);
+	ok &= lxs_expect_u64("public_api_diag_smoke.chunk_exec_after_clear", probes.chunk_exec, 0ULL);
+
+	lxs_api_engine_free(api_engine);
+	lxs_api_plan_free(api_plan);
+	lxs_api_netlist_free(api_netlist);
+	return ok;
+	}
+
 static int lxs_test_standard_mux_equivalence(
 	const char *primitive_path,
 	const char *explicit_path,
@@ -5146,6 +5227,7 @@ int main(void)
 	ok &= lxs_test_canonical_basic();
 	ok &= lxs_test_public_api_smoke();
 	ok &= lxs_test_public_api_state_smoke();
+	ok &= lxs_test_public_api_diag_smoke();
 	ok &= lxs_test_multi_macro_full_adder_cinv();
 	ok &= lxs_test_mux2_macro();
 	ok &= lxs_test_mux2_8_explicit();

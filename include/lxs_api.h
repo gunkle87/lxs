@@ -59,6 +59,15 @@ typedef struct lxs_api_probes
 	uint64_t dff_exec;
 	uint64_t tick_count;
 	uint64_t state_commit_count;
+	uint64_t input_toggle;
+	uint64_t state_change_commit;
+	uint64_t contention_count;
+	uint64_t unknown_state_materialize_count;
+	uint64_t highz_materialize_count;
+	uint64_t multi_driver_resolve_count;
+	uint64_t tri_no_drive_count;
+	uint64_t pup_z_source_count;
+	uint64_t pdn_z_source_count;
 	} lxs_api_probes;
 
 typedef struct lxs_api_register_info
@@ -83,6 +92,8 @@ typedef struct lxs_api_regfile_info
 
 LXS_API_EXPORT const char* lxs_api_result_string(lxs_api_result result);
 LXS_API_EXPORT const char* lxs_api_get_last_error(void);
+LXS_API_EXPORT lxs_api_result lxs_api_diag_get_last_error_code(void);
+LXS_API_EXPORT void lxs_api_diag_clear_last_error(void);
 
 LXS_API_EXPORT lxs_api_result lxs_api_netlist_load_bench(
 	const char *path,
@@ -135,6 +146,7 @@ LXS_API_EXPORT lxs_api_result lxs_api_engine_tick(lxs_api_engine *engine);
 LXS_API_EXPORT lxs_api_result lxs_api_engine_tick_many(
 	lxs_api_engine *engine,
 	uint32_t tick_count);
+LXS_API_EXPORT lxs_api_result lxs_api_engine_clear_probes(lxs_api_engine *engine);
 LXS_API_EXPORT lxs_api_result lxs_api_engine_read_outputs(
 	const lxs_api_engine *engine,
 	uint64_t *values,

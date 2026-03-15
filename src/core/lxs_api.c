@@ -24,6 +24,7 @@ struct lxs_api_engine
 	};
 
 static _Thread_local char lxs_api_last_error[512];
+static _Thread_local lxs_api_result lxs_api_last_error_code = LXS_API_OK;
 
 lxs_api_result lxs_api_plan_get_net_name(
 	const lxs_api_plan *plan,
@@ -42,6 +43,7 @@ static lxs_api_result lxs_api_set_error(
 		{
 		lxs_api_last_error[0] = '\0';
 		}
+	lxs_api_last_error_code = result;
 	return result;
 	}
 
@@ -58,6 +60,7 @@ static lxs_api_result lxs_api_set_printf_error(
 		{
 		lxs_api_last_error[0] = '\0';
 		}
+	lxs_api_last_error_code = result;
 	return result;
 	}
 
@@ -185,6 +188,17 @@ const char* lxs_api_result_string(lxs_api_result result)
 const char* lxs_api_get_last_error(void)
 	{
 	return lxs_api_last_error;
+	}
+
+lxs_api_result lxs_api_diag_get_last_error_code(void)
+	{
+	return lxs_api_last_error_code;
+	}
+
+void lxs_api_diag_clear_last_error(void)
+	{
+	lxs_api_last_error[0] = '\0';
+	lxs_api_last_error_code = LXS_API_OK;
 	}
 
 lxs_api_result lxs_api_netlist_load_bench(
@@ -520,6 +534,17 @@ lxs_api_result lxs_api_engine_tick_many(
 	return lxs_api_set_error(LXS_API_OK, NULL);
 	}
 
+lxs_api_result lxs_api_engine_clear_probes(lxs_api_engine *engine)
+	{
+	if (!engine || !engine->plan)
+		{
+		return lxs_api_set_error(LXS_API_ERR_INVALID_HANDLE, "engine_clear_probes: invalid engine");
+		}
+
+	memset(&engine->ctx.probes, 0, sizeof(engine->ctx.probes));
+	return lxs_api_set_error(LXS_API_OK, NULL);
+	}
+
 lxs_api_result lxs_api_engine_read_outputs(
 	const lxs_api_engine *engine,
 	uint64_t *values,
@@ -770,6 +795,27 @@ lxs_api_result lxs_api_engine_read_probes(
 	out_probes->dff_exec = probes.dff_exec;
 	out_probes->tick_count = probes.tick_count;
 	out_probes->state_commit_count = probes.state_commit_count;
+#if LXS_TEST_PROBES
+	out_probes->input_toggle = probes.input_toggle;
+	out_probes->state_change_commit = probes.state_change_commit;
+	out_probes->contention_count = probes.contention_count;
+	out_probes->unknown_state_materialize_count = probes.unknown_state_materialize_count;
+	out_probes->highz_materialize_count = probes.highz_materialize_count;
+	out_probes->multi_driver_resolve_count = probes.multi_driver_resolve_count;
+	out_probes->tri_no_drive_count = probes.tri_no_drive_count;
+	out_probes->pup_z_source_count = probes.pup_z_source_count;
+	out_probes->pdn_z_source_count = probes.pdn_z_source_count;
+#else
+	out_probes->input_toggle = 0ULL;
+	out_probes->state_change_commit = 0ULL;
+	out_probes->contention_count = 0ULL;
+	out_probes->unknown_state_materialize_count = 0ULL;
+	out_probes->highz_materialize_count = 0ULL;
+	out_probes->multi_driver_resolve_count = 0ULL;
+	out_probes->tri_no_drive_count = 0ULL;
+	out_probes->pup_z_source_count = 0ULL;
+	out_probes->pdn_z_source_count = 0ULL;
+#endif
 	return lxs_api_set_error(LXS_API_OK, NULL);
 	}
 
