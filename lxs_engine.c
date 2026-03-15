@@ -15,6 +15,14 @@
 #define LXS_MIXED_LEVEL_EXEC_MODE 2
 #endif
 
+#ifndef LXS_LOGIC_CHUNK_FAST_MODE
+#define LXS_LOGIC_CHUNK_FAST_MODE 1
+#endif
+
+#ifndef LXS_LOGIC_CHUNK_FAST_MIN_COUNT
+#define LXS_LOGIC_CHUNK_FAST_MIN_COUNT 0
+#endif
+
 static void* lxs_malloc_aligned(size_t size)
 	{
 	if (size == 0U)
@@ -463,6 +471,83 @@ static void lxs_execute_logic_chunk(
 	uint64_t *restrict net_mask = (uint64_t*)LXS_ASSUME_ALIGNED_64(ctx->net_mask);
 	const lxs_gate_ir *gate = gates;
 	const lxs_gate_ir *gate_end = gates + count;
+
+#if LXS_LOGIC_CHUNK_FAST_MODE != 0
+	if (count > 0U &&
+		count >= (uint32_t)LXS_LOGIC_CHUNK_FAST_MIN_COUNT &&
+		gates[0].input_count == 2U)
+		{
+		switch (type)
+			{
+#if LXS_LOGIC_CHUNK_FAST_MODE == 1 || LXS_LOGIC_CHUNK_FAST_MODE == 2
+			case LXS_GATE_AND:
+				for (; gate != gate_end; ++gate)
+					{
+					uint32_t a = gate->inputs[0];
+					uint32_t b = gate->inputs[1];
+					uint32_t dst = gate->output;
+					uint64_t out_value;
+					uint64_t out_mask;
+
+					LXS_EVAL_AND(
+						net_value[a],
+						net_mask[a],
+						net_value[b],
+						net_mask[b],
+						out_value,
+						out_mask);
+					net_value[dst] = out_value;
+					net_mask[dst] = out_mask;
+					}
+				return;
+#endif
+#if LXS_LOGIC_CHUNK_FAST_MODE == 2
+			case LXS_GATE_OR:
+				for (; gate != gate_end; ++gate)
+					{
+					uint32_t a = gate->inputs[0];
+					uint32_t b = gate->inputs[1];
+					uint32_t dst = gate->output;
+					uint64_t out_value;
+					uint64_t out_mask;
+
+					LXS_EVAL_OR(
+						net_value[a],
+						net_mask[a],
+						net_value[b],
+						net_mask[b],
+						out_value,
+						out_mask);
+					net_value[dst] = out_value;
+					net_mask[dst] = out_mask;
+					}
+				return;
+			case LXS_GATE_XOR:
+				for (; gate != gate_end; ++gate)
+					{
+					uint32_t a = gate->inputs[0];
+					uint32_t b = gate->inputs[1];
+					uint32_t dst = gate->output;
+					uint64_t out_value;
+					uint64_t out_mask;
+
+					LXS_EVAL_XOR(
+						net_value[a],
+						net_mask[a],
+						net_value[b],
+						net_mask[b],
+						out_value,
+						out_mask);
+					net_value[dst] = out_value;
+					net_mask[dst] = out_mask;
+					}
+				return;
+#endif
+			default:
+				break;
+			}
+		}
+#endif
 
 	switch (type)
 		{
