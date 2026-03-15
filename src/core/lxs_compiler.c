@@ -733,6 +733,47 @@ static int lxs_parse_standard_register_name(
 	return 1;
 	}
 
+static int lxs_parse_standard_register_en_name(
+	const char *gate_name,
+	uint32_t *width_bits_out)
+	{
+	uint32_t width_bits = 0U;
+	const char *width_text = NULL;
+
+	if (strncmp(gate_name, "REG_EN", 6) != 0)
+		{
+		return 0;
+		}
+
+	width_text = gate_name + 6;
+	if (strcmp(width_text, "8") == 0)
+		{
+		width_bits = 8U;
+		}
+	else if (strcmp(width_text, "16") == 0)
+		{
+		width_bits = 16U;
+		}
+	else if (strcmp(width_text, "32") == 0)
+		{
+		width_bits = 32U;
+		}
+	else if (strcmp(width_text, "64") == 0)
+		{
+		width_bits = 64U;
+		}
+	else
+		{
+		return 0;
+		}
+
+	if (width_bits_out)
+		{
+		*width_bits_out = width_bits;
+		}
+	return 1;
+	}
+
 static int lxs_emit_standard_mux_descriptor(
 	lxs_netlist *nl,
 	const uint32_t *outputs,
@@ -7134,6 +7175,10 @@ static lxs_netlist* lxs_load_bench(const char *path)
 		}
 
 		uint32_t standard_register_width_bits = 0U;
+		uint32_t standard_register_en_width_bits = 0U;
+		uint8_t is_standard_register_en = lxs_parse_standard_register_en_name(
+			gate_name,
+			&standard_register_en_width_bits);
 		if (strcmp(gate_name, "REGISTER") == 0 ||
 			lxs_parse_standard_register_name(gate_name, &standard_register_width_bits))
 			{
@@ -7163,7 +7208,9 @@ static lxs_netlist* lxs_load_bench(const char *path)
 				}
 			is_special_macro = 1U;
 			}
-		else if (strcmp(gate_name, "REGISTER_EN") == 0 || strcmp(gate_name, "REGISTER_HOLD") == 0)
+		else if (strcmp(gate_name, "REGISTER_EN") == 0 ||
+			strcmp(gate_name, "REGISTER_HOLD") == 0 ||
+			is_standard_register_en)
 			{
 			char *section_ctx = NULL;
 			char *sections[2];
@@ -7172,7 +7219,8 @@ static lxs_netlist* lxs_load_bench(const char *path)
 			char *input_ctx = NULL;
 			char *input_token;
 			uint32_t control_net;
-			uint8_t control_invert = strcmp(gate_name, "REGISTER_HOLD") == 0 ? 1U : 0U;
+			uint8_t control_invert =
+				strcmp(gate_name, "REGISTER_HOLD") == 0 ? 1U : 0U;
 
 			while (section && section_count < 2U)
 				{
@@ -7202,8 +7250,18 @@ static lxs_netlist* lxs_load_bench(const char *path)
 				}
 
 			control_net = lxs_intern_net(nl, lxs_trim(sections[1]));
-			if (control_net == UINT32_MAX || output_count == 0U || output_count != input_count ||
-				!lxs_emit_register_descriptor(nl, output_ids, input_ids, output_count, control_net, control_invert))
+			if (control_net == UINT32_MAX ||
+				output_count == 0U ||
+				output_count != input_count ||
+				(is_standard_register_en &&
+					output_count != standard_register_en_width_bits) ||
+				!lxs_emit_register_descriptor(
+					nl,
+					output_ids,
+					input_ids,
+					output_count,
+					control_net,
+					control_invert))
 				{
 				lxs_free_netlist(nl);
 				fclose(stream);
