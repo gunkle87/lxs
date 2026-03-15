@@ -278,10 +278,12 @@ for direct end-user CPU and system construction.
     - avoid feature creep in the first wave
 
     RAM
-    - first admitted RAM contract:
-      - fixed family:
+    - admitted RAM contract:
+      - fixed families:
         - `RAM8`
-      - data output width is fixed at 8 bits
+        - `RAM16`
+        - `RAM24`
+      - data output width is fixed by family name
       - address width is inferred from the explicit read/write address input lists
       - read address width must equal write address width
       - initialization words must match:

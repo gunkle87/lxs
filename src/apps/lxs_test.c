@@ -690,7 +690,17 @@ static int lxs_test_standard_ram_equivalence(
 	uint64_t lhs_out_masks[64];
 	uint64_t rhs_out_values[64];
 	uint64_t rhs_out_masks[64];
+	uint64_t write_scalar = 0xA5U;
 	int ok = 1;
+
+	if (data_width >= 24U)
+		{
+		write_scalar = 0xA5C33CU;
+		}
+	else if (data_width >= 16U)
+		{
+		write_scalar = 0xA55AU;
+		}
 
 	if (!lxs_load_case(reference_path, &lhs))
 		{
@@ -715,7 +725,7 @@ static int lxs_test_standard_ram_equivalence(
 
 	lxs_set_scalar_bits(values + 0U, masks + 0U, rhs.plan->rams[0].addr_width, 0U);
 	lxs_set_scalar_bits(values + rhs.plan->rams[0].addr_width, masks + rhs.plan->rams[0].addr_width, rhs.plan->rams[0].addr_width, 1U);
-	lxs_set_scalar_bits(values + (rhs.plan->rams[0].addr_width * 2U), masks + (rhs.plan->rams[0].addr_width * 2U), data_width, 0xA5U);
+	lxs_set_scalar_bits(values + (rhs.plan->rams[0].addr_width * 2U), masks + (rhs.plan->rams[0].addr_width * 2U), data_width, write_scalar);
 	values[(rhs.plan->rams[0].addr_width * 2U) + data_width] = ~0ULL;
 	masks[(rhs.plan->rams[0].addr_width * 2U) + data_width] = 0ULL;
 
@@ -936,6 +946,26 @@ static int lxs_test_ram8_explicit(void)
 		"Tests\\Circuits\\ram8_explicit.bench",
 		"ram8_explicit",
 		8U,
+		4U);
+	}
+
+static int lxs_test_ram16_explicit(void)
+	{
+	return lxs_test_standard_ram_equivalence(
+		"Tests\\Circuits\\ram16_reference.bench",
+		"Tests\\Circuits\\ram16_explicit.bench",
+		"ram16_explicit",
+		16U,
+		4U);
+	}
+
+static int lxs_test_ram24_explicit(void)
+	{
+	return lxs_test_standard_ram_equivalence(
+		"Tests\\Circuits\\ram24_reference.bench",
+		"Tests\\Circuits\\ram24_explicit.bench",
+		"ram24_explicit",
+		24U,
 		4U);
 	}
 
@@ -4463,6 +4493,8 @@ int main(void)
 	ok &= lxs_test_alu16_explicit();
 	ok &= lxs_test_rom16_explicit();
 	ok &= lxs_test_ram8_explicit();
+	ok &= lxs_test_ram16_explicit();
+	ok &= lxs_test_ram24_explicit();
 	ok &= lxs_test_xor2_macro();
 	ok &= lxs_test_xor2_nor_macro();
 	ok &= lxs_test_xnor2_macro();

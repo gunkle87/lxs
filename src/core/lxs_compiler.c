@@ -1075,14 +1075,28 @@ static int lxs_parse_standard_ram_name(
 	const char *gate_name,
 	uint32_t *data_width_out)
 	{
-	if (strcmp(gate_name, "RAM8") != 0)
+	uint32_t width_bits = 0U;
+
+	if (strcmp(gate_name, "RAM8") == 0)
+		{
+		width_bits = 8U;
+		}
+	else if (strcmp(gate_name, "RAM16") == 0)
+		{
+		width_bits = 16U;
+		}
+	else if (strcmp(gate_name, "RAM24") == 0)
+		{
+		width_bits = 24U;
+		}
+	else
 		{
 		return 0;
 		}
 
 	if (data_width_out)
 		{
-		*data_width_out = 8U;
+		*data_width_out = width_bits;
 		}
 	return 1;
 	}
