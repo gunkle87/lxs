@@ -286,10 +286,17 @@ for direct end-user CPU and system construction.
       - read/write conflict behavior
 
     ROM
-    - define:
-      - initialization source
-      - address width
-      - combinational versus registered output
+    - first admitted ROM contract:
+      - fixed family:
+        - `ROM16`
+      - data output width is fixed at 16 bits
+      - address width is inferred from the explicit address input list
+      - initialization words must match:
+        - `2^addr_width`
+      - read behavior is combinational over the compiled ROM image
+      - ROM contents are fixed at compile/load time
+      - ROM does not participate in writeback or commit machinery
+      - unknown address bits propagate through the existing ROM read semantics
 
     Registers
     - define:
