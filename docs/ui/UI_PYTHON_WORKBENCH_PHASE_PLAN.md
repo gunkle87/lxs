@@ -175,10 +175,16 @@ Every run must include:
 
 Every run also starts with a continuity preflight:
 
-- verify the latest run checkpoint hash matches `git rev-parse --short HEAD` in `C:\DEV\LXS_UI`
+- verify the latest run checkpoint hash is reachable from `HEAD` in `C:\DEV\LXS_UI`
 - verify `C:\DEV\LXS_UI` has a pushable remote when push is required by the run
 - verify the previous run's launch proof artifact exists
 - if any item is missing, stop, report, and do not begin implementation edits
+
+Run the preflight gate with:
+
+```cmd
+powershell -ExecutionPolicy Bypass -File .\scripts\preflight.ps1
+```
 
 ## Interaction Addendum
 

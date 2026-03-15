@@ -16,6 +16,14 @@ At the start of every fresh session, the implementation agent must read:
 - [UI_REPO_STRUCTURE_BASELINE.md](/c:/DEV/LXS/docs/ui/UI_REPO_STRUCTURE_BASELINE.md)
 - [UI_AGENT_DIRECTIVES.md](/c:/DEV/LXS/docs/ui/UI_AGENT_DIRECTIVES.md)
 
+Before any implementation or audit edits, run the preflight gate:
+
+```cmd
+powershell -ExecutionPolicy Bypass -File .\scripts\preflight.ps1
+```
+
+If this command exits non-zero, stop and report the blocker before making edits.
+
 The audit agent must read the same set before auditing.
 
 ## Documentation Required Per Implementation Run
@@ -52,8 +60,8 @@ Before starting any implementation run in `C:\DEV\LXS_UI`, the agent must run:
    - Confirm `C:\DEV\LXS` is not the active write target.
    - Confirm the current `git status` in `C:\DEV\LXS_UI` is clean for files outside the target run scope.
 2. **Checkpoint-hash continuity check**
-   - Read the latest completed run checkpoint, and verify `**Commit Hash:**` matches
-     `git rev-parse --short HEAD` of `C:\DEV\LXS_UI`.
+   - Read the latest completed run checkpoint, and verify `**Commit Hash:**`
+     points to a commit in `C:\DEV\LXS_UI` reachable from `HEAD`.
    - If the hash does not match, update only the checkpoint hash as a blocker correction.
 3. **Push precondition check**
    - Confirm `git remote -v` shows a valid push destination.
