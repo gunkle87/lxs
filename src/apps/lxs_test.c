@@ -326,6 +326,76 @@ static int lxs_test_standard_register_en_equivalence(
 	return ok;
 	}
 
+static int lxs_test_standard_register_en_rst_equivalence(
+	const char *reference_path,
+	const char *explicit_path,
+	const char *label_prefix,
+	uint32_t width_bits)
+	{
+	lxs_loaded_case lhs;
+	lxs_loaded_case rhs;
+	uint64_t values[66];
+	uint64_t masks[66];
+	uint64_t lhs_out_values[64];
+	uint64_t lhs_out_masks[64];
+	uint64_t rhs_out_values[64];
+	uint64_t rhs_out_masks[64];
+	uint64_t rng = 0x5245475F525354ULL;
+	int ok = 1;
+
+	if (!lxs_load_case(reference_path, &lhs))
+		{
+		fprintf(stderr, "FAIL %s: unable to load reference circuit\n", label_prefix);
+		return 0;
+		}
+
+	if (!lxs_load_case(explicit_path, &rhs))
+		{
+		fprintf(stderr, "FAIL %s: unable to load explicit circuit\n", label_prefix);
+		lxs_unload_case(&lhs);
+		return 0;
+		}
+
+	ok &= lxs_expect_u64(label_prefix, rhs.plan->register_count, 1ULL);
+	ok &= lxs_expect_u64("register_en_rst.width_bits", rhs.plan->registers[0].width_bits, width_bits);
+
+	memset(values, 0, sizeof(values));
+	memset(masks, 0, sizeof(masks));
+
+	for (uint32_t cycle = 0; cycle < 64U; ++cycle)
+		{
+		char label[128];
+		uint64_t enable = (lxs_next_rand(&rng) >> 63U) ? ~0ULL : 0ULL;
+		uint64_t reset = (lxs_next_rand(&rng) >> 63U) ? ~0ULL : 0ULL;
+
+		lxs_set_scalar_bits(values, masks, width_bits, lxs_next_rand(&rng));
+		values[width_bits] = enable;
+		values[width_bits + 1U] = reset;
+		masks[width_bits] = 0ULL;
+		masks[width_bits + 1U] = 0ULL;
+
+		lxs_apply_inputs(&lhs.ctx, lhs.plan, values, masks);
+		lxs_execute_plan(&lhs.ctx, lhs.plan);
+		lxs_read_outputs(&lhs.ctx, lhs.plan, lhs_out_values, lhs_out_masks);
+
+		lxs_apply_inputs(&rhs.ctx, rhs.plan, values, masks);
+		lxs_execute_plan(&rhs.ctx, rhs.plan);
+		lxs_read_outputs(&rhs.ctx, rhs.plan, rhs_out_values, rhs_out_masks);
+
+		for (uint32_t bit = 0; bit < width_bits; ++bit)
+			{
+			snprintf(label, sizeof(label), "%s.value.%u.%u", label_prefix, cycle, bit);
+			ok &= lxs_expect_u64(label, rhs_out_values[bit], lhs_out_values[bit]);
+			snprintf(label, sizeof(label), "%s.mask.%u.%u", label_prefix, cycle, bit);
+			ok &= lxs_expect_u64(label, rhs_out_masks[bit], lhs_out_masks[bit]);
+			}
+		}
+
+	lxs_unload_case(&lhs);
+	lxs_unload_case(&rhs);
+	return ok;
+	}
+
 static int lxs_test_mux2_8_explicit(void)
 	{
 	return lxs_test_standard_mux_equivalence(
@@ -383,6 +453,24 @@ static int lxs_test_reg_en16_explicit(void)
 		"Tests\\Circuits\\reg_en16_reference.bench",
 		"Tests\\Circuits\\reg_en16_explicit.bench",
 		"reg_en16_explicit",
+		16U);
+	}
+
+static int lxs_test_reg_en_rst8_explicit(void)
+	{
+	return lxs_test_standard_register_en_rst_equivalence(
+		"Tests\\Circuits\\reg_en_rst8_reference.bench",
+		"Tests\\Circuits\\reg_en_rst8_explicit.bench",
+		"reg_en_rst8_explicit",
+		8U);
+	}
+
+static int lxs_test_reg_en_rst16_explicit(void)
+	{
+	return lxs_test_standard_register_en_rst_equivalence(
+		"Tests\\Circuits\\reg_en_rst16_reference.bench",
+		"Tests\\Circuits\\reg_en_rst16_explicit.bench",
+		"reg_en_rst16_explicit",
 		16U);
 	}
 
@@ -3900,6 +3988,8 @@ int main(void)
 	ok &= lxs_test_reg16_explicit();
 	ok &= lxs_test_reg_en8_explicit();
 	ok &= lxs_test_reg_en16_explicit();
+	ok &= lxs_test_reg_en_rst8_explicit();
+	ok &= lxs_test_reg_en_rst16_explicit();
 	ok &= lxs_test_xor2_macro();
 	ok &= lxs_test_xor2_nor_macro();
 	ok &= lxs_test_xnor2_macro();

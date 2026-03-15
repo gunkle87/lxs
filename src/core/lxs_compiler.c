@@ -774,6 +774,47 @@ static int lxs_parse_standard_register_en_name(
 	return 1;
 	}
 
+static int lxs_parse_standard_register_en_rst_name(
+	const char *gate_name,
+	uint32_t *width_bits_out)
+	{
+	uint32_t width_bits = 0U;
+	const char *width_text = NULL;
+
+	if (strncmp(gate_name, "REG_EN_RST", 10) != 0)
+		{
+		return 0;
+		}
+
+	width_text = gate_name + 10;
+	if (strcmp(width_text, "8") == 0)
+		{
+		width_bits = 8U;
+		}
+	else if (strcmp(width_text, "16") == 0)
+		{
+		width_bits = 16U;
+		}
+	else if (strcmp(width_text, "32") == 0)
+		{
+		width_bits = 32U;
+		}
+	else if (strcmp(width_text, "64") == 0)
+		{
+		width_bits = 64U;
+		}
+	else
+		{
+		return 0;
+		}
+
+	if (width_bits_out)
+		{
+		*width_bits_out = width_bits;
+		}
+	return 1;
+	}
+
 static int lxs_emit_standard_mux_descriptor(
 	lxs_netlist *nl,
 	const uint32_t *outputs,
@@ -1086,6 +1127,45 @@ static int lxs_emit_register_descriptor(
 	reg.mode = control_net == UINT32_MAX ? LXS_REGISTER_MODE_PLAIN :
 		(control_invert ? LXS_REGISTER_MODE_HOLD : LXS_REGISTER_MODE_ENABLE);
 	reg.control_invert = control_invert;
+
+	for (uint32_t i = 0; i < width_bits; ++i)
+		{
+		if (!lxs_push_u32(
+				&nl->source_register_input_net_ids,
+				&nl->source_register_input_count,
+				&nl->source_register_input_cap,
+				inputs[i]) ||
+			!lxs_push_u32(
+				&nl->source_register_output_net_ids,
+				&nl->source_register_output_count,
+				&nl->source_register_output_cap,
+				outputs[i]))
+			{
+			return 0;
+			}
+		}
+
+	return lxs_push_source_register(nl, &reg);
+	}
+
+static int lxs_emit_register_en_rst_descriptor(
+	lxs_netlist *nl,
+	const uint32_t *outputs,
+	const uint32_t *inputs,
+	uint32_t width_bits,
+	uint32_t enable_net,
+	uint32_t reset_net)
+	{
+	lxs_source_register reg;
+
+	memset(&reg, 0, sizeof(reg));
+	reg.width_bits = width_bits;
+	reg.input_start = nl->source_register_input_count;
+	reg.output_start = nl->source_register_output_count;
+	reg.control_net = enable_net;
+	reg.aux_control_net = reset_net;
+	reg.mode = LXS_REGISTER_MODE_ENABLE_RESET;
+	reg.control_invert = 0U;
 
 	for (uint32_t i = 0; i < width_bits; ++i)
 		{
@@ -7176,9 +7256,13 @@ static lxs_netlist* lxs_load_bench(const char *path)
 
 		uint32_t standard_register_width_bits = 0U;
 		uint32_t standard_register_en_width_bits = 0U;
+		uint32_t standard_register_en_rst_width_bits = 0U;
 		uint8_t is_standard_register_en = lxs_parse_standard_register_en_name(
 			gate_name,
 			&standard_register_en_width_bits);
+		uint8_t is_standard_register_en_rst = lxs_parse_standard_register_en_rst_name(
+			gate_name,
+			&standard_register_en_rst_width_bits);
 		if (strcmp(gate_name, "REGISTER") == 0 ||
 			lxs_parse_standard_register_name(gate_name, &standard_register_width_bits))
 			{
@@ -7262,6 +7346,67 @@ static lxs_netlist* lxs_load_bench(const char *path)
 					output_count,
 					control_net,
 					control_invert))
+				{
+				lxs_free_netlist(nl);
+				fclose(stream);
+				return NULL;
+				}
+			is_special_macro = 1U;
+			}
+		else if (strcmp(gate_name, "REGISTER_EN_RST") == 0 ||
+			is_standard_register_en_rst)
+			{
+			char *section_ctx = NULL;
+			char *sections[3];
+			uint32_t section_count = 0U;
+			char *section = strtok_s(open_paren + 1, ";", &section_ctx);
+			char *input_ctx = NULL;
+			char *input_token;
+			uint32_t enable_net;
+			uint32_t reset_net;
+
+			while (section && section_count < 3U)
+				{
+				sections[section_count++] = lxs_trim(section);
+				section = strtok_s(NULL, ";", &section_ctx);
+				}
+
+			if (section_count != 3U)
+				{
+				lxs_free_netlist(nl);
+				fclose(stream);
+				return NULL;
+				}
+
+			input_token = strtok_s(sections[0], ",", &input_ctx);
+			while (input_token && input_count < 64U)
+				{
+				input_ids[input_count] = lxs_intern_net(nl, lxs_trim(input_token));
+				if (input_ids[input_count] == UINT32_MAX)
+					{
+					lxs_free_netlist(nl);
+					fclose(stream);
+					return NULL;
+					}
+				input_count++;
+				input_token = strtok_s(NULL, ",", &input_ctx);
+				}
+
+			enable_net = lxs_intern_net(nl, lxs_trim(sections[1]));
+			reset_net = lxs_intern_net(nl, lxs_trim(sections[2]));
+			if (enable_net == UINT32_MAX ||
+				reset_net == UINT32_MAX ||
+				output_count == 0U ||
+				output_count != input_count ||
+				(is_standard_register_en_rst &&
+					output_count != standard_register_en_rst_width_bits) ||
+				!lxs_emit_register_en_rst_descriptor(
+					nl,
+					output_ids,
+					input_ids,
+					output_count,
+					enable_net,
+					reset_net))
 				{
 				lxs_free_netlist(nl);
 				fclose(stream);

@@ -305,6 +305,75 @@ static void lxs_capture_next_registers(
 			continue;
 			}
 
+		if (reg->mode == LXS_REGISTER_MODE_ENABLE_RESET)
+			{
+			uint64_t enable_value = 0ULL;
+			uint64_t enable_mask = 0ULL;
+			uint64_t reset_value = 0ULL;
+			uint64_t reset_mask = 0ULL;
+			uint64_t effective_enable_value;
+			uint64_t effective_enable_mask;
+			uint64_t not_reset_value;
+			uint64_t not_reset_mask;
+
+			if (reg->control_net != UINT32_MAX)
+				{
+				enable_value = ctx->net_value[reg->control_net];
+				enable_mask = ctx->net_mask[reg->control_net];
+				}
+			if (reg->aux_control_net != UINT32_MAX)
+				{
+				reset_value = ctx->net_value[reg->aux_control_net];
+				reset_mask = ctx->net_mask[reg->aux_control_net];
+				}
+
+			LXS_EVAL_OR(
+				enable_value,
+				enable_mask,
+				reset_value,
+				reset_mask,
+				effective_enable_value,
+				effective_enable_mask);
+			LXS_EVAL_NOT(reset_value, reset_mask, not_reset_value, not_reset_mask);
+			capture_inputs = 0U;
+			if (effective_enable_mask != 0ULL)
+				{
+				capture_inputs = 1U;
+				}
+			else if (effective_enable_value != 0ULL)
+				{
+				capture_inputs = 1U;
+				}
+
+			for (uint32_t bit = 0; bit < reg->width_bits; ++bit)
+				{
+				uint32_t storage_index = reg->storage_offset + bit;
+
+				if (capture_inputs)
+					{
+					uint32_t net_id = plan->register_input_net_ids[reg->input_start + bit];
+					uint64_t next_value;
+					uint64_t next_mask;
+
+					LXS_EVAL_AND(
+						ctx->net_value[net_id],
+						ctx->net_mask[net_id],
+						not_reset_value,
+						not_reset_mask,
+						next_value,
+						next_mask);
+					ctx->next_register_value[storage_index] = next_value;
+					ctx->next_register_mask[storage_index] = next_mask;
+					}
+				else
+					{
+					ctx->next_register_value[storage_index] = ctx->register_value[storage_index];
+					ctx->next_register_mask[storage_index] = ctx->register_mask[storage_index];
+					}
+				}
+			continue;
+			}
+
 		if (reg->control_net != UINT32_MAX)
 			{
 			uint64_t control_value = ctx->net_value[reg->control_net];

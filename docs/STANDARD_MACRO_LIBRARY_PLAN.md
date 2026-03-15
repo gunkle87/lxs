@@ -281,6 +281,15 @@ for direct end-user CPU and system construction.
       - enable behavior
       - reset behavior
       - power-on or initial state expectations if any
+    - first admitted reset contract:
+      - synchronous
+      - active-high
+      - reset value is all-zero
+      - reset takes precedence over enable
+      - when reset is not asserted, enable semantics follow the existing
+        register-enable contract
+      - unknown reset participates in normal 4-state control propagation rather
+        than being silently coerced to 0 or 1
 
     Register file
     - define:
