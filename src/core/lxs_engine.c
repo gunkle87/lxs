@@ -192,6 +192,62 @@ static void lxs_execute_rams(
 		}
 	}
 
+static void lxs_execute_regfiles(
+	lxs_engine_ctx *ctx,
+	const lxs_plan *plan)
+	{
+	for (uint32_t i = 0; i < plan->regfile_count; ++i)
+		{
+		const lxs_regfile_plan *regfile = &plan->regfiles[i];
+		uint8_t unknown_a = 0U;
+		uint8_t unknown_b = 0U;
+		uint32_t address_a = lxs_read_index_bits(
+			ctx,
+			plan->regfile_read_a_addr_net_ids,
+			regfile->read_a_addr_start,
+			regfile->addr_width,
+			&unknown_a);
+		uint32_t address_b = lxs_read_index_bits(
+			ctx,
+			plan->regfile_read_b_addr_net_ids,
+			regfile->read_b_addr_start,
+			regfile->addr_width,
+			&unknown_b);
+
+		if (unknown_a || address_a >= regfile->depth)
+			{
+			lxs_write_unknown_outputs(ctx, plan->regfile_output_net_ids, regfile->output_start, regfile->data_width);
+			}
+		else
+			{
+			for (uint32_t bit = 0; bit < regfile->data_width; ++bit)
+				{
+				uint32_t net_id = plan->regfile_output_net_ids[regfile->output_start + bit];
+				uint32_t storage_index = regfile->storage_offset + (address_a * regfile->data_width) + bit;
+
+				ctx->net_value[net_id] = ctx->regfile_value[storage_index];
+				ctx->net_mask[net_id] = ctx->regfile_mask[storage_index];
+				}
+			}
+
+		if (unknown_b || address_b >= regfile->depth)
+			{
+			lxs_write_unknown_outputs(ctx, plan->regfile_output_net_ids, regfile->output_start + regfile->data_width, regfile->data_width);
+			}
+		else
+			{
+			for (uint32_t bit = 0; bit < regfile->data_width; ++bit)
+				{
+				uint32_t net_id = plan->regfile_output_net_ids[regfile->output_start + regfile->data_width + bit];
+				uint32_t storage_index = regfile->storage_offset + (address_b * regfile->data_width) + bit;
+
+				ctx->net_value[net_id] = ctx->regfile_value[storage_index];
+				ctx->net_mask[net_id] = ctx->regfile_mask[storage_index];
+				}
+			}
+		}
+	}
+
 static void lxs_capture_counter_step(
 	lxs_engine_ctx *ctx,
 	const lxs_register_plan *reg,
@@ -493,6 +549,60 @@ static void lxs_capture_rams(
 		}
 	}
 
+static void lxs_capture_regfiles(
+	lxs_engine_ctx *ctx,
+	const lxs_plan *plan)
+	{
+	for (uint32_t i = 0; i < plan->regfile_count; ++i)
+		{
+		const lxs_regfile_plan *regfile = &plan->regfiles[i];
+		uint8_t unknown = 0U;
+		uint32_t write_enable_net = regfile->write_enable_net;
+		uint64_t write_enable_value;
+
+		ctx->regfile_pending_write[i] = 0U;
+		if (write_enable_net == UINT32_MAX)
+			{
+			write_enable_value = ~0ULL;
+			}
+		else
+			{
+			if (ctx->net_mask[write_enable_net] != 0ULL)
+				{
+				continue;
+				}
+			write_enable_value = ctx->net_value[write_enable_net];
+			}
+
+		if (write_enable_value == 0ULL)
+			{
+			continue;
+			}
+
+		ctx->regfile_pending_addr[i] = lxs_read_index_bits(
+			ctx,
+			plan->regfile_write_addr_net_ids,
+			regfile->write_addr_start,
+			regfile->addr_width,
+			&unknown);
+		if (unknown || ctx->regfile_pending_addr[i] >= regfile->depth)
+			{
+			continue;
+			}
+
+		for (uint32_t bit = 0; bit < regfile->data_width; ++bit)
+			{
+			uint32_t stage_index = regfile->stage_offset + bit;
+			uint32_t net_id = plan->regfile_data_input_net_ids[regfile->data_input_start + bit];
+
+			ctx->regfile_stage_value[stage_index] = ctx->net_value[net_id];
+			ctx->regfile_stage_mask[stage_index] = ctx->net_mask[net_id];
+			}
+
+		ctx->regfile_pending_write[i] = 1U;
+		}
+	}
+
 static void lxs_commit_rams(
 	lxs_engine_ctx *ctx,
 	const lxs_plan *plan)
@@ -527,6 +637,43 @@ static void lxs_commit_rams(
 
 		ctx->ram_pending_write[i] = 0U;
 		ctx->probes.state_commit_count += ram->data_width;
+		}
+	}
+
+static void lxs_commit_regfiles(
+	lxs_engine_ctx *ctx,
+	const lxs_plan *plan)
+	{
+	for (uint32_t i = 0; i < plan->regfile_count; ++i)
+		{
+		const lxs_regfile_plan *regfile = &plan->regfiles[i];
+		uint32_t address;
+
+		if (!ctx->regfile_pending_write[i])
+			{
+			continue;
+			}
+
+		address = ctx->regfile_pending_addr[i];
+		for (uint32_t bit = 0; bit < regfile->data_width; ++bit)
+			{
+			uint32_t stage_index = regfile->stage_offset + bit;
+			uint32_t storage_index = regfile->storage_offset + (address * regfile->data_width) + bit;
+
+#if LXS_TEST_PROBES
+			if (ctx->regfile_value[storage_index] != ctx->regfile_stage_value[stage_index] ||
+				ctx->regfile_mask[storage_index] != ctx->regfile_stage_mask[stage_index])
+				{
+				ctx->probes.state_change_commit++;
+				}
+#endif
+
+			ctx->regfile_value[storage_index] = ctx->regfile_stage_value[stage_index];
+			ctx->regfile_mask[storage_index] = ctx->regfile_stage_mask[stage_index];
+			}
+
+		ctx->regfile_pending_write[i] = 0U;
+		ctx->probes.state_commit_count += regfile->data_width;
 		}
 	}
 
@@ -2880,6 +3027,12 @@ int lxs_init_engine(lxs_engine_ctx *ctx, const lxs_plan *plan)
 	ctx->ram_stage_mask = lxs_calloc_aligned(plan->ram_stage_bit_count, sizeof(uint64_t));
 	ctx->ram_pending_addr = lxs_calloc_aligned(plan->ram_count, sizeof(uint32_t));
 	ctx->ram_pending_write = lxs_calloc_aligned(plan->ram_count, sizeof(uint8_t));
+	ctx->regfile_value = lxs_calloc_aligned(plan->regfile_storage_bit_count, sizeof(uint64_t));
+	ctx->regfile_mask = lxs_calloc_aligned(plan->regfile_storage_bit_count, sizeof(uint64_t));
+	ctx->regfile_stage_value = lxs_calloc_aligned(plan->regfile_stage_bit_count, sizeof(uint64_t));
+	ctx->regfile_stage_mask = lxs_calloc_aligned(plan->regfile_stage_bit_count, sizeof(uint64_t));
+	ctx->regfile_pending_addr = lxs_calloc_aligned(plan->regfile_count, sizeof(uint32_t));
+	ctx->regfile_pending_write = lxs_calloc_aligned(plan->regfile_count, sizeof(uint8_t));
 
 #if LXS_TEST_PROBES
 	ctx->input_shadow_value = lxs_calloc_aligned(plan->inputs.count, sizeof(uint64_t));
@@ -2894,7 +3047,10 @@ int lxs_init_engine(lxs_engine_ctx *ctx, const lxs_plan *plan)
 			!ctx->next_register_value || !ctx->next_register_mask)) ||
 		(plan->ram_storage_bit_count && (!ctx->ram_value || !ctx->ram_mask)) ||
 		(plan->ram_stage_bit_count && (!ctx->ram_stage_value || !ctx->ram_stage_mask)) ||
-		(plan->ram_count && (!ctx->ram_pending_addr || !ctx->ram_pending_write))
+		(plan->ram_count && (!ctx->ram_pending_addr || !ctx->ram_pending_write)) ||
+		(plan->regfile_storage_bit_count && (!ctx->regfile_value || !ctx->regfile_mask)) ||
+		(plan->regfile_stage_bit_count && (!ctx->regfile_stage_value || !ctx->regfile_stage_mask)) ||
+		(plan->regfile_count && (!ctx->regfile_pending_addr || !ctx->regfile_pending_write))
 #if LXS_TEST_PROBES
 		|| (plan->inputs.count && (!ctx->input_shadow_value || !ctx->input_shadow_mask))
 #endif
@@ -2978,6 +3134,36 @@ void lxs_reset_engine(lxs_engine_ctx *ctx, const lxs_plan *plan)
 		memset(ctx->ram_pending_write, 0, (size_t)plan->ram_count * sizeof(uint8_t));
 		}
 
+	if (plan->regfile_storage_bit_count > 0U)
+		{
+		memcpy(
+			ctx->regfile_value,
+			plan->regfile_init_value,
+			(size_t)plan->regfile_storage_bit_count * sizeof(uint64_t));
+		memcpy(
+			ctx->regfile_mask,
+			plan->regfile_init_mask,
+			(size_t)plan->regfile_storage_bit_count * sizeof(uint64_t));
+		}
+
+	if (plan->regfile_stage_bit_count > 0U)
+		{
+		memset(
+			ctx->regfile_stage_value,
+			0,
+			(size_t)plan->regfile_stage_bit_count * sizeof(uint64_t));
+		memset(
+			ctx->regfile_stage_mask,
+			0,
+			(size_t)plan->regfile_stage_bit_count * sizeof(uint64_t));
+		}
+
+	if (plan->regfile_count > 0U)
+		{
+		memset(ctx->regfile_pending_addr, 0, (size_t)plan->regfile_count * sizeof(uint32_t));
+		memset(ctx->regfile_pending_write, 0, (size_t)plan->regfile_count * sizeof(uint8_t));
+		}
+
 #if LXS_TEST_PROBES
 	if (plan->inputs.count > 0U)
 		{
@@ -3008,6 +3194,12 @@ void lxs_free_engine(lxs_engine_ctx *ctx)
 	lxs_free_aligned(ctx->ram_stage_mask);
 	lxs_free_aligned(ctx->ram_pending_addr);
 	lxs_free_aligned(ctx->ram_pending_write);
+	lxs_free_aligned(ctx->regfile_value);
+	lxs_free_aligned(ctx->regfile_mask);
+	lxs_free_aligned(ctx->regfile_stage_value);
+	lxs_free_aligned(ctx->regfile_stage_mask);
+	lxs_free_aligned(ctx->regfile_pending_addr);
+	lxs_free_aligned(ctx->regfile_pending_write);
 
 #if LXS_TEST_PROBES
 	lxs_free_aligned(ctx->input_shadow_value);
@@ -3396,14 +3588,17 @@ void lxs_execute_plan(lxs_engine_ctx *ctx, const lxs_plan *plan)
 	lxs_begin_tick(ctx);
 	lxs_execute_roms(ctx, plan);
 	lxs_execute_rams(ctx, plan);
+	lxs_execute_regfiles(ctx, plan);
 	lxs_execute_levels(ctx, plan);
 	lxs_capture_outputs(ctx, plan);
 	lxs_capture_next_state(ctx, plan);
 	lxs_capture_next_registers(ctx, plan);
 	lxs_capture_rams(ctx, plan);
+	lxs_capture_regfiles(ctx, plan);
 	lxs_commit_state(ctx, plan);
 	lxs_commit_registers(ctx, plan);
 	lxs_commit_rams(ctx, plan);
+	lxs_commit_regfiles(ctx, plan);
 	}
 
 void lxs_read_outputs(

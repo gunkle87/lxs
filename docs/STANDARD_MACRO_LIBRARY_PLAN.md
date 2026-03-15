@@ -334,11 +334,41 @@ for direct end-user CPU and system construction.
       - no flag packing or encoded status word in the first admitted family
 
     Register file
-    - define:
-      - port count
-      - read timing
-      - write timing
-      - same-cycle read/write behavior
+    - first admitted register-file contract:
+      - fixed families:
+        - `REGFILE8_2R1W`
+        - `REGFILE16_2R1W`
+        - `REGFILE32_2R1W`
+      - two read ports and one write port
+      - outputs are ordered:
+        - `read_a[W]`
+        - `read_b[W]`
+      - data width is fixed by family name
+      - depth is inferred from the explicit address input lists
+      - read-a, read-b, and write address widths must match
+      - read behavior is combinational over current committed storage contents
+      - write behavior is synchronous and becomes visible only after commit
+      - write-enable is active-high
+      - same-cycle read-during-write returns the pre-commit stored value on both read ports
+      - 4-state behavior follows the admitted memory-family conventions
+
+    Counters
+    - first admitted counter contract:
+      - fixed families:
+        - `COUNTER8`
+        - `COUNTER16`
+        - `COUNTER32`
+        - `COUNTER64`
+        - `COUNTER_EN8`
+        - `COUNTER_EN16`
+        - `COUNTER_EN32`
+        - `COUNTER_EN64`
+      - `COUNTER*` increments once per tick
+      - `COUNTER_EN*` increments once per tick only when enable is asserted
+      - enable is active-high
+      - count wraps modulo `2^W`
+      - updated state becomes visible after commit
+      - unknown enable follows the existing counter-control 4-state behavior
 
 ## 12. Runtime Representation
     The compiler should emit dedicated macro descriptors, not expanded runtime

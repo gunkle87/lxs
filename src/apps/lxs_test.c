@@ -797,6 +797,202 @@ static int lxs_test_standard_ram_equivalence(
 	return ok;
 	}
 
+static int lxs_test_standard_regfile_equivalence(
+	const char *reference_path,
+	const char *explicit_path,
+	const char *label_prefix,
+	uint32_t data_width,
+	uint32_t expected_depth)
+	{
+	lxs_loaded_case lhs;
+	lxs_loaded_case rhs;
+	uint64_t values[192];
+	uint64_t masks[192];
+	uint64_t lhs_out_values[128];
+	uint64_t lhs_out_masks[128];
+	uint64_t rhs_out_values[128];
+	uint64_t rhs_out_masks[128];
+	uint64_t rng = 0x52454746494C455FULL;
+	int ok = 1;
+
+	if (!lxs_load_case(reference_path, &lhs))
+		{
+		fprintf(stderr, "FAIL %s: unable to load reference circuit\n", label_prefix);
+		return 0;
+		}
+
+	if (!lxs_load_case(explicit_path, &rhs))
+		{
+		fprintf(stderr, "FAIL %s: unable to load explicit circuit\n", label_prefix);
+		lxs_unload_case(&lhs);
+		return 0;
+		}
+
+	ok &= lxs_expect_u64(label_prefix, rhs.plan->regfile_count, 1ULL);
+	ok &= lxs_expect_u64("standard_regfile.data_width", rhs.plan->regfiles[0].data_width, data_width);
+	ok &= lxs_expect_u64("standard_regfile.depth", rhs.plan->regfiles[0].depth, expected_depth);
+	ok &= lxs_expect_u64("standard_regfile.output_count", rhs.plan->outputs.count, data_width * 2U);
+
+	memset(masks, 0, sizeof(masks));
+	for (uint32_t cycle = 0; cycle < 64U; ++cycle)
+		{
+		char label[128];
+		uint32_t addr_width = rhs.plan->regfiles[0].addr_width;
+		uint32_t read_a = (uint32_t)(lxs_next_rand(&rng) & ((1U << addr_width) - 1U));
+		uint32_t read_b = (uint32_t)(lxs_next_rand(&rng) & ((1U << addr_width) - 1U));
+		uint32_t write_a = (uint32_t)(lxs_next_rand(&rng) & ((1U << addr_width) - 1U));
+		uint64_t enable = (lxs_next_rand(&rng) >> 63U) ? ~0ULL : 0ULL;
+
+		memset(values, 0, sizeof(values));
+		lxs_set_scalar_bits(values, masks, addr_width, read_a);
+		lxs_set_scalar_bits(values + addr_width, masks + addr_width, addr_width, read_b);
+		lxs_set_scalar_bits(values + (addr_width * 2U), masks + (addr_width * 2U), addr_width, write_a);
+		lxs_set_scalar_bits(values + (addr_width * 3U), masks + (addr_width * 3U), data_width, lxs_next_rand(&rng));
+		values[(addr_width * 3U) + data_width] = enable;
+		masks[(addr_width * 3U) + data_width] = 0ULL;
+
+		lxs_apply_inputs(&lhs.ctx, lhs.plan, values, masks);
+		lxs_execute_plan(&lhs.ctx, lhs.plan);
+		lxs_read_outputs(&lhs.ctx, lhs.plan, lhs_out_values, lhs_out_masks);
+
+		lxs_apply_inputs(&rhs.ctx, rhs.plan, values, masks);
+		lxs_execute_plan(&rhs.ctx, rhs.plan);
+		lxs_read_outputs(&rhs.ctx, rhs.plan, rhs_out_values, rhs_out_masks);
+
+		for (uint32_t out = 0; out < (data_width * 2U); ++out)
+			{
+			snprintf(label, sizeof(label), "%s.value.%u.%u", label_prefix, cycle, out);
+			ok &= lxs_expect_u64(label, rhs_out_values[out], lhs_out_values[out]);
+			snprintf(label, sizeof(label), "%s.mask.%u.%u", label_prefix, cycle, out);
+			ok &= lxs_expect_u64(label, rhs_out_masks[out], lhs_out_masks[out]);
+			}
+		}
+
+	lxs_unload_case(&lhs);
+	lxs_unload_case(&rhs);
+	return ok;
+	}
+
+static int lxs_test_standard_counter_equivalence(
+	const char *reference_path,
+	const char *explicit_path,
+	const char *label_prefix,
+	uint32_t width_bits)
+	{
+	lxs_loaded_case lhs;
+	lxs_loaded_case rhs;
+	uint64_t lhs_values[1];
+	uint64_t lhs_masks[1];
+	uint64_t lhs_out_values[64];
+	uint64_t lhs_out_masks[64];
+	uint64_t rhs_out_values[64];
+	uint64_t rhs_out_masks[64];
+	int ok = 1;
+
+	if (!lxs_load_case(reference_path, &lhs))
+		{
+		fprintf(stderr, "FAIL %s: unable to load reference circuit\n", label_prefix);
+		return 0;
+		}
+
+	if (!lxs_load_case(explicit_path, &rhs))
+		{
+		fprintf(stderr, "FAIL %s: unable to load explicit circuit\n", label_prefix);
+		lxs_unload_case(&lhs);
+		return 0;
+		}
+
+	ok &= lxs_expect_u64(label_prefix, rhs.plan->register_count, 1ULL);
+	ok &= lxs_expect_u64("standard_counter.width_bits", rhs.plan->registers[0].width_bits, width_bits);
+
+	memset(lhs_masks, 0, sizeof(lhs_masks));
+	lhs_values[0] = ~0ULL;
+	for (uint32_t cycle = 0; cycle < 64U; ++cycle)
+		{
+		char label[128];
+
+		lxs_apply_inputs(&lhs.ctx, lhs.plan, lhs_values, lhs_masks);
+		lxs_execute_plan(&lhs.ctx, lhs.plan);
+		lxs_read_outputs(&lhs.ctx, lhs.plan, lhs_out_values, lhs_out_masks);
+
+		lxs_execute_plan(&rhs.ctx, rhs.plan);
+		lxs_read_outputs(&rhs.ctx, rhs.plan, rhs_out_values, rhs_out_masks);
+
+		for (uint32_t bit = 0; bit < width_bits; ++bit)
+			{
+			snprintf(label, sizeof(label), "%s.value.%u.%u", label_prefix, cycle, bit);
+			ok &= lxs_expect_u64(label, rhs_out_values[bit], lhs_out_values[bit]);
+			snprintf(label, sizeof(label), "%s.mask.%u.%u", label_prefix, cycle, bit);
+			ok &= lxs_expect_u64(label, rhs_out_masks[bit], lhs_out_masks[bit]);
+			}
+		}
+
+	lxs_unload_case(&lhs);
+	lxs_unload_case(&rhs);
+	return ok;
+	}
+
+static int lxs_test_standard_counter_en_equivalence(
+	const char *reference_path,
+	const char *explicit_path,
+	const char *label_prefix,
+	uint32_t width_bits)
+	{
+	lxs_loaded_case lhs;
+	lxs_loaded_case rhs;
+	uint64_t values[1];
+	uint64_t masks[1];
+	uint64_t lhs_out_values[64];
+	uint64_t lhs_out_masks[64];
+	uint64_t rhs_out_values[64];
+	uint64_t rhs_out_masks[64];
+	uint64_t rng = 0x434F554E54455245ULL;
+	int ok = 1;
+
+	if (!lxs_load_case(reference_path, &lhs))
+		{
+		fprintf(stderr, "FAIL %s: unable to load reference circuit\n", label_prefix);
+		return 0;
+		}
+
+	if (!lxs_load_case(explicit_path, &rhs))
+		{
+		fprintf(stderr, "FAIL %s: unable to load explicit circuit\n", label_prefix);
+		lxs_unload_case(&lhs);
+		return 0;
+		}
+
+	ok &= lxs_expect_u64(label_prefix, rhs.plan->register_count, 1ULL);
+	ok &= lxs_expect_u64("standard_counter_en.width_bits", rhs.plan->registers[0].width_bits, width_bits);
+
+	memset(masks, 0, sizeof(masks));
+	for (uint32_t cycle = 0; cycle < 64U; ++cycle)
+		{
+		char label[128];
+		values[0] = (lxs_next_rand(&rng) >> 63U) ? ~0ULL : 0ULL;
+
+		lxs_apply_inputs(&lhs.ctx, lhs.plan, values, masks);
+		lxs_execute_plan(&lhs.ctx, lhs.plan);
+		lxs_read_outputs(&lhs.ctx, lhs.plan, lhs_out_values, lhs_out_masks);
+
+		lxs_apply_inputs(&rhs.ctx, rhs.plan, values, masks);
+		lxs_execute_plan(&rhs.ctx, rhs.plan);
+		lxs_read_outputs(&rhs.ctx, rhs.plan, rhs_out_values, rhs_out_masks);
+
+		for (uint32_t bit = 0; bit < width_bits; ++bit)
+			{
+			snprintf(label, sizeof(label), "%s.value.%u.%u", label_prefix, cycle, bit);
+			ok &= lxs_expect_u64(label, rhs_out_values[bit], lhs_out_values[bit]);
+			snprintf(label, sizeof(label), "%s.mask.%u.%u", label_prefix, cycle, bit);
+			ok &= lxs_expect_u64(label, rhs_out_masks[bit], lhs_out_masks[bit]);
+			}
+		}
+
+	lxs_unload_case(&lhs);
+	lxs_unload_case(&rhs);
+	return ok;
+	}
+
 static int lxs_test_mux2_8_explicit(void)
 	{
 	return lxs_test_standard_mux_equivalence(
@@ -947,6 +1143,72 @@ static int lxs_test_ram8_explicit(void)
 		"ram8_explicit",
 		8U,
 		4U);
+	}
+
+static int lxs_test_regfile8_explicit(void)
+	{
+	return lxs_test_standard_regfile_equivalence(
+		"Tests\\Circuits\\regfile8_reference.bench",
+		"Tests\\Circuits\\regfile8_explicit.bench",
+		"regfile8_explicit",
+		8U,
+		2U);
+	}
+
+static int lxs_test_regfile16_explicit(void)
+	{
+	return lxs_test_standard_regfile_equivalence(
+		"Tests\\Circuits\\regfile16_reference.bench",
+		"Tests\\Circuits\\regfile16_explicit.bench",
+		"regfile16_explicit",
+		16U,
+		2U);
+	}
+
+static int lxs_test_regfile32_explicit(void)
+	{
+	return lxs_test_standard_regfile_equivalence(
+		"Tests\\Circuits\\regfile32_reference.bench",
+		"Tests\\Circuits\\regfile32_explicit.bench",
+		"regfile32_explicit",
+		32U,
+		2U);
+	}
+
+static int lxs_test_counter8_explicit(void)
+	{
+	return lxs_test_standard_counter_equivalence(
+		"Tests\\Circuits\\counter8_reference.bench",
+		"Tests\\Circuits\\counter8_explicit.bench",
+		"counter8_explicit",
+		8U);
+	}
+
+static int lxs_test_counter16_explicit(void)
+	{
+	return lxs_test_standard_counter_equivalence(
+		"Tests\\Circuits\\counter16_reference.bench",
+		"Tests\\Circuits\\counter16_explicit.bench",
+		"counter16_explicit",
+		16U);
+	}
+
+static int lxs_test_counter_en8_explicit(void)
+	{
+	return lxs_test_standard_counter_en_equivalence(
+		"Tests\\Circuits\\counter_en8_reference.bench",
+		"Tests\\Circuits\\counter_en8_explicit.bench",
+		"counter_en8_explicit",
+		8U);
+	}
+
+static int lxs_test_counter_en16_explicit(void)
+	{
+	return lxs_test_standard_counter_en_equivalence(
+		"Tests\\Circuits\\counter_en16_reference.bench",
+		"Tests\\Circuits\\counter_en16_explicit.bench",
+		"counter_en16_explicit",
+		16U);
 	}
 
 static int lxs_test_ram16_explicit(void)
@@ -4495,6 +4757,13 @@ int main(void)
 	ok &= lxs_test_ram8_explicit();
 	ok &= lxs_test_ram16_explicit();
 	ok &= lxs_test_ram24_explicit();
+	ok &= lxs_test_regfile8_explicit();
+	ok &= lxs_test_regfile16_explicit();
+	ok &= lxs_test_regfile32_explicit();
+	ok &= lxs_test_counter8_explicit();
+	ok &= lxs_test_counter16_explicit();
+	ok &= lxs_test_counter_en8_explicit();
+	ok &= lxs_test_counter_en16_explicit();
 	ok &= lxs_test_xor2_macro();
 	ok &= lxs_test_xor2_nor_macro();
 	ok &= lxs_test_xnor2_macro();

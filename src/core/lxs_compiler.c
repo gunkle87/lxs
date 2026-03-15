@@ -427,6 +427,28 @@ static int lxs_reserve_source_rams(
 	return *items != NULL;
 	}
 
+static int lxs_reserve_source_regfiles(
+	lxs_source_regfile **items,
+	uint32_t *cap,
+	uint32_t needed)
+	{
+	size_t old_size;
+
+	if (needed <= *cap)
+		{
+		return 1;
+		}
+
+	old_size = (size_t)(*cap) * sizeof(lxs_source_regfile);
+	while (*cap < needed)
+		{
+		*cap = (*cap == 0U) ? LXS_INITIAL_CAP : (*cap * 2U);
+		}
+
+	*items = lxs_realloc_aligned(*items, old_size, (size_t)(*cap) * sizeof(lxs_source_regfile));
+	return *items != NULL;
+	}
+
 static uint32_t lxs_find_net(const lxs_netlist *nl, const char *name)
 	{
 	for (uint32_t i = 0; i < nl->net_count; ++i)
@@ -636,6 +658,20 @@ static int lxs_push_source_ram(lxs_netlist *nl, const lxs_source_ram *ram)
 		}
 
 	nl->source_rams[nl->source_ram_count++] = *ram;
+	return 1;
+	}
+
+static int lxs_push_source_regfile(lxs_netlist *nl, const lxs_source_regfile *regfile)
+	{
+	if (!lxs_reserve_source_regfiles(
+		&nl->source_regfiles,
+		&nl->source_regfile_cap,
+		nl->source_regfile_count + 1U))
+		{
+		return 0;
+		}
+
+	nl->source_regfiles[nl->source_regfile_count++] = *regfile;
 	return 1;
 	}
 
@@ -1097,6 +1133,104 @@ static int lxs_parse_standard_ram_name(
 	if (data_width_out)
 		{
 		*data_width_out = width_bits;
+		}
+	return 1;
+	}
+
+static int lxs_parse_standard_regfile_name(
+	const char *gate_name,
+	uint32_t *data_width_out)
+	{
+	uint32_t width_bits = 0U;
+
+	if (strcmp(gate_name, "REGFILE8_2R1W") == 0)
+		{
+		width_bits = 8U;
+		}
+	else if (strcmp(gate_name, "REGFILE16_2R1W") == 0)
+		{
+		width_bits = 16U;
+		}
+	else if (strcmp(gate_name, "REGFILE32_2R1W") == 0)
+		{
+		width_bits = 32U;
+		}
+	else
+		{
+		return 0;
+		}
+
+	if (data_width_out)
+		{
+		*data_width_out = width_bits;
+		}
+	return 1;
+	}
+
+static int lxs_parse_standard_counter_name(
+	const char *gate_name,
+	uint32_t *width_bits_out)
+	{
+	uint32_t width_bits = 0U;
+
+	if (strcmp(gate_name, "COUNTER8") == 0)
+		{
+		width_bits = 8U;
+		}
+	else if (strcmp(gate_name, "COUNTER16") == 0)
+		{
+		width_bits = 16U;
+		}
+	else if (strcmp(gate_name, "COUNTER32") == 0)
+		{
+		width_bits = 32U;
+		}
+	else if (strcmp(gate_name, "COUNTER64") == 0)
+		{
+		width_bits = 64U;
+		}
+	else
+		{
+		return 0;
+		}
+
+	if (width_bits_out)
+		{
+		*width_bits_out = width_bits;
+		}
+	return 1;
+	}
+
+static int lxs_parse_standard_counter_en_name(
+	const char *gate_name,
+	uint32_t *width_bits_out)
+	{
+	uint32_t width_bits = 0U;
+
+	if (strcmp(gate_name, "COUNTER_EN8") == 0)
+		{
+		width_bits = 8U;
+		}
+	else if (strcmp(gate_name, "COUNTER_EN16") == 0)
+		{
+		width_bits = 16U;
+		}
+	else if (strcmp(gate_name, "COUNTER_EN32") == 0)
+		{
+		width_bits = 32U;
+		}
+	else if (strcmp(gate_name, "COUNTER_EN64") == 0)
+		{
+		width_bits = 64U;
+		}
+	else
+		{
+		return 0;
+		}
+
+	if (width_bits_out)
+		{
+		*width_bits_out = width_bits;
 		}
 	return 1;
 	}
@@ -2890,6 +3024,133 @@ static int lxs_emit_ram_descriptor(
 		}
 
 	return lxs_push_source_ram(nl, &ram);
+	}
+
+static int lxs_emit_regfile_descriptor(
+	lxs_netlist *nl,
+	const uint32_t *outputs,
+	uint32_t output_count,
+	const uint32_t *read_a_addr_inputs,
+	uint32_t read_a_addr_count,
+	const uint32_t *read_b_addr_inputs,
+	uint32_t read_b_addr_count,
+	const uint32_t *write_addr_inputs,
+	uint32_t write_addr_count,
+	const uint32_t *data_inputs,
+	uint32_t data_input_count,
+	uint32_t write_enable_net,
+	char **data_tokens,
+	uint32_t data_token_count)
+	{
+	lxs_source_regfile regfile;
+	uint64_t values[64];
+	uint64_t masks[64];
+	uint32_t data_width;
+
+	if (output_count == 0U || output_count > 128U || (output_count & 1U) != 0U)
+		{
+		return 0;
+		}
+
+	data_width = output_count / 2U;
+	if (data_width == 0U || data_width > 64U)
+		{
+		return 0;
+		}
+	if (read_a_addr_count != read_b_addr_count ||
+		read_a_addr_count != write_addr_count ||
+		data_input_count != data_width)
+		{
+		return 0;
+		}
+	if (data_token_count != (1U << read_a_addr_count))
+		{
+		return 0;
+		}
+
+	memset(&regfile, 0, sizeof(regfile));
+	regfile.addr_width = read_a_addr_count;
+	regfile.data_width = data_width;
+	regfile.depth = data_token_count;
+	regfile.read_a_addr_start = nl->source_regfile_read_a_addr_count;
+	regfile.read_b_addr_start = nl->source_regfile_read_b_addr_count;
+	regfile.write_addr_start = nl->source_regfile_write_addr_count;
+	regfile.data_input_start = nl->source_regfile_data_input_count;
+	regfile.output_start = nl->source_regfile_output_count;
+	regfile.data_start = nl->source_regfile_init_count;
+	regfile.write_enable_net = write_enable_net;
+
+	for (uint32_t i = 0; i < read_a_addr_count; ++i)
+		{
+		if (!lxs_push_u32(
+				&nl->source_regfile_read_a_addr_net_ids,
+				&nl->source_regfile_read_a_addr_count,
+				&nl->source_regfile_read_a_addr_cap,
+				read_a_addr_inputs[i]) ||
+			!lxs_push_u32(
+				&nl->source_regfile_read_b_addr_net_ids,
+				&nl->source_regfile_read_b_addr_count,
+				&nl->source_regfile_read_b_addr_cap,
+				read_b_addr_inputs[i]) ||
+			!lxs_push_u32(
+				&nl->source_regfile_write_addr_net_ids,
+				&nl->source_regfile_write_addr_count,
+				&nl->source_regfile_write_addr_cap,
+				write_addr_inputs[i]))
+			{
+			return 0;
+			}
+		}
+
+	for (uint32_t i = 0; i < data_input_count; ++i)
+		{
+		if (!lxs_push_u32(
+				&nl->source_regfile_data_input_net_ids,
+				&nl->source_regfile_data_input_count,
+				&nl->source_regfile_data_input_cap,
+				data_inputs[i]))
+			{
+			return 0;
+			}
+		}
+
+	for (uint32_t i = 0; i < output_count; ++i)
+		{
+		if (!lxs_push_u32(
+				&nl->source_regfile_output_net_ids,
+				&nl->source_regfile_output_count,
+				&nl->source_regfile_output_cap,
+				outputs[i]))
+			{
+			return 0;
+			}
+		}
+
+	for (uint32_t word = 0; word < data_token_count; ++word)
+		{
+		if (!lxs_parse_literal_bits(data_tokens[word], data_width, values, masks))
+			{
+			return 0;
+			}
+		for (uint32_t bit = 0; bit < data_width; ++bit)
+			{
+			if (!lxs_push_u64(
+					&nl->source_regfile_init_value,
+					&nl->source_regfile_init_count,
+					&nl->source_regfile_init_cap,
+					values[bit]) ||
+				!lxs_push_u64(
+					&nl->source_regfile_init_mask,
+					&nl->source_regfile_mask_count,
+					&nl->source_regfile_mask_cap,
+					masks[bit]))
+				{
+				return 0;
+				}
+			}
+		}
+
+	return lxs_push_source_regfile(nl, &regfile);
 	}
 
 static int lxs_emit_half_adder_macro(
@@ -5731,6 +5992,39 @@ static void lxs_apply_net_remap_to_source_rams(
 		for (uint32_t i = 0; i < nl->source_ram_count; ++i)
 			{
 			nl->source_rams[i].write_enable_net = remap[nl->source_rams[i].write_enable_net];
+			}
+		}
+	}
+
+static void lxs_apply_net_remap_to_source_regfiles(
+	lxs_netlist *nl,
+	const uint32_t *remap)
+	{
+	lxs_apply_net_remap_to_array(
+		nl->source_regfile_read_a_addr_net_ids,
+		nl->source_regfile_read_a_addr_count,
+		remap);
+	lxs_apply_net_remap_to_array(
+		nl->source_regfile_read_b_addr_net_ids,
+		nl->source_regfile_read_b_addr_count,
+		remap);
+	lxs_apply_net_remap_to_array(
+		nl->source_regfile_write_addr_net_ids,
+		nl->source_regfile_write_addr_count,
+		remap);
+	lxs_apply_net_remap_to_array(
+		nl->source_regfile_data_input_net_ids,
+		nl->source_regfile_data_input_count,
+		remap);
+	lxs_apply_net_remap_to_array(
+		nl->source_regfile_output_net_ids,
+		nl->source_regfile_output_count,
+		remap);
+	if (nl->source_regfile_count > 0U)
+		{
+		for (uint32_t i = 0; i < nl->source_regfile_count; ++i)
+			{
+			nl->source_regfiles[i].write_enable_net = remap[nl->source_regfiles[i].write_enable_net];
 			}
 		}
 	}
@@ -9082,8 +9376,11 @@ static lxs_netlist* lxs_load_bench(const char *path)
 		uint32_t standard_register_width_bits = 0U;
 		uint32_t standard_register_en_width_bits = 0U;
 		uint32_t standard_register_en_rst_width_bits = 0U;
+		uint32_t standard_counter_width_bits = 0U;
+		uint32_t standard_counter_en_width_bits = 0U;
 		uint32_t standard_rom_data_width = 0U;
 		uint32_t standard_ram_data_width = 0U;
+		uint32_t standard_regfile_data_width = 0U;
 		uint8_t is_standard_register_en = lxs_parse_standard_register_en_name(
 			gate_name,
 			&standard_register_en_width_bits);
@@ -9241,12 +9538,26 @@ static lxs_netlist* lxs_load_bench(const char *path)
 				}
 			is_special_macro = 1U;
 			}
-		else if (strcmp(gate_name, "COUNTER_EN") == 0)
+		else if (strcmp(gate_name, "COUNTER_EN") == 0 ||
+			lxs_parse_standard_counter_en_name(gate_name, &standard_counter_en_width_bits))
 			{
 			uint32_t enable_net = lxs_intern_net(nl, lxs_trim(open_paren + 1));
 
 			if (enable_net == UINT32_MAX || output_count == 0U ||
+				(standard_counter_en_width_bits != 0U && output_count != standard_counter_en_width_bits) ||
 				!lxs_emit_counter_descriptor(nl, output_ids, output_count, enable_net, UINT32_MAX, LXS_REGISTER_MODE_COUNTER_EN))
+				{
+				lxs_free_netlist(nl);
+				fclose(stream);
+				return NULL;
+				}
+			is_special_macro = 1U;
+			}
+		else if (lxs_parse_standard_counter_name(gate_name, &standard_counter_width_bits))
+			{
+			if (output_count == 0U ||
+				output_count != standard_counter_width_bits ||
+				!lxs_emit_counter_descriptor(nl, output_ids, output_count, UINT32_MAX, UINT32_MAX, LXS_REGISTER_MODE_COUNTER_EN))
 				{
 				lxs_free_netlist(nl);
 				fclose(stream);
@@ -9604,6 +9915,137 @@ static lxs_netlist* lxs_load_bench(const char *path)
 					output_count,
 					read_ids,
 					read_count,
+					write_ids,
+					write_count,
+					data_ids,
+					data_count,
+					we_net,
+					data_tokens,
+					data_token_count))
+				{
+				lxs_free_netlist(nl);
+				fclose(stream);
+				return NULL;
+				}
+			is_special_macro = 1U;
+			}
+		else if (lxs_parse_standard_regfile_name(gate_name, &standard_regfile_data_width))
+			{
+			char *section_ctx = NULL;
+			char *sections[6];
+			uint32_t section_count = 0U;
+			char *section = strtok_s(open_paren + 1, ";", &section_ctx);
+			char *read_a_ctx = NULL;
+			char *read_b_ctx = NULL;
+			char *write_ctx = NULL;
+			char *data_ctx = NULL;
+			char *init_ctx = NULL;
+			char *token;
+			char *data_tokens[256];
+			uint32_t read_a_ids[16];
+			uint32_t read_b_ids[16];
+			uint32_t write_ids[16];
+			uint32_t data_ids[64];
+			uint32_t read_a_count = 0U;
+			uint32_t read_b_count = 0U;
+			uint32_t write_count = 0U;
+			uint32_t data_count = 0U;
+			uint32_t data_token_count = 0U;
+			uint32_t we_net;
+
+			while (section && section_count < 6U)
+				{
+				sections[section_count++] = lxs_trim(section);
+				section = strtok_s(NULL, ";", &section_ctx);
+				}
+
+			if (section_count != 6U || output_count != (standard_regfile_data_width * 2U))
+				{
+				lxs_free_netlist(nl);
+				fclose(stream);
+				return NULL;
+				}
+
+			token = strtok_s(sections[0], ",", &read_a_ctx);
+			while (token && read_a_count < 16U)
+				{
+				read_a_ids[read_a_count] = lxs_intern_net(nl, lxs_trim(token));
+				if (read_a_ids[read_a_count] == UINT32_MAX)
+					{
+					lxs_free_netlist(nl);
+					fclose(stream);
+					return NULL;
+					}
+				read_a_count++;
+				token = strtok_s(NULL, ",", &read_a_ctx);
+				}
+
+			token = strtok_s(sections[1], ",", &read_b_ctx);
+			while (token && read_b_count < 16U)
+				{
+				read_b_ids[read_b_count] = lxs_intern_net(nl, lxs_trim(token));
+				if (read_b_ids[read_b_count] == UINT32_MAX)
+					{
+					lxs_free_netlist(nl);
+					fclose(stream);
+					return NULL;
+					}
+				read_b_count++;
+				token = strtok_s(NULL, ",", &read_b_ctx);
+				}
+
+			token = strtok_s(sections[2], ",", &write_ctx);
+			while (token && write_count < 16U)
+				{
+				write_ids[write_count] = lxs_intern_net(nl, lxs_trim(token));
+				if (write_ids[write_count] == UINT32_MAX)
+					{
+					lxs_free_netlist(nl);
+					fclose(stream);
+					return NULL;
+					}
+				write_count++;
+				token = strtok_s(NULL, ",", &write_ctx);
+				}
+
+			token = strtok_s(sections[3], ",", &data_ctx);
+			while (token && data_count < 64U)
+				{
+				data_ids[data_count] = lxs_intern_net(nl, lxs_trim(token));
+				if (data_ids[data_count] == UINT32_MAX)
+					{
+					lxs_free_netlist(nl);
+					fclose(stream);
+					return NULL;
+					}
+				data_count++;
+				token = strtok_s(NULL, ",", &data_ctx);
+				}
+
+			we_net = lxs_intern_net(nl, lxs_trim(sections[4]));
+			if (we_net == UINT32_MAX)
+				{
+				lxs_free_netlist(nl);
+				fclose(stream);
+				return NULL;
+				}
+
+			token = strtok_s(sections[5], ",", &init_ctx);
+			while (token && data_token_count < 256U)
+				{
+				data_tokens[data_token_count++] = lxs_trim(token);
+				token = strtok_s(NULL, ",", &init_ctx);
+				}
+
+			if (data_count != standard_regfile_data_width ||
+				!lxs_emit_regfile_descriptor(
+					nl,
+					output_ids,
+					output_count,
+					read_a_ids,
+					read_a_count,
+					read_b_ids,
+					read_b_count,
 					write_ids,
 					write_count,
 					data_ids,
@@ -10284,6 +10726,14 @@ void lxs_free_netlist(lxs_netlist *nl)
 	lxs_free_aligned(nl->source_ram_output_net_ids);
 	lxs_free_aligned(nl->source_ram_init_value);
 	lxs_free_aligned(nl->source_ram_init_mask);
+	lxs_free_aligned(nl->source_regfiles);
+	lxs_free_aligned(nl->source_regfile_read_a_addr_net_ids);
+	lxs_free_aligned(nl->source_regfile_read_b_addr_net_ids);
+	lxs_free_aligned(nl->source_regfile_write_addr_net_ids);
+	lxs_free_aligned(nl->source_regfile_data_input_net_ids);
+	lxs_free_aligned(nl->source_regfile_output_net_ids);
+	lxs_free_aligned(nl->source_regfile_init_value);
+	lxs_free_aligned(nl->source_regfile_init_mask);
 	lxs_free_aligned(nl);
 	}
 
@@ -10455,6 +10905,7 @@ lxs_plan* lxs_compile_to_plan(lxs_netlist *nl)
 	lxs_apply_net_remap_to_source_registers(nl, net_remap);
 	lxs_apply_net_remap_to_source_roms(nl, net_remap);
 	lxs_apply_net_remap_to_source_rams(nl, net_remap);
+	lxs_apply_net_remap_to_source_regfiles(nl, net_remap);
 	for (uint32_t i = 0; i < nl->net_count; ++i)
 		{
 		comb_driver[i] = -1;
@@ -10709,6 +11160,17 @@ lxs_plan* lxs_compile_to_plan(lxs_netlist *nl)
 		{
 		plan->ram_stage_bit_count += nl->source_rams[i].data_width;
 		}
+	plan->regfile_count = nl->source_regfile_count;
+	plan->regfile_storage_bit_count = nl->source_regfile_init_count;
+	plan->regfile_read_a_addr_net_count = nl->source_regfile_read_a_addr_count;
+	plan->regfile_read_b_addr_net_count = nl->source_regfile_read_b_addr_count;
+	plan->regfile_write_addr_net_count = nl->source_regfile_write_addr_count;
+	plan->regfile_data_input_net_count = nl->source_regfile_data_input_count;
+	plan->regfile_output_net_count = nl->source_regfile_output_count;
+	for (uint32_t i = 0; i < nl->source_regfile_count; ++i)
+		{
+		plan->regfile_stage_bit_count += nl->source_regfiles[i].data_width;
+		}
 	plan->inputs.net_ids = lxs_calloc_aligned(plan->inputs.count, sizeof(uint32_t));
 	plan->outputs.net_ids = lxs_calloc_aligned(plan->outputs.count, sizeof(uint32_t));
 	plan->state.d_inputs = lxs_calloc_aligned(plan->state.count, sizeof(uint32_t));
@@ -10751,6 +11213,14 @@ lxs_plan* lxs_compile_to_plan(lxs_netlist *nl)
 	plan->ram_output_net_ids = lxs_calloc_aligned(plan->ram_output_net_count, sizeof(uint32_t));
 	plan->ram_init_value = lxs_calloc_aligned(plan->ram_storage_bit_count, sizeof(uint64_t));
 	plan->ram_init_mask = lxs_calloc_aligned(plan->ram_storage_bit_count, sizeof(uint64_t));
+	plan->regfiles = lxs_calloc_aligned(plan->regfile_count, sizeof(lxs_regfile_plan));
+	plan->regfile_read_a_addr_net_ids = lxs_calloc_aligned(plan->regfile_read_a_addr_net_count, sizeof(uint32_t));
+	plan->regfile_read_b_addr_net_ids = lxs_calloc_aligned(plan->regfile_read_b_addr_net_count, sizeof(uint32_t));
+	plan->regfile_write_addr_net_ids = lxs_calloc_aligned(plan->regfile_write_addr_net_count, sizeof(uint32_t));
+	plan->regfile_data_input_net_ids = lxs_calloc_aligned(plan->regfile_data_input_net_count, sizeof(uint32_t));
+	plan->regfile_output_net_ids = lxs_calloc_aligned(plan->regfile_output_net_count, sizeof(uint32_t));
+	plan->regfile_init_value = lxs_calloc_aligned(plan->regfile_storage_bit_count, sizeof(uint64_t));
+	plan->regfile_init_mask = lxs_calloc_aligned(plan->regfile_storage_bit_count, sizeof(uint64_t));
 
 	if ((plan->inputs.count && !plan->inputs.net_ids) ||
 		(plan->outputs.count && !plan->outputs.net_ids) ||
@@ -10779,7 +11249,11 @@ lxs_plan* lxs_compile_to_plan(lxs_netlist *nl)
 		(plan->rom_count && (!plan->roms || !plan->rom_addr_net_ids || !plan->rom_output_net_ids ||
 			!plan->rom_init_value || !plan->rom_init_mask)) ||
 		(plan->ram_count && (!plan->rams || !plan->ram_read_addr_net_ids || !plan->ram_write_addr_net_ids ||
-			!plan->ram_data_input_net_ids || !plan->ram_output_net_ids || !plan->ram_init_value || !plan->ram_init_mask)))
+			!plan->ram_data_input_net_ids || !plan->ram_output_net_ids || !plan->ram_init_value || !plan->ram_init_mask)) ||
+		(plan->regfile_count && (!plan->regfiles || !plan->regfile_read_a_addr_net_ids ||
+			!plan->regfile_read_b_addr_net_ids || !plan->regfile_write_addr_net_ids ||
+			!plan->regfile_data_input_net_ids || !plan->regfile_output_net_ids ||
+			!plan->regfile_init_value || !plan->regfile_init_mask)))
 		{
 		lxs_free_plan(plan);
 		lxs_free_aligned(comb_driver);
@@ -10815,6 +11289,13 @@ lxs_plan* lxs_compile_to_plan(lxs_netlist *nl)
 	memcpy(plan->ram_output_net_ids, nl->source_ram_output_net_ids, (size_t)plan->ram_output_net_count * sizeof(uint32_t));
 	memcpy(plan->ram_init_value, nl->source_ram_init_value, (size_t)plan->ram_storage_bit_count * sizeof(uint64_t));
 	memcpy(plan->ram_init_mask, nl->source_ram_init_mask, (size_t)plan->ram_storage_bit_count * sizeof(uint64_t));
+	memcpy(plan->regfile_read_a_addr_net_ids, nl->source_regfile_read_a_addr_net_ids, (size_t)plan->regfile_read_a_addr_net_count * sizeof(uint32_t));
+	memcpy(plan->regfile_read_b_addr_net_ids, nl->source_regfile_read_b_addr_net_ids, (size_t)plan->regfile_read_b_addr_net_count * sizeof(uint32_t));
+	memcpy(plan->regfile_write_addr_net_ids, nl->source_regfile_write_addr_net_ids, (size_t)plan->regfile_write_addr_net_count * sizeof(uint32_t));
+	memcpy(plan->regfile_data_input_net_ids, nl->source_regfile_data_input_net_ids, (size_t)plan->regfile_data_input_net_count * sizeof(uint32_t));
+	memcpy(plan->regfile_output_net_ids, nl->source_regfile_output_net_ids, (size_t)plan->regfile_output_net_count * sizeof(uint32_t));
+	memcpy(plan->regfile_init_value, nl->source_regfile_init_value, (size_t)plan->regfile_storage_bit_count * sizeof(uint64_t));
+	memcpy(plan->regfile_init_mask, nl->source_regfile_init_mask, (size_t)plan->regfile_storage_bit_count * sizeof(uint64_t));
 	plan->inputs.is_contiguous =
 		lxs_find_contiguous_range(plan->inputs.net_ids, plan->inputs.count, &plan->inputs.contiguous_base);
 	plan->outputs.is_contiguous =
@@ -10857,6 +11338,25 @@ lxs_plan* lxs_compile_to_plan(lxs_netlist *nl)
 		plan->rams[i].stage_offset = ram_stage_offset;
 		plan->rams[i].write_enable_net = nl->source_rams[i].write_enable_net;
 		ram_stage_offset += nl->source_rams[i].data_width;
+		}
+	}
+
+	{
+	uint32_t regfile_stage_offset = 0U;
+	for (uint32_t i = 0; i < plan->regfile_count; ++i)
+		{
+		plan->regfiles[i].addr_width = nl->source_regfiles[i].addr_width;
+		plan->regfiles[i].data_width = nl->source_regfiles[i].data_width;
+		plan->regfiles[i].depth = nl->source_regfiles[i].depth;
+		plan->regfiles[i].read_a_addr_start = nl->source_regfiles[i].read_a_addr_start;
+		plan->regfiles[i].read_b_addr_start = nl->source_regfiles[i].read_b_addr_start;
+		plan->regfiles[i].write_addr_start = nl->source_regfiles[i].write_addr_start;
+		plan->regfiles[i].data_input_start = nl->source_regfiles[i].data_input_start;
+		plan->regfiles[i].output_start = nl->source_regfiles[i].output_start;
+		plan->regfiles[i].storage_offset = nl->source_regfiles[i].data_start;
+		plan->regfiles[i].stage_offset = regfile_stage_offset;
+		plan->regfiles[i].write_enable_net = nl->source_regfiles[i].write_enable_net;
+		regfile_stage_offset += nl->source_regfiles[i].data_width;
 		}
 	}
 
@@ -11270,5 +11770,13 @@ void lxs_free_plan(lxs_plan *plan)
 	lxs_free_aligned(plan->ram_output_net_ids);
 	lxs_free_aligned(plan->ram_init_value);
 	lxs_free_aligned(plan->ram_init_mask);
+	lxs_free_aligned(plan->regfiles);
+	lxs_free_aligned(plan->regfile_read_a_addr_net_ids);
+	lxs_free_aligned(plan->regfile_read_b_addr_net_ids);
+	lxs_free_aligned(plan->regfile_write_addr_net_ids);
+	lxs_free_aligned(plan->regfile_data_input_net_ids);
+	lxs_free_aligned(plan->regfile_output_net_ids);
+	lxs_free_aligned(plan->regfile_init_value);
+	lxs_free_aligned(plan->regfile_init_mask);
 	lxs_free_aligned(plan);
 	}

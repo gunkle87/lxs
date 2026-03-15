@@ -184,6 +184,7 @@ typedef struct lxs_source_functional_region lxs_source_functional_region;
 typedef struct lxs_source_register lxs_source_register;
 typedef struct lxs_source_rom lxs_source_rom;
 typedef struct lxs_source_ram lxs_source_ram;
+typedef struct lxs_source_regfile lxs_source_regfile;
 struct lxs_netlist
 	{
 	char **net_names;
@@ -316,6 +317,31 @@ struct lxs_netlist
 	uint64_t *source_ram_init_mask;
 	uint32_t source_ram_mask_count;
 	uint32_t source_ram_mask_cap;
+
+	lxs_source_regfile *source_regfiles;
+	uint32_t source_regfile_count;
+	uint32_t source_regfile_cap;
+	uint32_t *source_regfile_read_a_addr_net_ids;
+	uint32_t source_regfile_read_a_addr_count;
+	uint32_t source_regfile_read_a_addr_cap;
+	uint32_t *source_regfile_read_b_addr_net_ids;
+	uint32_t source_regfile_read_b_addr_count;
+	uint32_t source_regfile_read_b_addr_cap;
+	uint32_t *source_regfile_write_addr_net_ids;
+	uint32_t source_regfile_write_addr_count;
+	uint32_t source_regfile_write_addr_cap;
+	uint32_t *source_regfile_data_input_net_ids;
+	uint32_t source_regfile_data_input_count;
+	uint32_t source_regfile_data_input_cap;
+	uint32_t *source_regfile_output_net_ids;
+	uint32_t source_regfile_output_count;
+	uint32_t source_regfile_output_cap;
+	uint64_t *source_regfile_init_value;
+	uint32_t source_regfile_init_count;
+	uint32_t source_regfile_init_cap;
+	uint64_t *source_regfile_init_mask;
+	uint32_t source_regfile_mask_count;
+	uint32_t source_regfile_mask_cap;
 	};
 
 struct lxs_source_macro
@@ -449,6 +475,20 @@ struct lxs_source_ram
 	uint32_t data_width;
 	uint32_t depth;
 	uint32_t read_addr_start;
+	uint32_t write_addr_start;
+	uint32_t data_input_start;
+	uint32_t output_start;
+	uint32_t data_start;
+	uint32_t write_enable_net;
+	};
+
+struct lxs_source_regfile
+	{
+	uint32_t addr_width;
+	uint32_t data_width;
+	uint32_t depth;
+	uint32_t read_a_addr_start;
+	uint32_t read_b_addr_start;
 	uint32_t write_addr_start;
 	uint32_t data_input_start;
 	uint32_t output_start;
@@ -670,6 +710,22 @@ struct lxs_ram_plan
 	uint32_t write_enable_net;
 	};
 
+typedef struct lxs_regfile_plan lxs_regfile_plan;
+struct lxs_regfile_plan
+	{
+	uint32_t addr_width;
+	uint32_t data_width;
+	uint32_t depth;
+	uint32_t read_a_addr_start;
+	uint32_t read_b_addr_start;
+	uint32_t write_addr_start;
+	uint32_t data_input_start;
+	uint32_t output_start;
+	uint32_t storage_offset;
+	uint32_t stage_offset;
+	uint32_t write_enable_net;
+	};
+
 typedef struct lxs_plan lxs_plan;
 struct lxs_plan
 	{
@@ -745,6 +801,23 @@ struct lxs_plan
 	uint64_t *ram_init_value;
 	uint64_t *ram_init_mask;
 
+	uint32_t regfile_count;
+	uint32_t regfile_storage_bit_count;
+	uint32_t regfile_stage_bit_count;
+	uint32_t regfile_read_a_addr_net_count;
+	uint32_t regfile_read_b_addr_net_count;
+	uint32_t regfile_write_addr_net_count;
+	uint32_t regfile_data_input_net_count;
+	uint32_t regfile_output_net_count;
+	lxs_regfile_plan *regfiles;
+	uint32_t *regfile_read_a_addr_net_ids;
+	uint32_t *regfile_read_b_addr_net_ids;
+	uint32_t *regfile_write_addr_net_ids;
+	uint32_t *regfile_data_input_net_ids;
+	uint32_t *regfile_output_net_ids;
+	uint64_t *regfile_init_value;
+	uint64_t *regfile_init_mask;
+
 	uint32_t standard_mux_data_net_count;
 	uint32_t standard_mux_select_net_count;
 	uint32_t standard_mux_output_net_count;
@@ -808,6 +881,12 @@ struct lxs_engine_ctx
 	uint64_t *ram_stage_mask;
 	uint32_t *ram_pending_addr;
 	uint8_t *ram_pending_write;
+	uint64_t *regfile_value;
+	uint64_t *regfile_mask;
+	uint64_t *regfile_stage_value;
+	uint64_t *regfile_stage_mask;
+	uint32_t *regfile_pending_addr;
+	uint8_t *regfile_pending_write;
 
 #if LXS_TEST_PROBES
 	uint64_t *input_shadow_value;
