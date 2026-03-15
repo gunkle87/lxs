@@ -2210,6 +2210,84 @@ static void lxs_execute_standard_adders(
 		}
 	}
 
+static void lxs_execute_standard_cmps(
+	lxs_engine_ctx *ctx,
+	const lxs_plan *plan,
+	const lxs_standard_cmp_plan *cmps,
+	uint32_t count)
+	{
+	uint64_t *restrict net_value = (uint64_t*)LXS_ASSUME_ALIGNED_64(ctx->net_value);
+	uint64_t *restrict net_mask = (uint64_t*)LXS_ASSUME_ALIGNED_64(ctx->net_mask);
+
+	for (uint32_t i = 0; i < count; ++i)
+		{
+		const lxs_standard_cmp_plan *cmp = &cmps[i];
+		uint64_t eq_value = ~0ULL;
+		uint64_t eq_mask = 0ULL;
+		uint64_t lt_value = 0ULL;
+		uint64_t lt_mask = 0ULL;
+		uint64_t gt_value = 0ULL;
+		uint64_t gt_mask = 0ULL;
+
+		for (uint32_t step = 0; step < cmp->width_bits; ++step)
+			{
+			uint32_t bit = cmp->width_bits - 1U - step;
+			uint32_t a_net = plan->standard_cmp_input_net_ids[cmp->input_start + bit];
+			uint32_t b_net = plan->standard_cmp_input_net_ids[cmp->input_start + cmp->width_bits + bit];
+			uint64_t not_a_value;
+			uint64_t not_a_mask;
+			uint64_t not_b_value;
+			uint64_t not_b_mask;
+			uint64_t xor_ab_value;
+			uint64_t xor_ab_mask;
+			uint64_t bit_eq_value;
+			uint64_t bit_eq_mask;
+			uint64_t lt_raw_value;
+			uint64_t lt_raw_mask;
+			uint64_t gt_raw_value;
+			uint64_t gt_raw_mask;
+			uint64_t lt_candidate_value;
+			uint64_t lt_candidate_mask;
+			uint64_t gt_candidate_value;
+			uint64_t gt_candidate_mask;
+			uint64_t next_eq_value;
+			uint64_t next_eq_mask;
+			uint64_t next_lt_value;
+			uint64_t next_lt_mask;
+			uint64_t next_gt_value;
+			uint64_t next_gt_mask;
+
+			LXS_EVAL_NOT(net_value[a_net], net_mask[a_net], not_a_value, not_a_mask);
+			LXS_EVAL_NOT(net_value[b_net], net_mask[b_net], not_b_value, not_b_mask);
+			LXS_EVAL_XOR(net_value[a_net], net_mask[a_net], net_value[b_net], net_mask[b_net], xor_ab_value, xor_ab_mask);
+			LXS_EVAL_NOT(xor_ab_value, xor_ab_mask, bit_eq_value, bit_eq_mask);
+			LXS_EVAL_AND(not_a_value, not_a_mask, net_value[b_net], net_mask[b_net], lt_raw_value, lt_raw_mask);
+			LXS_EVAL_AND(net_value[a_net], net_mask[a_net], not_b_value, not_b_mask, gt_raw_value, gt_raw_mask);
+			LXS_EVAL_AND(eq_value, eq_mask, lt_raw_value, lt_raw_mask, lt_candidate_value, lt_candidate_mask);
+			LXS_EVAL_AND(eq_value, eq_mask, gt_raw_value, gt_raw_mask, gt_candidate_value, gt_candidate_mask);
+			LXS_EVAL_AND(eq_value, eq_mask, bit_eq_value, bit_eq_mask, next_eq_value, next_eq_mask);
+			LXS_EVAL_OR(lt_value, lt_mask, lt_candidate_value, lt_candidate_mask, next_lt_value, next_lt_mask);
+			LXS_EVAL_OR(gt_value, gt_mask, gt_candidate_value, gt_candidate_mask, next_gt_value, next_gt_mask);
+
+			eq_value = next_eq_value;
+			eq_mask = next_eq_mask;
+			lt_value = next_lt_value;
+			lt_mask = next_lt_mask;
+			gt_value = next_gt_value;
+			gt_mask = next_gt_mask;
+			}
+
+		net_value[plan->standard_cmp_output_net_ids[cmp->output_start + 0U]] = eq_value;
+		net_mask[plan->standard_cmp_output_net_ids[cmp->output_start + 0U]] = eq_mask;
+		net_value[plan->standard_cmp_output_net_ids[cmp->output_start + 1U]] = lt_value;
+		net_mask[plan->standard_cmp_output_net_ids[cmp->output_start + 1U]] = lt_mask;
+		net_value[plan->standard_cmp_output_net_ids[cmp->output_start + 2U]] = gt_value;
+		net_mask[plan->standard_cmp_output_net_ids[cmp->output_start + 2U]] = gt_mask;
+		ctx->probes.chunk_exec++;
+		ctx->probes.gate_eval += cmp->gate_equiv_count;
+		}
+	}
+
 static void lxs_eval_functional_op(
 	uint8_t type,
 	const uint64_t *src_value,
@@ -2849,6 +2927,21 @@ static void lxs_execute_level_standard_adders_only(
 		}
 	}
 
+static void lxs_execute_level_standard_cmps_only(
+	lxs_engine_ctx *ctx,
+	const lxs_plan *plan,
+	const lxs_level_plan *level_plan)
+	{
+	if (level_plan->standard_cmp_count > 0U)
+		{
+		lxs_execute_standard_cmps(
+			ctx,
+			plan,
+			plan->standard_cmps + level_plan->standard_cmp_start,
+			level_plan->standard_cmp_count);
+		}
+	}
+
 static void lxs_execute_level_functional_regions_only(
 	lxs_engine_ctx *ctx,
 	const lxs_plan *plan,
@@ -2870,6 +2963,7 @@ static uint8_t lxs_level_is_mixed_boundary(const lxs_level_plan *level_plan)
 		(level_plan->macro_count > 0U ||
 		 level_plan->multi_macro_count > 0U ||
 		 level_plan->standard_add_count > 0U ||
+		 level_plan->standard_cmp_count > 0U ||
 		 level_plan->standard_mux_count > 0U ||
 		 level_plan->functional_region_count > 0U));
 	}
@@ -2892,6 +2986,7 @@ void lxs_execute_levels(lxs_engine_ctx *ctx, const lxs_plan *plan)
 			lxs_execute_level_macros_only(ctx, plan, level_plan);
 			lxs_execute_level_multi_macros_only(ctx, plan, level_plan);
 			lxs_execute_level_standard_adders_only(ctx, plan, level_plan);
+			lxs_execute_level_standard_cmps_only(ctx, plan, level_plan);
 			lxs_execute_level_standard_muxes_only(ctx, plan, level_plan);
 			lxs_execute_level_functional_regions_only(ctx, plan, level_plan);
 			lxs_execute_level_chunks_by_size(ctx, plan, level_plan, 1U);
@@ -2899,6 +2994,7 @@ void lxs_execute_levels(lxs_engine_ctx *ctx, const lxs_plan *plan)
 			lxs_execute_level_multi_macros_only(ctx, plan, level_plan);
 			lxs_execute_level_macros_only(ctx, plan, level_plan);
 			lxs_execute_level_standard_adders_only(ctx, plan, level_plan);
+			lxs_execute_level_standard_cmps_only(ctx, plan, level_plan);
 			lxs_execute_level_standard_muxes_only(ctx, plan, level_plan);
 			lxs_execute_level_functional_regions_only(ctx, plan, level_plan);
 			lxs_execute_level_chunks_by_size(ctx, plan, level_plan, 0U);
@@ -2908,6 +3004,7 @@ void lxs_execute_levels(lxs_engine_ctx *ctx, const lxs_plan *plan)
 			lxs_execute_level_macros_only(ctx, plan, level_plan);
 			lxs_execute_level_multi_macros_only(ctx, plan, level_plan);
 			lxs_execute_level_standard_adders_only(ctx, plan, level_plan);
+			lxs_execute_level_standard_cmps_only(ctx, plan, level_plan);
 			lxs_execute_level_standard_muxes_only(ctx, plan, level_plan);
 			lxs_execute_level_functional_regions_only(ctx, plan, level_plan);
 #endif
@@ -2918,6 +3015,7 @@ void lxs_execute_levels(lxs_engine_ctx *ctx, const lxs_plan *plan)
 		lxs_execute_level_macros_only(ctx, plan, level_plan);
 		lxs_execute_level_multi_macros_only(ctx, plan, level_plan);
 		lxs_execute_level_standard_adders_only(ctx, plan, level_plan);
+		lxs_execute_level_standard_cmps_only(ctx, plan, level_plan);
 		lxs_execute_level_standard_muxes_only(ctx, plan, level_plan);
 		lxs_execute_level_functional_regions_only(ctx, plan, level_plan);
 		}

@@ -291,6 +291,16 @@ for direct end-user CPU and system construction.
       - unknown reset participates in normal 4-state control propagation rather
         than being silently coerced to 0 or 1
 
+    Comparators
+    - first admitted comparator contract:
+      - unsigned only
+      - outputs are ordered:
+        - `eq`
+        - `lt`
+        - `gt`
+      - no signed interpretation in the first admitted family
+      - no flag packing or encoded status word in the first admitted family
+
     Register file
     - define:
       - port count
