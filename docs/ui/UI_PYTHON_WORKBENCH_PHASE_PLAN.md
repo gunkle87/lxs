@@ -173,6 +173,13 @@ Every run must include:
 - manual smoke validation where UI interaction is the feature under test
 - explicit confirmation that `C:\DEV\LXS` is unchanged
 
+Every run also starts with a continuity preflight:
+
+- verify the latest run checkpoint hash matches `git rev-parse --short HEAD` in `C:\DEV\LXS_UI`
+- verify `C:\DEV\LXS_UI` has a pushable remote when push is required by the run
+- verify the previous run's launch proof artifact exists
+- if any item is missing, stop, report, and do not begin implementation edits
+
 ## Interaction Addendum
 
 These interaction rules are also fixed for v0:

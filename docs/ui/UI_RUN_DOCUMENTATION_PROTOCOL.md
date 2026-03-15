@@ -44,6 +44,25 @@ The UI repo must maintain:
 The run file for the current directive must be created or updated during that
 run.
 
+## Pre-Run Continuity Gate (Mandatory)
+
+Before starting any implementation run in `C:\DEV\LXS_UI`, the agent must run:
+
+1. **Repository target check**
+   - Confirm `C:\DEV\LXS` is not the active write target.
+   - Confirm the current `git status` in `C:\DEV\LXS_UI` is clean for files outside the target run scope.
+2. **Checkpoint-hash continuity check**
+   - Read the latest completed run checkpoint, and verify `**Commit Hash:**` matches
+     `git rev-parse --short HEAD` of `C:\DEV\LXS_UI`.
+   - If the hash does not match, update only the checkpoint hash as a blocker correction.
+3. **Push precondition check**
+   - Confirm `git remote -v` shows a valid push destination.
+   - If no usable remote is present and push is required by the directive, stop immediately and report blocker.
+   - Do not edit code until the blocker is resolved.
+4. **Validation artifact continuity check**
+   - Confirm prior run launch proof artifacts and smoke check records exist for the claimed run.
+   - If missing, rerun the launch proof before proceeding.
+
 ## Required Content In Each Run Checkpoint
 
 Each `RUN_XX.md` file must include:
