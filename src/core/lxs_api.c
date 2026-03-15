@@ -135,6 +135,28 @@ static int lxs_api_copy_plan_names(
 	return 1;
 	}
 
+static lxs_api_result lxs_api_copy_state_bits(
+	const uint64_t *src_values,
+	const uint64_t *src_masks,
+	uint32_t offset,
+	uint32_t count,
+	uint64_t *values,
+	uint64_t *masks)
+	{
+	if (!src_values || !src_masks || !values || !masks)
+		{
+		return lxs_api_set_error(LXS_API_ERR_INVALID_ARG, "state_copy: invalid argument");
+		}
+
+	for (uint32_t i = 0; i < count; ++i)
+		{
+		values[i] = src_values[offset + i];
+		masks[i] = src_masks[offset + i];
+		}
+
+	return lxs_api_set_error(LXS_API_OK, NULL);
+	}
+
 const char* lxs_api_result_string(lxs_api_result result)
 	{
 	switch (result)
@@ -515,6 +537,219 @@ lxs_api_result lxs_api_engine_read_outputs(
 
 	lxs_read_outputs(&engine->ctx, engine->plan, values, masks);
 	return lxs_api_set_error(LXS_API_OK, NULL);
+	}
+
+lxs_api_result lxs_api_engine_read_net(
+	const lxs_api_engine *engine,
+	uint32_t net_id,
+	uint64_t *out_value,
+	uint64_t *out_mask)
+	{
+	if (!engine || !engine->plan || !out_value || !out_mask)
+		{
+		return lxs_api_set_error(LXS_API_ERR_INVALID_ARG, "engine_read_net: invalid argument");
+		}
+	if (net_id >= engine->plan->net_count)
+		{
+		return lxs_api_set_error(LXS_API_ERR_BOUNDS, "engine_read_net: net id out of bounds");
+		}
+
+	*out_value = engine->ctx.net_value[net_id];
+	*out_mask = engine->ctx.net_mask[net_id];
+	return lxs_api_set_error(LXS_API_OK, NULL);
+	}
+
+lxs_api_result lxs_api_plan_get_register_info(
+	const lxs_api_plan *plan,
+	uint32_t register_index,
+	lxs_api_register_info *out_info)
+	{
+	const lxs_register_plan *reg;
+
+	if (!plan || !plan->plan || !out_info)
+		{
+		return lxs_api_set_error(LXS_API_ERR_INVALID_ARG, "plan_get_register_info: invalid argument");
+		}
+	if (register_index >= plan->plan->register_count)
+		{
+		return lxs_api_set_error(LXS_API_ERR_BOUNDS, "plan_get_register_info: register index out of bounds");
+		}
+
+	reg = &plan->plan->registers[register_index];
+	out_info->width_bits = reg->width_bits;
+	out_info->mode = reg->mode;
+	return lxs_api_set_error(LXS_API_OK, NULL);
+	}
+
+lxs_api_result lxs_api_engine_read_register(
+	const lxs_api_engine *engine,
+	uint32_t register_index,
+	uint64_t *values,
+	uint64_t *masks,
+	uint32_t count)
+	{
+	const lxs_register_plan *reg;
+
+	if (!engine || !engine->plan)
+		{
+		return lxs_api_set_error(LXS_API_ERR_INVALID_HANDLE, "engine_read_register: invalid engine");
+		}
+	if (!values || !masks)
+		{
+		return lxs_api_set_error(LXS_API_ERR_INVALID_ARG, "engine_read_register: invalid argument");
+		}
+	if (register_index >= engine->plan->register_count)
+		{
+		return lxs_api_set_error(LXS_API_ERR_BOUNDS, "engine_read_register: register index out of bounds");
+		}
+
+	reg = &engine->plan->registers[register_index];
+	if (count != reg->width_bits)
+		{
+		return lxs_api_set_error(LXS_API_ERR_BOUNDS, "engine_read_register: width mismatch");
+		}
+
+	return lxs_api_copy_state_bits(
+		engine->ctx.register_value,
+		engine->ctx.register_mask,
+		reg->storage_offset,
+		reg->width_bits,
+		values,
+		masks);
+	}
+
+lxs_api_result lxs_api_plan_get_ram_info(
+	const lxs_api_plan *plan,
+	uint32_t ram_index,
+	lxs_api_ram_info *out_info)
+	{
+	const lxs_ram_plan *ram;
+
+	if (!plan || !plan->plan || !out_info)
+		{
+		return lxs_api_set_error(LXS_API_ERR_INVALID_ARG, "plan_get_ram_info: invalid argument");
+		}
+	if (ram_index >= plan->plan->ram_count)
+		{
+		return lxs_api_set_error(LXS_API_ERR_BOUNDS, "plan_get_ram_info: ram index out of bounds");
+		}
+
+	ram = &plan->plan->rams[ram_index];
+	out_info->addr_width = ram->addr_width;
+	out_info->data_width = ram->data_width;
+	out_info->depth = ram->depth;
+	return lxs_api_set_error(LXS_API_OK, NULL);
+	}
+
+lxs_api_result lxs_api_engine_read_ram_word(
+	const lxs_api_engine *engine,
+	uint32_t ram_index,
+	uint32_t address,
+	uint64_t *values,
+	uint64_t *masks,
+	uint32_t count)
+	{
+	const lxs_ram_plan *ram;
+	uint32_t offset;
+
+	if (!engine || !engine->plan)
+		{
+		return lxs_api_set_error(LXS_API_ERR_INVALID_HANDLE, "engine_read_ram_word: invalid engine");
+		}
+	if (!values || !masks)
+		{
+		return lxs_api_set_error(LXS_API_ERR_INVALID_ARG, "engine_read_ram_word: invalid argument");
+		}
+	if (ram_index >= engine->plan->ram_count)
+		{
+		return lxs_api_set_error(LXS_API_ERR_BOUNDS, "engine_read_ram_word: ram index out of bounds");
+		}
+
+	ram = &engine->plan->rams[ram_index];
+	if (count != ram->data_width)
+		{
+		return lxs_api_set_error(LXS_API_ERR_BOUNDS, "engine_read_ram_word: width mismatch");
+		}
+	if (address >= ram->depth)
+		{
+		return lxs_api_set_error(LXS_API_ERR_BOUNDS, "engine_read_ram_word: address out of bounds");
+		}
+
+	offset = ram->storage_offset + (address * ram->data_width);
+	return lxs_api_copy_state_bits(
+		engine->ctx.ram_value,
+		engine->ctx.ram_mask,
+		offset,
+		ram->data_width,
+		values,
+		masks);
+	}
+
+lxs_api_result lxs_api_plan_get_regfile_info(
+	const lxs_api_plan *plan,
+	uint32_t regfile_index,
+	lxs_api_regfile_info *out_info)
+	{
+	const lxs_regfile_plan *regfile;
+
+	if (!plan || !plan->plan || !out_info)
+		{
+		return lxs_api_set_error(LXS_API_ERR_INVALID_ARG, "plan_get_regfile_info: invalid argument");
+		}
+	if (regfile_index >= plan->plan->regfile_count)
+		{
+		return lxs_api_set_error(LXS_API_ERR_BOUNDS, "plan_get_regfile_info: regfile index out of bounds");
+		}
+
+	regfile = &plan->plan->regfiles[regfile_index];
+	out_info->addr_width = regfile->addr_width;
+	out_info->data_width = regfile->data_width;
+	out_info->depth = regfile->depth;
+	return lxs_api_set_error(LXS_API_OK, NULL);
+	}
+
+lxs_api_result lxs_api_engine_read_regfile_word(
+	const lxs_api_engine *engine,
+	uint32_t regfile_index,
+	uint32_t address,
+	uint64_t *values,
+	uint64_t *masks,
+	uint32_t count)
+	{
+	const lxs_regfile_plan *regfile;
+	uint32_t offset;
+
+	if (!engine || !engine->plan)
+		{
+		return lxs_api_set_error(LXS_API_ERR_INVALID_HANDLE, "engine_read_regfile_word: invalid engine");
+		}
+	if (!values || !masks)
+		{
+		return lxs_api_set_error(LXS_API_ERR_INVALID_ARG, "engine_read_regfile_word: invalid argument");
+		}
+	if (regfile_index >= engine->plan->regfile_count)
+		{
+		return lxs_api_set_error(LXS_API_ERR_BOUNDS, "engine_read_regfile_word: regfile index out of bounds");
+		}
+
+	regfile = &engine->plan->regfiles[regfile_index];
+	if (count != regfile->data_width)
+		{
+		return lxs_api_set_error(LXS_API_ERR_BOUNDS, "engine_read_regfile_word: width mismatch");
+		}
+	if (address >= regfile->depth)
+		{
+		return lxs_api_set_error(LXS_API_ERR_BOUNDS, "engine_read_regfile_word: address out of bounds");
+		}
+
+	offset = regfile->storage_offset + (address * regfile->data_width);
+	return lxs_api_copy_state_bits(
+		engine->ctx.regfile_value,
+		engine->ctx.regfile_mask,
+		offset,
+		regfile->data_width,
+		values,
+		masks);
 	}
 
 lxs_api_result lxs_api_engine_read_probes(

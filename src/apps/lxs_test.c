@@ -272,6 +272,257 @@ static int lxs_test_public_api_smoke(void)
 	return ok;
 	}
 
+static int lxs_test_public_api_state_smoke(void)
+	{
+	lxs_loaded_case mux_case;
+	lxs_loaded_case reg_case;
+	lxs_loaded_case ram_case;
+	lxs_loaded_case regfile_case;
+	lxs_api_netlist *api_netlist = NULL;
+	lxs_api_plan *api_plan = NULL;
+	lxs_api_engine *api_engine = NULL;
+	lxs_api_register_info reg_info;
+	lxs_api_ram_info ram_info;
+	lxs_api_regfile_info regfile_info;
+	uint64_t values[32];
+	uint64_t masks[32];
+	uint64_t read_values[32];
+	uint64_t read_masks[32];
+	uint64_t value = 0ULL;
+	uint64_t mask = 0ULL;
+	uint64_t rng = 0x53544154455F4150ULL;
+	int ok = 1;
+
+	if (!lxs_load_case("Tests\\Circuits\\mux2_8_explicit.bench", &mux_case))
+		{
+		fprintf(stderr, "FAIL public_api_state_smoke: unable to load mux reference\n");
+		return 0;
+		}
+	if (lxs_api_netlist_load_bench("Tests\\Circuits\\mux2_8_explicit.bench", &api_netlist) != LXS_API_OK ||
+		lxs_api_plan_compile(api_netlist, &api_plan) != LXS_API_OK ||
+		lxs_api_engine_create(api_plan, &api_engine) != LXS_API_OK)
+		{
+		fprintf(stderr, "FAIL public_api_state_smoke: mux api setup failed: %s\n", lxs_api_get_last_error());
+		lxs_unload_case(&mux_case);
+		lxs_api_engine_free(api_engine);
+		lxs_api_plan_free(api_plan);
+		lxs_api_netlist_free(api_netlist);
+		return 0;
+		}
+
+	for (uint32_t i = 0; i < 17U; ++i)
+		{
+		values[i] = lxs_next_rand(&rng);
+		masks[i] = 0ULL;
+		}
+	lxs_apply_inputs(&mux_case.ctx, mux_case.plan, values, masks);
+	lxs_execute_plan(&mux_case.ctx, mux_case.plan);
+	ok &= lxs_expect_u64("public_api_state_smoke.mux_apply",
+		lxs_api_engine_apply_inputs(api_engine, values, masks, 17U),
+		LXS_API_OK);
+	ok &= lxs_expect_u64("public_api_state_smoke.mux_tick",
+		lxs_api_engine_tick(api_engine),
+		LXS_API_OK);
+	for (uint32_t net_id = 0; net_id < mux_case.plan->net_count; ++net_id)
+		{
+		char label[128];
+
+		ok &= lxs_expect_u64("public_api_state_smoke.read_net",
+			lxs_api_engine_read_net(api_engine, net_id, &value, &mask),
+			LXS_API_OK);
+		snprintf(label, sizeof(label), "public_api_state_smoke.net_value.%u", net_id);
+		ok &= lxs_expect_u64(label, value, mux_case.ctx.net_value[net_id]);
+		snprintf(label, sizeof(label), "public_api_state_smoke.net_mask.%u", net_id);
+		ok &= lxs_expect_u64(label, mask, mux_case.ctx.net_mask[net_id]);
+		}
+	lxs_api_engine_free(api_engine);
+	lxs_api_plan_free(api_plan);
+	lxs_api_netlist_free(api_netlist);
+	lxs_unload_case(&mux_case);
+	api_engine = NULL;
+	api_plan = NULL;
+	api_netlist = NULL;
+
+	if (!lxs_load_case("Tests\\Circuits\\reg16_explicit.bench", &reg_case))
+		{
+		fprintf(stderr, "FAIL public_api_state_smoke: unable to load register reference\n");
+		return 0;
+		}
+	if (lxs_api_netlist_load_bench("Tests\\Circuits\\reg16_explicit.bench", &api_netlist) != LXS_API_OK ||
+		lxs_api_plan_compile(api_netlist, &api_plan) != LXS_API_OK ||
+		lxs_api_engine_create(api_plan, &api_engine) != LXS_API_OK)
+		{
+		fprintf(stderr, "FAIL public_api_state_smoke: register api setup failed: %s\n", lxs_api_get_last_error());
+		lxs_unload_case(&reg_case);
+		lxs_api_engine_free(api_engine);
+		lxs_api_plan_free(api_plan);
+		lxs_api_netlist_free(api_netlist);
+		return 0;
+		}
+	ok &= lxs_expect_u64("public_api_state_smoke.reg_info",
+		lxs_api_plan_get_register_info(api_plan, 0U, &reg_info),
+		LXS_API_OK);
+	ok &= lxs_expect_u64("public_api_state_smoke.reg_width", reg_info.width_bits, 16ULL);
+	for (uint32_t iter = 0; iter < 8U; ++iter)
+		{
+		for (uint32_t i = 0; i < 16U; ++i)
+			{
+			values[i] = lxs_next_rand(&rng);
+			masks[i] = 0ULL;
+			}
+		lxs_apply_inputs(&reg_case.ctx, reg_case.plan, values, masks);
+		lxs_execute_plan(&reg_case.ctx, reg_case.plan);
+		ok &= lxs_expect_u64("public_api_state_smoke.reg_apply",
+			lxs_api_engine_apply_inputs(api_engine, values, masks, 16U),
+			LXS_API_OK);
+		ok &= lxs_expect_u64("public_api_state_smoke.reg_tick",
+			lxs_api_engine_tick(api_engine),
+			LXS_API_OK);
+		ok &= lxs_expect_u64("public_api_state_smoke.read_register",
+			lxs_api_engine_read_register(api_engine, 0U, read_values, read_masks, 16U),
+			LXS_API_OK);
+		for (uint32_t bit = 0; bit < 16U; ++bit)
+			{
+			char label[128];
+
+			snprintf(label, sizeof(label), "public_api_state_smoke.reg_value.%u.%u", iter, bit);
+			ok &= lxs_expect_u64(label, read_values[bit], reg_case.ctx.register_value[bit]);
+			snprintf(label, sizeof(label), "public_api_state_smoke.reg_mask.%u.%u", iter, bit);
+			ok &= lxs_expect_u64(label, read_masks[bit], reg_case.ctx.register_mask[bit]);
+			}
+		}
+	lxs_api_engine_free(api_engine);
+	lxs_api_plan_free(api_plan);
+	lxs_api_netlist_free(api_netlist);
+	lxs_unload_case(&reg_case);
+	api_engine = NULL;
+	api_plan = NULL;
+	api_netlist = NULL;
+
+	if (!lxs_load_case("Tests\\Circuits\\ram8_explicit.bench", &ram_case))
+		{
+		fprintf(stderr, "FAIL public_api_state_smoke: unable to load ram reference\n");
+		return 0;
+		}
+	if (lxs_api_netlist_load_bench("Tests\\Circuits\\ram8_explicit.bench", &api_netlist) != LXS_API_OK ||
+		lxs_api_plan_compile(api_netlist, &api_plan) != LXS_API_OK ||
+		lxs_api_engine_create(api_plan, &api_engine) != LXS_API_OK)
+		{
+		fprintf(stderr, "FAIL public_api_state_smoke: ram api setup failed: %s\n", lxs_api_get_last_error());
+		lxs_unload_case(&ram_case);
+		lxs_api_engine_free(api_engine);
+		lxs_api_plan_free(api_plan);
+		lxs_api_netlist_free(api_netlist);
+		return 0;
+		}
+	ok &= lxs_expect_u64("public_api_state_smoke.ram_info",
+		lxs_api_plan_get_ram_info(api_plan, 0U, &ram_info),
+		LXS_API_OK);
+	ok &= lxs_expect_u64("public_api_state_smoke.ram_addr_width", ram_info.addr_width, 2ULL);
+	ok &= lxs_expect_u64("public_api_state_smoke.ram_data_width", ram_info.data_width, 8ULL);
+	ok &= lxs_expect_u64("public_api_state_smoke.ram_depth", ram_info.depth, 4ULL);
+	for (uint32_t iter = 0; iter < 12U; ++iter)
+		{
+		for (uint32_t i = 0; i < 13U; ++i)
+			{
+			values[i] = lxs_next_rand(&rng);
+			masks[i] = 0ULL;
+			}
+		lxs_apply_inputs(&ram_case.ctx, ram_case.plan, values, masks);
+		lxs_execute_plan(&ram_case.ctx, ram_case.plan);
+		ok &= lxs_expect_u64("public_api_state_smoke.ram_apply",
+			lxs_api_engine_apply_inputs(api_engine, values, masks, 13U),
+			LXS_API_OK);
+		ok &= lxs_expect_u64("public_api_state_smoke.ram_tick",
+			lxs_api_engine_tick(api_engine),
+			LXS_API_OK);
+		for (uint32_t addr = 0; addr < ram_info.depth; ++addr)
+			{
+			ok &= lxs_expect_u64("public_api_state_smoke.read_ram",
+				lxs_api_engine_read_ram_word(api_engine, 0U, addr, read_values, read_masks, ram_info.data_width),
+				LXS_API_OK);
+			for (uint32_t bit = 0; bit < ram_info.data_width; ++bit)
+				{
+				uint32_t storage_index = ram_case.plan->rams[0].storage_offset + (addr * ram_info.data_width) + bit;
+				char label[128];
+
+				snprintf(label, sizeof(label), "public_api_state_smoke.ram_value.%u.%u.%u", iter, addr, bit);
+				ok &= lxs_expect_u64(label, read_values[bit], ram_case.ctx.ram_value[storage_index]);
+				snprintf(label, sizeof(label), "public_api_state_smoke.ram_mask.%u.%u.%u", iter, addr, bit);
+				ok &= lxs_expect_u64(label, read_masks[bit], ram_case.ctx.ram_mask[storage_index]);
+				}
+			}
+		}
+	lxs_api_engine_free(api_engine);
+	lxs_api_plan_free(api_plan);
+	lxs_api_netlist_free(api_netlist);
+	lxs_unload_case(&ram_case);
+	api_engine = NULL;
+	api_plan = NULL;
+	api_netlist = NULL;
+
+	if (!lxs_load_case("Tests\\Circuits\\regfile8_explicit.bench", &regfile_case))
+		{
+		fprintf(stderr, "FAIL public_api_state_smoke: unable to load regfile reference\n");
+		return 0;
+		}
+	if (lxs_api_netlist_load_bench("Tests\\Circuits\\regfile8_explicit.bench", &api_netlist) != LXS_API_OK ||
+		lxs_api_plan_compile(api_netlist, &api_plan) != LXS_API_OK ||
+		lxs_api_engine_create(api_plan, &api_engine) != LXS_API_OK)
+		{
+		fprintf(stderr, "FAIL public_api_state_smoke: regfile api setup failed: %s\n", lxs_api_get_last_error());
+		lxs_unload_case(&regfile_case);
+		lxs_api_engine_free(api_engine);
+		lxs_api_plan_free(api_plan);
+		lxs_api_netlist_free(api_netlist);
+		return 0;
+		}
+	ok &= lxs_expect_u64("public_api_state_smoke.regfile_info",
+		lxs_api_plan_get_regfile_info(api_plan, 0U, &regfile_info),
+		LXS_API_OK);
+	ok &= lxs_expect_u64("public_api_state_smoke.regfile_addr_width", regfile_info.addr_width, 1ULL);
+	ok &= lxs_expect_u64("public_api_state_smoke.regfile_data_width", regfile_info.data_width, 8ULL);
+	ok &= lxs_expect_u64("public_api_state_smoke.regfile_depth", regfile_info.depth, 2ULL);
+	for (uint32_t iter = 0; iter < 12U; ++iter)
+		{
+		for (uint32_t i = 0; i < 12U; ++i)
+			{
+			values[i] = lxs_next_rand(&rng);
+			masks[i] = 0ULL;
+			}
+		lxs_apply_inputs(&regfile_case.ctx, regfile_case.plan, values, masks);
+		lxs_execute_plan(&regfile_case.ctx, regfile_case.plan);
+		ok &= lxs_expect_u64("public_api_state_smoke.regfile_apply",
+			lxs_api_engine_apply_inputs(api_engine, values, masks, 12U),
+			LXS_API_OK);
+		ok &= lxs_expect_u64("public_api_state_smoke.regfile_tick",
+			lxs_api_engine_tick(api_engine),
+			LXS_API_OK);
+		for (uint32_t addr = 0; addr < regfile_info.depth; ++addr)
+			{
+			ok &= lxs_expect_u64("public_api_state_smoke.read_regfile",
+				lxs_api_engine_read_regfile_word(api_engine, 0U, addr, read_values, read_masks, regfile_info.data_width),
+				LXS_API_OK);
+			for (uint32_t bit = 0; bit < regfile_info.data_width; ++bit)
+				{
+				uint32_t storage_index = regfile_case.plan->regfiles[0].storage_offset + (addr * regfile_info.data_width) + bit;
+				char label[128];
+
+				snprintf(label, sizeof(label), "public_api_state_smoke.regfile_value.%u.%u.%u", iter, addr, bit);
+				ok &= lxs_expect_u64(label, read_values[bit], regfile_case.ctx.regfile_value[storage_index]);
+				snprintf(label, sizeof(label), "public_api_state_smoke.regfile_mask.%u.%u.%u", iter, addr, bit);
+				ok &= lxs_expect_u64(label, read_masks[bit], regfile_case.ctx.regfile_mask[storage_index]);
+				}
+			}
+		}
+
+	lxs_api_engine_free(api_engine);
+	lxs_api_plan_free(api_plan);
+	lxs_api_netlist_free(api_netlist);
+	lxs_unload_case(&regfile_case);
+	return ok;
+	}
+
 static int lxs_test_standard_mux_equivalence(
 	const char *primitive_path,
 	const char *explicit_path,
@@ -4894,6 +5145,7 @@ int main(void)
 	ok &= lxs_test_mask_and();
 	ok &= lxs_test_canonical_basic();
 	ok &= lxs_test_public_api_smoke();
+	ok &= lxs_test_public_api_state_smoke();
 	ok &= lxs_test_multi_macro_full_adder_cinv();
 	ok &= lxs_test_mux2_macro();
 	ok &= lxs_test_mux2_8_explicit();

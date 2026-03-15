@@ -61,6 +61,26 @@ typedef struct lxs_api_probes
 	uint64_t state_commit_count;
 	} lxs_api_probes;
 
+typedef struct lxs_api_register_info
+	{
+	uint32_t width_bits;
+	uint32_t mode;
+	} lxs_api_register_info;
+
+typedef struct lxs_api_ram_info
+	{
+	uint32_t addr_width;
+	uint32_t data_width;
+	uint32_t depth;
+	} lxs_api_ram_info;
+
+typedef struct lxs_api_regfile_info
+	{
+	uint32_t addr_width;
+	uint32_t data_width;
+	uint32_t depth;
+	} lxs_api_regfile_info;
+
 LXS_API_EXPORT const char* lxs_api_result_string(lxs_api_result result);
 LXS_API_EXPORT const char* lxs_api_get_last_error(void);
 
@@ -117,6 +137,43 @@ LXS_API_EXPORT lxs_api_result lxs_api_engine_tick_many(
 	uint32_t tick_count);
 LXS_API_EXPORT lxs_api_result lxs_api_engine_read_outputs(
 	const lxs_api_engine *engine,
+	uint64_t *values,
+	uint64_t *masks,
+	uint32_t count);
+LXS_API_EXPORT lxs_api_result lxs_api_engine_read_net(
+	const lxs_api_engine *engine,
+	uint32_t net_id,
+	uint64_t *out_value,
+	uint64_t *out_mask);
+LXS_API_EXPORT lxs_api_result lxs_api_plan_get_register_info(
+	const lxs_api_plan *plan,
+	uint32_t register_index,
+	lxs_api_register_info *out_info);
+LXS_API_EXPORT lxs_api_result lxs_api_engine_read_register(
+	const lxs_api_engine *engine,
+	uint32_t register_index,
+	uint64_t *values,
+	uint64_t *masks,
+	uint32_t count);
+LXS_API_EXPORT lxs_api_result lxs_api_plan_get_ram_info(
+	const lxs_api_plan *plan,
+	uint32_t ram_index,
+	lxs_api_ram_info *out_info);
+LXS_API_EXPORT lxs_api_result lxs_api_engine_read_ram_word(
+	const lxs_api_engine *engine,
+	uint32_t ram_index,
+	uint32_t address,
+	uint64_t *values,
+	uint64_t *masks,
+	uint32_t count);
+LXS_API_EXPORT lxs_api_result lxs_api_plan_get_regfile_info(
+	const lxs_api_plan *plan,
+	uint32_t regfile_index,
+	lxs_api_regfile_info *out_info);
+LXS_API_EXPORT lxs_api_result lxs_api_engine_read_regfile_word(
+	const lxs_api_engine *engine,
+	uint32_t regfile_index,
+	uint32_t address,
 	uint64_t *values,
 	uint64_t *masks,
 	uint32_t count);
